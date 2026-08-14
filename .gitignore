@@ -1,0 +1,90 @@
+# ---------------------------------------------------------------
+# Build
+# ---------------------------------------------------------------
+build/
+build-*/
+out/
+cmake-build-*/
+
+# ---------------------------------------------------------------
+# CMake
+# ---------------------------------------------------------------
+CMakeCache.txt
+CMakeFiles/
+CMakeScripts/
+cmake_install.cmake
+install_manifest.txt
+CTestTestfile.cmake
+Testing/
+_deps/
+compile_commands.json
+CMakeUserPresets.json
+
+# ---------------------------------------------------------------
+# Artefatos de compilação
+# ---------------------------------------------------------------
+*.o
+*.obj
+*.a
+*.lib
+*.so
+*.so.*
+*.dylib
+*.dll
+*.exe
+*.out
+*.app
+*.d
+*.gch
+*.pch
+*.ilk
+*.pdb
+*.exp
+*.idb
+*.su
+*.map
+
+# ---------------------------------------------------------------
+# Projetos gerados pelo CMake no Windows (MSBuild / Visual Studio)
+# ---------------------------------------------------------------
+*.sln
+*.vcxproj
+*.vcxproj.*
+*.props
+*.tlog
+x64/
+x86/
+Win32/
+ARM64/
+
+# ---------------------------------------------------------------
+# IDEs / editores
+# ---------------------------------------------------------------
+.idea/
+.vs/
+.vscode/
+.fleet/
+*.user
+*.suo
+*.sln.docstates
+*.xcodeproj/
+*.xcworkspace/
+xcuserdata/
+.cache/
+.ccls-cache/
+compile_flags.txt
+
+# ---------------------------------------------------------------
+# Sistema operacional
+# ---------------------------------------------------------------
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ---------------------------------------------------------------
+# Temporários
+# ---------------------------------------------------------------
+*.log
+*.tmp
+*.swp
+*~

@@ -1,0 +1,33 @@
+# Normalização de fim de linha.
+#
+# O Git armazena tudo com LF no repositório e converte para o padrão do
+# sistema ao fazer checkout. Isso evita que um arquivo editado no Windows
+# apareça como "totalmente modificado" no macOS/Linux, e vice-versa.
+* text=auto
+
+# Arquivos que devem manter LF mesmo no Windows.
+*.cpp   text eol=lf
+*.hpp   text eol=lf
+*.h     text eol=lf
+*.cmake text eol=lf
+*.md    text eol=lf
+*.txt   text eol=lf
+*.yml   text eol=lf
+*.json  text eol=lf
+.gitignore     text eol=lf
+.gitattributes text eol=lf
+
+# Scripts que dependem do fim de linha nativo da plataforma.
+*.sh  text eol=lf
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Binários: nunca converter.
+*.wav  binary
+*.aiff binary
+*.flac binary
+*.mp3  binary
+*.png  binary
+*.jpg  binary
+*.ico  binary
+*.pdf  binary
