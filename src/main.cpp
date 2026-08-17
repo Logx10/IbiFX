@@ -3,6 +3,7 @@
 #include <iomanip>
 #include <iostream>
 #include <memory>
+#include <stdexcept>
 #include <string>
 #include <thread>
 #include <vector>
@@ -320,26 +321,130 @@ void runTerminalDemo()
     std::cout << "\n";
 }
 
-// Monta a cadeia usada no processamento de arquivo.
+// Ajustes da cadeia, com os valores padrão.
 //
-// Um pedal de drive seguido de eco — a ordem clássica de pedaleira, com a
-// distorção antes do delay para que os ecos repitam o som já distorcido, e
-// não o contrário.
-void buildDefaultChain(ModuleChain& chain)
+// Os padrões são deliberadamente agressivos: foram escolhidos para a
+// diferença entre entrada e saída ficar óbvia, não para soar bonito.
+struct ChainSettings
+{
+    float gain = 6.0f;
+    float drive = 4.0f;
+    float delayTime = 0.28f;
+    float feedback = 0.45f;
+    float mix = 0.35f;
+
+    bool useDrive = true;
+    bool useDelay = true;
+};
+
+// Monta a cadeia — um pedal de drive seguido de eco.
+//
+// A ordem é a clássica de pedaleira: a distorção vem ANTES do delay, para que
+// os ecos repitam o som já distorcido. Invertida, o delay produziria ecos
+// limpos que depois seriam distorcidos juntos, e o resultado vira uma pasta.
+void buildChain(ModuleChain& chain, const ChainSettings& settings)
 {
     auto gain = std::make_unique<GainProcessor>();
-    gain->setGain(6.0f);
+    gain->setGain(settings.gain);
     chain.add(std::move(gain));
 
-    auto drive = std::make_unique<SoftClipper>();
-    drive->setDrive(4.0f);
-    chain.add(std::move(drive));
+    if (settings.useDrive)
+    {
+        auto drive = std::make_unique<SoftClipper>();
+        drive->setDrive(settings.drive);
+        chain.add(std::move(drive));
+    }
 
-    auto echo = std::make_unique<Delay>();
-    echo->setTime(0.28f);
-    echo->setFeedback(0.45f);
-    echo->setMix(0.35f);
-    chain.add(std::move(echo));
+    if (settings.useDelay)
+    {
+        auto echo = std::make_unique<Delay>();
+        echo->setTime(settings.delayTime);
+        echo->setFeedback(settings.feedback);
+        echo->setMix(settings.mix);
+        chain.add(std::move(echo));
+    }
+}
+
+void buildDefaultChain(ModuleChain& chain)
+{
+    buildChain(chain, ChainSettings{});
+}
+
+// Interpreta as opções de linha de comando a partir de `first`.
+//
+// Lança com mensagem clara em caso de opção desconhecida, valor faltando ou
+// número inválido. Falhar aqui é barato; falhar depois, com um parâmetro
+// silenciosamente errado, custaria uma sessão de depuração.
+ChainSettings parseSettings(int argc, char** argv, int first)
+{
+    ChainSettings settings;
+
+    for (int i = first; i < argc; ++i)
+    {
+        const std::string option = argv[i];
+
+        if (option == "--no-drive")
+        {
+            settings.useDrive = false;
+            continue;
+        }
+
+        if (option == "--no-delay")
+        {
+            settings.useDelay = false;
+            continue;
+        }
+
+        if (i + 1 >= argc)
+        {
+            throw std::runtime_error("a opcao " + option + " precisa de um valor");
+        }
+
+        const std::string raw = argv[++i];
+        float value = 0.0f;
+
+        try
+        {
+            value = std::stof(raw);
+        }
+        catch (const std::exception&)
+        {
+            throw std::runtime_error("valor invalido para " + option + ": '" + raw + "'");
+        }
+
+        if (option == "--gain")          settings.gain = value;
+        else if (option == "--drive")    settings.drive = value;
+        else if (option == "--time")     settings.delayTime = value;
+        else if (option == "--feedback") settings.feedback = value;
+        else if (option == "--mix")      settings.mix = value;
+        else throw std::runtime_error("opcao desconhecida: " + option);
+    }
+
+    return settings;
+}
+
+// Mostra os valores que os módulos realmente guardaram.
+//
+// Não são necessariamente os pedidos: a faixa de cada parâmetro limita o que
+// entra. Imprimir o valor efetivo evita a confusão de pedir feedback 2.0 e
+// não entender por que o som não cresce sem parar.
+void printChainSettings(const ModuleChain& chain)
+{
+    for (std::size_t i = 0; i < chain.size(); ++i)
+    {
+        const AudioModule& module = chain.moduleAt(i);
+
+        for (std::size_t p = 0; p < module.parameterCount(); ++p)
+        {
+            const Parameter& parameter = module.parameterAt(p);
+
+            std::cout << "  " << std::left << std::setw(14) << module.name()
+                      << std::setw(10) << parameter.id()
+                      << std::fixed << std::setprecision(2) << parameter.value() << "\n";
+        }
+    }
+
+    std::cout << "\n";
 }
 
 void printUsage(const char* program)
@@ -349,7 +454,23 @@ void printUsage(const char* program)
               << "  " << program << " --generate saida.wav     gera um sinal de teste\n"
               << "  " << program << " entrada.wav saida.wav    processa um arquivo\n"
               << "  " << program << " --live [segundos]        toca ao vivo pela placa de som\n"
-              << "  " << program << " --devices                testa o dispositivo sem hardware\n";
+              << "  " << program << " --devices                testa o dispositivo sem hardware\n"
+              << "\n"
+              << "opcoes do processamento de arquivo:\n"
+              << "  --gain N       volume antes da distorcao   (-8 a 8,   padrao 6.0)\n"
+              << "  --drive N      quantidade de distorcao     (0 a 100,  padrao 4.0)\n"
+              << "  --time N       atraso do eco em segundos   (0 a 2,    padrao 0.28)\n"
+              << "  --feedback N   quantas repeticoes          (0 a 0.95, padrao 0.45)\n"
+              << "  --mix N        quanto do eco na saida      (0 a 1,    padrao 0.35)\n"
+              << "  --no-drive     tira a distorcao da cadeia\n"
+              << "  --no-delay     tira o eco da cadeia\n"
+              << "\n"
+              << "valores fora da faixa param na borda, como o batente de um knob.\n"
+              << "\n"
+              << "exemplos:\n"
+              << "  " << program << " audio/guitar.wav audio/limpo.wav --gain 1 --no-drive\n"
+              << "  " << program << " audio/guitar.wav audio/suave.wav --gain 2 --drive 1.5 --mix 0.2\n"
+              << "  " << program << " audio/guitar.wav audio/fuzz.wav --gain 8 --drive 40\n";
 }
 
 // Toca ao vivo: entrada da placa de som -> efeitos -> saida.
@@ -482,8 +603,10 @@ int main(int argc, char** argv)
             return 0;
         }
 
-        if (argc == 3)
+        if (argc >= 3)
         {
+            const ChainSettings settings = parseSettings(argc, argv, 3);
+
             const WavFile input = wav::read(argv[1]);
 
             std::cout << "lido " << argv[1] << "\n"
@@ -493,7 +616,7 @@ int main(int argc, char** argv)
                       << input.frameCount() << " frames\n\n";
 
             ModuleChain chain;
-            buildDefaultChain(chain);
+            buildChain(chain, settings);
 
             std::cout << "cadeia: ";
             for (std::size_t i = 0; i < chain.size(); ++i)
@@ -503,6 +626,8 @@ int main(int argc, char** argv)
                 std::cout << chain.moduleAt(i).name();
             }
             std::cout << "\n\n";
+
+            printChainSettings(chain);
 
             const WavFile output = offline::processFile(input, chain);
             wav::write(argv[2], output);

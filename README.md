@@ -115,7 +115,35 @@ passando pela cadeia:
 
 A cadeia padrão é `Gain -> SoftClipper -> Delay`: um pedal de drive seguido de
 eco, com a distorção antes do delay para que os ecos repitam o som já
-distorcido. Abra os dois arquivos em qualquer tocador e compare.
+distorcido. Invertida, o delay produziria ecos limpos que depois seriam
+distorcidos juntos, e o resultado vira uma pasta.
+
+### Ajustando o som
+
+Os parâmetros da cadeia são opções de linha de comando:
+
+```sh
+./build/ibifx audio/guitar.wav audio/limpo.wav  --gain 1 --no-drive --no-delay
+./build/ibifx audio/guitar.wav audio/crunch.wav --gain 2 --drive 1.5 --mix 0.15
+./build/ibifx audio/guitar.wav audio/fuzz.wav   --gain 8 --drive 40 --feedback 0.6
+```
+
+| opção | o que faz | faixa | padrão |
+|---|---|---|---|
+| `--gain N` | volume antes da distorção | -8 a 8 | 6.0 |
+| `--drive N` | quantidade de distorção | 0 a 100 | 4.0 |
+| `--time N` | atraso do eco em segundos | 0 a 2 | 0.28 |
+| `--feedback N` | quantas repetições | 0 a 0.95 | 0.45 |
+| `--mix N` | quanto do eco na saída | 0 a 1 | 0.35 |
+| `--no-drive` | tira a distorção da cadeia | | |
+| `--no-delay` | tira o eco da cadeia | | |
+
+Valores fora da faixa **param na borda**, como o batente de um knob. O programa
+imprime o valor que cada módulo realmente guardou, então pedir `--feedback 5`
+e ver `0.95` na tela é o comportamento esperado, não um erro silencioso.
+
+Opção desconhecida, valor faltando ou número inválido interrompem com mensagem
+clara em vez de seguir com um parâmetro errado.
 
 O sinal gerado são quatro notas que decaem, com fundamental e dois harmônicos.
 Não é uma guitarra, mas tem dinâmica suficiente para a saturação responder ao

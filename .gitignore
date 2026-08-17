@@ -88,3 +88,8 @@ desktop.ini
 *.tmp
 *.swp
 *~
+
+# Arquivos de áudio de teste. A pasta e o README dela ficam versionados;
+# o áudio em si, não — ocupa muito espaço e não pertence ao histórico.
+audio/*
+!audio/README.md
