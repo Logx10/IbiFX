@@ -2,7 +2,9 @@
 
 > Visão inicial. Este documento descreve **intenção**, não implementação.
 >
-> Nada aqui descrito existe em código neste momento.
+> Quase nada aqui descrito existe em código ainda. A única exceção é o
+> princípio 2 (DSP independente da UI), que o `GainProcessor` já respeita por
+> não ter interface alguma — o que é fácil quando também não há UI.
 
 ## Princípios
 
@@ -89,7 +91,10 @@ src/platform/   integração com sistema operacional / navegador
 src/ui/         interface
 ```
 
-Nenhum desses diretórios existe ainda.
+Nenhum desses diretórios existe ainda. O `GainProcessor` mora direto em `src/`
+de propósito: com um único módulo, criar `src/dsp/` seria organizar uma pasta
+antes de haver o que organizar. A subdivisão acontece quando o segundo ou
+terceiro módulo tornar a raiz confusa.
 
 ## Nota
 
