@@ -3,6 +3,7 @@
 #include <vector>
 
 #include "AudioModule.h"
+#include "SmoothedValue.h"
 
 // GainProcessor — o processador mais simples que existe em áudio.
 //
@@ -24,19 +25,32 @@
 // A faixa do parâmetro vai de -8 a 8. O lado negativo é deliberado: ganho
 // negativo inverte a polaridade da onda, o que é recurso real e está coberto
 // por teste.
+//
+// O ganho é suavizado: mudá-lo no meio de um bloco criaria um degrau na onda,
+// ouvido como clique. Sem prepare(), a suavização fica inativa e o valor
+// salta — que é o comportamento certo para processamento offline.
 class GainProcessor : public AudioModule
 {
 public:
     GainProcessor();
 
-    // Define o ganho usado nas próximas chamadas de process().
+    // Define o ganho de destino. A mudança é aplicada gradualmente.
     void setGain(float newGain);
 
-    // Devolve o ganho atual.
+    // Devolve o ganho de destino, não o valor instantâneo da rampa.
     float gain() const;
 
     const char* name() const override;
 
-    // Multiplica todas as amostras do buffer pelo ganho.
+    // Configura a rampa de suavização para este sample rate.
+    void prepare(double sampleRate, int blockSize) override;
+
+    // Salta o ganho para o valor de destino, sem rampa.
+    void reset() override;
+
+    // Multiplica todas as amostras do buffer pelo ganho suavizado.
     void process(std::vector<float>& buffer) override;
+
+private:
+    SmoothedValue m_smoothedGain;
 };

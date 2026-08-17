@@ -3,6 +3,7 @@
 #include <vector>
 
 #include "AudioModule.h"
+#include "SmoothedValue.h"
 
 // SoftClipper — saturação suave via tanh.
 //
@@ -38,6 +39,10 @@
 //
 // Com drive muito alto a curva colapsa num degrau e vira hard clipping. Os
 // dois módulos são pontos da mesma linha, não efeitos distintos.
+//
+// O drive é suavizado: girá-lo de uma vez mudaria o formato da curva entre
+// duas amostras vizinhas, o que soa como clique. Sem prepare(), a suavização
+// fica inativa.
 class SoftClipper : public AudioModule
 {
 public:
@@ -53,6 +58,15 @@ public:
 
     const char* name() const override;
 
+    // Configura a rampa de suavização para este sample rate.
+    void prepare(double sampleRate, int blockSize) override;
+
+    // Salta o drive para o valor de destino, sem rampa.
+    void reset() override;
+
     // Aplica tanh(drive * amostra) a todas as amostras do buffer.
     void process(std::vector<float>& buffer) override;
+
+private:
+    SmoothedValue m_smoothedDrive;
 };

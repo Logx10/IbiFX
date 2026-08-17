@@ -10,13 +10,15 @@ elétricos.
 
 **Estágio inicial.** No momento o repositório contém:
 
-- a configuração de build com CMake, dividida em nove alvos:
+- a configuração de build com CMake, dividida em dez alvos:
   - `ibifx_core` — biblioteca estática com o código de processamento;
   - `ibifx` — executável de demonstração;
-  - sete executáveis de teste, registrados no CTest;
+  - oito executáveis de teste, registrados no CTest;
 - o contrato `AudioModule`, classe base abstrata com `name()`, `process()`,
   `prepare()` e `reset()`, que também guarda e expõe os parâmetros do módulo;
 - o `Parameter`, com id estável, faixa, clamp e forma normalizada;
+- o `SmoothedValue`, que faz um parâmetro caminhar até o novo valor em vez de
+  saltar, eliminando o clique da mudança abrupta;
 - o `ModuleChain`, cadeia linear montada em tempo de execução: adicionar,
   remover, reordenar e colocar módulos em bypass;
 - três módulos de DSP que implementam o contrato, cada um com sua bateria
@@ -75,11 +77,25 @@ Valor fora da faixa é ajustado para a borda, como o batente de um knob físico.
 Isso resolve na origem um risco antes apenas documentado: o teto do `Clipper`
 não pode mais ser negativo, porque a faixa começa em zero.
 
-Falta ainda o **smoothing**: mudar um parâmetro no meio de um bloco produz um
-degrau na onda, ouvido como clique. Agora que o `prepare()` existe e o sample
-rate chega aos módulos, a peça que faltava está no lugar — mas o §29 do
-AI_GUIDELINES pede que o problema seja estudado antes de abstraído, e para
-isso é preciso primeiro conseguir ouvir o clique.
+Mudar um parâmetro de uma vez cria um degrau na forma de onda, e uma
+descontinuidade é um estalo de banda larga — o ouvido escuta um clique. Girando
+um controle continuamente, os cliques viram o chiado conhecido como *zipper
+noise*.
+
+O `SmoothedValue` resolve isso trocando o salto por uma caminhada: o valor
+pedido vira um **alvo**, e a cada amostra o valor atual se aproxima um pouco
+dele. A rampa padrão é de 20 ms — longa o bastante para eliminar o clique,
+curta o bastante para o controle continuar parecendo instantâneo.
+
+Ganho, teto do `Clipper`, drive do `SoftClipper` e o feedback e o mix do
+`Delay` são suavizados. O **tempo** do `Delay` não é: movê-lo gradualmente
+alteraria a taxa de leitura das amostras antigas, o que é literalmente uma
+mudança de altura do som. O efeito é real e desejado em delays analógicos, mas
+fazê-lo direito exige interpolação entre amostras vizinhas — assunto próprio.
+
+Sem `prepare()`, a suavização fica inativa e os valores saltam. É o
+comportamento correto para processamento offline, e foi o que permitiu ligar a
+suavização sem alterar nenhum dos testes já existentes.
 
 O processamento ainda é **offline**: o buffer é um vetor fixo escrito no
 código, não áudio vindo de uma placa de som. Não há entrada/saída de áudio em
@@ -169,6 +185,7 @@ as verificações, inclusive as que passaram:
 ./build/tests/test_module_chain
 ./build/tests/test_parameter
 ./build/tests/test_delay
+./build/tests/test_smoothed_value
 ```
 
 Cada módulo tem seu próprio executável de teste, e não um binário único com
@@ -242,6 +259,16 @@ nada entrou, e mesmo assim saiu som: e a memoria do delay.
 apos reset:                 0.00    0.00    0.00    0.00    0.00    0.00    0.00    0.00    0.00    0.00    0.00    0.00    0.00
 
 silencio absoluto: o reset esvaziou o buffer circular.
+
+
+9. SMOOTHING — ganho indo de 1.0 para 0.0
+
+sem prepare:                0.00    0.00    0.00    0.00    0.00    0.00    0.00    0.00    0.00    0.00    0.00    0.00
+com rampa:                  0.90    0.80    0.70    0.60    0.50    0.40    0.30    0.20    0.10    0.00    0.00    0.00
+
+sem rampa o valor cai de 1.00 para 0.00 entre duas amostras vizinhas.
+esse degrau nao estava no sinal: o ouvido escuta um clique.
+com rampa a queda leva 10 amostras e a onda continua continua.
 ```
 
 O demo monta **uma única cadeia** e a manipula cinco vezes, sem recompilar.
@@ -288,6 +315,17 @@ fronteira do bloco. Nenhum dos três módulos anteriores conseguiria fazer isso.
 
 A etapa 8 chama `reset()` e o silêncio volta a ser absoluto — o buffer circular
 foi zerado, sem que nenhum parâmetro fosse alterado.
+
+**A etapa 9** mostra o smoothing. A entrada é um sinal constante de `1.00`, o
+mais simples possível de ler: qualquer coisa que apareça na saída veio do
+parâmetro, não do sinal. O ganho vai de `1.0` para `0.0` nos dois casos.
+
+Sem `prepare()`, a queda acontece **entre duas amostras vizinhas** — a saída já
+começa em `0.00`. Esse degrau não estava no sinal, e é ele que o ouvido escuta
+como clique. Com a rampa, a mesma queda leva 10 amostras (`0.90`, `0.80`,
+`0.70`...) e a onda permanece contínua. O valor final é idêntico nos dois
+casos: o erro nunca esteve em *para onde* o parâmetro foi, e sim em *quão
+rápido* chegou lá.
 
 Note também a amostra `0.25`: com ganho 4.0 ela cai exatamente em `1.0`, o
 limite. Ela **não** é cortada — valores no teto são válidos, e há um teste

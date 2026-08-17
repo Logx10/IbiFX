@@ -213,5 +213,35 @@ int main()
 
     std::cout << "\nsilencio absoluto: o reset esvaziou o buffer circular.\n";
 
+    // -----------------------------------------------------------------
+    // SMOOTHING — por que mudar um parametro de uma vez estala.
+    // -----------------------------------------------------------------
+    //
+    // A entrada é um sinal constante de 1.0, o mais simples possível de ler:
+    // qualquer coisa que apareça na saída veio do parâmetro, não do sinal.
+    //
+    // 500 Hz faz a rampa padrão de 20 ms durar exatamente 10 amostras.
+    std::cout << "\n\n9. SMOOTHING — ganho indo de 1.0 para 0.0\n\n";
+
+    GainProcessor semRampa;
+    semRampa.setGain(0.0f);
+
+    std::vector<float> abrupto(12, 1.0f);
+    semRampa.process(abrupto);
+
+    GainProcessor comRampa;
+    comRampa.prepare(500.0, 16);
+    comRampa.setGain(0.0f);
+
+    std::vector<float> suave(12, 1.0f);
+    comRampa.process(suave);
+
+    printBuffer("sem prepare:", abrupto);
+    printBuffer("com rampa:", suave);
+
+    std::cout << "\nsem rampa o valor cai de 1.00 para 0.00 entre duas amostras vizinhas.\n";
+    std::cout << "esse degrau nao estava no sinal: o ouvido escuta um clique.\n";
+    std::cout << "com rampa a queda leva 10 amostras e a onda continua continua.\n";
+
     return 0;
 }

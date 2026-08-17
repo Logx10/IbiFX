@@ -134,6 +134,88 @@ void testGainAboveOneCanExceedRange()
     checkClose(buffer[1], -1.0f, "-0.5 vira -1.0");
 }
 
+// Sem prepare(), o ganho muda de uma vez.
+//
+// É o comportamento correto para processamento offline, e é o que permitiu
+// ligar a suavização sem alterar nenhum dos testes acima.
+void testWithoutPrepareGainChangesInstantly()
+{
+    std::cout << "sem prepare, o ganho muda de uma vez\n";
+
+    std::vector<float> buffer(4, 1.0f);
+
+    GainProcessor processor;
+    processor.setGain(0.5f);
+    processor.process(buffer);
+
+    checkClose(buffer[0], 0.5f, "a 1a amostra ja sai com o ganho novo");
+    checkClose(buffer[3], 0.5f, "e a ultima tambem");
+}
+
+// Com prepare(), o ganho caminha até o novo valor.
+//
+// 500 Hz faz a rampa padrão de 20 ms durar exatamente 10 amostras. Entrando
+// com 1.0 constante e indo de ganho 1.0 para 0.0, a saída desenha a rampa.
+void testPreparedGainRampsToNewValue()
+{
+    std::cout << "com prepare, o ganho caminha\n";
+
+    GainProcessor processor;
+    processor.prepare(500.0, 16);
+
+    std::vector<float> buffer(10, 1.0f);
+    processor.setGain(0.0f);
+    processor.process(buffer);
+
+    checkClose(buffer[0], 0.9f, "1a amostra: 0.9");
+    checkClose(buffer[1], 0.8f, "2a amostra: 0.8");
+    checkClose(buffer[4], 0.5f, "5a amostra: 0.5");
+    checkClose(buffer[9], 0.0f, "10a amostra: chegou em 0.0");
+
+    checkClose(processor.gain(), 0.0f, "gain() devolve o destino, nao o valor da rampa");
+}
+
+// A rampa atravessa a fronteira do bloco.
+void testGainRampContinuesAcrossBlocks()
+{
+    std::cout << "a rampa do ganho atravessa blocos\n";
+
+    GainProcessor processor;
+    processor.prepare(500.0, 16);
+
+    processor.setGain(0.0f);
+
+    std::vector<float> primeiro(4, 1.0f);
+    processor.process(primeiro);
+
+    std::vector<float> segundo(6, 1.0f);
+    processor.process(segundo);
+
+    checkClose(primeiro[3], 0.6f, "bloco 1 termina em 0.6");
+    checkClose(segundo[0], 0.5f, "bloco 2 continua de 0.5");
+    checkClose(segundo[5], 0.0f, "e completa a rampa em 0.0");
+}
+
+// reset() salta o ganho para o destino, sem rampa.
+void testResetSnapsGain()
+{
+    std::cout << "reset salta o ganho\n";
+
+    GainProcessor processor;
+    processor.prepare(500.0, 16);
+    processor.setGain(0.0f);
+
+    std::vector<float> aquecimento(2, 1.0f);
+    processor.process(aquecimento);
+
+    processor.reset();
+
+    std::vector<float> buffer(3, 1.0f);
+    processor.process(buffer);
+
+    checkClose(buffer[0], 0.0f, "apos reset, a 1a amostra ja usa o destino");
+}
+
 int main()
 {
     std::cout << "\n=== testes do GainProcessor ===\n\n";
@@ -144,6 +226,10 @@ int main()
     testNegativeGainInvertsPolarity();
     testEmptyBufferDoesNotCrash();
     testGainAboveOneCanExceedRange();
+    testWithoutPrepareGainChangesInstantly();
+    testPreparedGainRampsToNewValue();
+    testGainRampContinuesAcrossBlocks();
+    testResetSnapsGain();
 
     return reportResults();
 }

@@ -41,6 +41,9 @@ void Delay::prepare(double sampleRate, int /*blockSize*/)
     // regra crítica do domínio de tempo real.
     m_circular.assign(samples, 0.0f);
     m_writePosition = 0;
+
+    m_smoothedFeedback.prepare(m_sampleRate, kDefaultRampSeconds, m_parameters[1].value());
+    m_smoothedMix.prepare(m_sampleRate, kDefaultRampSeconds, m_parameters[2].value());
 }
 
 void Delay::reset()
@@ -49,6 +52,9 @@ void Delay::reset()
     // voltaria a tocar assim que a escrita desse a volta.
     std::fill(m_circular.begin(), m_circular.end(), 0.0f);
     m_writePosition = 0;
+
+    m_smoothedFeedback.snapTo(m_parameters[1].value());
+    m_smoothedMix.snapTo(m_parameters[2].value());
 }
 
 void Delay::process(std::vector<float>& buffer)
@@ -59,8 +65,9 @@ void Delay::process(std::vector<float>& buffer)
     }
 
     const float timeSeconds = m_parameters[0].value();
-    const float feedbackAmount = m_parameters[1].value();
-    const float mixAmount = m_parameters[2].value();
+
+    m_smoothedFeedback.setTarget(m_parameters[1].value());
+    m_smoothedMix.setTarget(m_parameters[2].value());
 
     const Index size = static_cast<Index>(m_circular.size());
 
@@ -79,6 +86,9 @@ void Delay::process(std::vector<float>& buffer)
         }
 
         const float delayed = m_circular[static_cast<std::size_t>(readPosition)];
+
+        const float feedbackAmount = m_smoothedFeedback.nextValue();
+        const float mixAmount = m_smoothedMix.nextValue();
 
         // A leitura vem ANTES da escrita. Invertida, um atraso curto leria o
         // valor recém-gravado e a realimentação viraria instantânea.

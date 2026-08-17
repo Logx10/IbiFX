@@ -4,6 +4,7 @@
 #include <vector>
 
 #include "AudioModule.h"
+#include "SmoothedValue.h"
 
 // Delay — eco com realimentação, construído sobre um buffer circular.
 //
@@ -71,6 +72,20 @@
 // Chamado antes do prepare(), o process() devolve o buffer intacto em vez de
 // falhar. Ele roda na thread de áudio, onde lançar exceção não é opção, e um
 // eco mudo é preferível a um travamento. Há teste cobrindo esse caso.
+//
+// O QUE É SUAVIZADO, E O QUE NÃO É
+// feedback e mix são suavizados: saltar com eles cria degrau na onda, ouvido
+// como clique.
+//
+// O time NÃO é. Suavizá-lo significaria mover a posição de leitura
+// gradualmente, o que muda a taxa com que as amostras antigas são lidas — e
+// ler mais rápido ou mais devagar é, literalmente, alterar a altura do som.
+// O efeito é real e desejado em delays analógicos, onde girar o knob produz
+// aquele deslize de afinação característico; mas fazê-lo direito exige
+// interpolação entre amostras vizinhas, porque a posição de leitura deixa de
+// cair em índices inteiros. É assunto próprio, não um detalhe deste módulo.
+// Por ora o time salta, o que produz um pequeno estalo ao ser mudado durante
+// o som — comportamento honesto de delay digital simples.
 class Delay : public AudioModule
 {
 public:
@@ -106,4 +121,7 @@ private:
     std::vector<float> m_circular;
     std::size_t m_writePosition = 0;
     double m_sampleRate = 0.0;
+
+    SmoothedValue m_smoothedFeedback;
+    SmoothedValue m_smoothedMix;
 };

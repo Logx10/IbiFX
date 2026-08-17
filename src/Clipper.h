@@ -3,6 +3,7 @@
 #include <vector>
 
 #include "AudioModule.h"
+#include "SmoothedValue.h"
 
 // Clipper — hard clipping simétrico.
 //
@@ -30,19 +31,31 @@
 // e -threshold. A faixa do parâmetro começa em 0 justamente para tornar
 // impossível um teto negativo, que inverteria a faixa válida e produziria
 // lixo. O limite do parâmetro resolve o problema na origem.
+//
+// O teto é suavizado: movê-lo de uma vez faria a região cortada saltar, e o
+// salto é audível como clique. Sem prepare(), a suavização fica inativa.
 class Clipper : public AudioModule
 {
 public:
     Clipper();
 
-    // Define o teto usado nas próximas chamadas de process().
+    // Define o teto de destino. A mudança é aplicada gradualmente.
     void setThreshold(float newThreshold);
 
-    // Devolve o teto atual.
+    // Devolve o teto de destino, não o valor instantâneo da rampa.
     float threshold() const;
 
     const char* name() const override;
 
+    // Configura a rampa de suavização para este sample rate.
+    void prepare(double sampleRate, int blockSize) override;
+
+    // Salta o teto para o valor de destino, sem rampa.
+    void reset() override;
+
     // Corta as amostras que passam de +threshold ou de -threshold.
     void process(std::vector<float>& buffer) override;
+
+private:
+    SmoothedValue m_smoothedThreshold;
 };

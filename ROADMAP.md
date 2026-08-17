@@ -3,7 +3,8 @@
 Fases de alto nível. Cada uma será iniciada apenas quando a anterior estiver
 compreendida e funcionando.
 
-**Nenhuma fase além da 2 foi iniciada.**
+**Fases 0 a 5 concluídas.** O engine de DSP offline está de pé; nada de
+tempo real, arquivo ou interface foi implementado.
 
 | # | Fase | Objetivo |
 |---|------|----------|
@@ -31,42 +32,57 @@ compreendida e funcionando.
 
 ## Status
 
-- **Fase 0** — concluída. Build com CMake funcionando nos três sistemas, com
-  biblioteca, executável e teste registrado no CTest.
-- **Fase 1** — coberta na prática, sem etapa própria. Sample, amplitude, faixa
-  `[-1, +1]` e buffer apareceram naturalmente ao construir o `GainProcessor`.
-- **Fase 2** — concluída. `GainProcessor`, `Clipper` (hard clipping) e
-  `SoftClipper` (saturação via `tanh`) prontos e testados, com um demo que
-  encadeia os três e compara os dois tipos de corte.
-- **Fase 3** — concluída. Contrato `AudioModule` extraído das três
-  implementações existentes: destrutor virtual, `name()` e `process()`, os
-  dois últimos virtuais puros. Os três módulos herdam dele, e o demo já
-  processa cadeias num laço que não conhece os módulos.
-  Ficaram deliberadamente de fora `prepare(sampleRate, blockSize)` e
-  `reset()`: nenhum módulo atual precisa deles, e o Delay é quem deve
-  justificá-los.
-- **Fase 4** — concluída. `ModuleChain` com adicionar, remover, reordenar,
-  bypass e `clear`, sendo dono dos módulos via `std::unique_ptr`. Índice
-  inválido lança exceção em vez de falhar em silêncio. Não é seguro para uso
-  concorrente — alterar a cadeia durante o `process()` é corrida de dados, e
-  isso será resolvido quando o tempo real entrar.
-- **Fase 5** — parcialmente concluída. `Parameter` com id estável, faixa,
-  clamp e forma normalizada; `AudioModule` passou a guardar e expor a lista.
-  Os setters tipados (`setGain`, `setThreshold`, `setDrive`) continuam, agora
-  como atalhos sobre o parâmetro — não há estado duplicado.
-  **Falta o smoothing**, deixado de fora de propósito: ele depende de saber o
-  sample rate e agir amostra a amostra, o que exige um `prepare()` que ainda
-  não existe. O §29 pede que o problema seja estudado antes de abstraído, e
-  para estudá-lo é preciso primeiro conseguir ouvir o clique.
-- **Fase 6** — concluída. `Delay` com buffer circular, tempo em segundos,
-  feedback limitado a 0.95 e mix seco/molhado. Primeiro módulo com estado
-  entre blocos, e foi ele que justificou `prepare()` e `reset()` no contrato
-  — ambos com implementação padrão vazia, para não obrigar os módulos
-  stateless a escrever corpos vazios. O `ModuleChain` repassa os dois a todos
-  os módulos. Toda alocação acontece no `prepare()`; o `process()` não aloca.
-- **Fase 7** — próxima. Parameter smoothing, agora que o sample rate chega
-  aos módulos. Depende de conseguir ouvir o clique de uma mudança abrupta —
-  o que pede sinal contínuo, não um buffer de 8 amostras.
+- **Fase 0 — Ambiente / CMake.** Concluída. Build funcionando nos três
+  sistemas, com biblioteca, executável e testes registrados no CTest.
+
+- **Fase 1 — Fundamentos de áudio digital.** Coberta na prática, sem etapa
+  própria. Sample, amplitude, faixa `[-1, +1]` e buffer apareceram
+  naturalmente ao construir o `GainProcessor`.
+
+- **Fase 2 — DSP básico offline.** Concluída. Quatro módulos:
+  `GainProcessor`, `Clipper` (hard clipping), `SoftClipper` (saturação via
+  `tanh`) e `Delay` (eco com buffer circular).
+  Os três primeiros são funções de transferência sem estado. O `Delay` é o
+  primeiro módulo com memória entre blocos, e foi ele que justificou
+  `prepare()` e `reset()` no contrato. Toda alocação acontece no `prepare()`;
+  o `process()` não aloca.
+  Faltam da lista do §25 do AI_GUIDELINES o noise gate e uma distorção
+  assimétrica.
+
+- **Fase 3 — AudioModule.** Concluída. Contrato extraído das implementações
+  existentes, e não desenhado por antecipação: destrutor virtual, `name()`,
+  `process()`, `prepare()` e `reset()`. Os dois últimos têm corpo padrão
+  vazio, para não obrigar módulos stateless a escrevê-los.
+
+- **Fase 4 — Module Chain.** Concluída. Cadeia montada em tempo de execução
+  com adicionar, remover, reordenar, bypass e `clear`, dona dos módulos via
+  `std::unique_ptr`. Índice inválido lança em vez de falhar em silêncio.
+  Não é segura para uso concorrente: alterar a cadeia durante o `process()`
+  é corrida de dados, e isso só se resolve quando o tempo real entrar.
+
+- **Fase 5 — Parameters.** Concluída. `Parameter` com id estável, faixa,
+  clamp e forma normalizada de 0 a 1; a lista vive no `AudioModule`, o que
+  permite ajustar qualquer módulo sem conhecer o tipo concreto. Os setters
+  tipados continuam como atalhos sobre o parâmetro, sem estado duplicado.
+  `SmoothedValue` cobre o smoothing com rampa linear de 20 ms, ligado ao
+  ganho, ao teto, ao drive e ao feedback e mix do `Delay`. Sem `prepare()`
+  a rampa fica inativa e os valores saltam.
+  O **tempo** do `Delay` não é suavizado: mover a posição de leitura
+  gradualmente altera a altura do som, e fazê-lo direito exige interpolação
+  entre amostras vizinhas — assunto próprio.
+
+- **Fase 6 — Audio Graph.** Não iniciada.
+
+### Fora da tabela, e recomendado antes da Fase 6
+
+O §26 do AI_GUIDELINES prevê uma etapa de **processamento offline de
+arquivo** — `input.wav` → DSP → `output.wav` — que a tabela acima não lista.
+
+Ela vale mais agora do que o grafo, por um motivo simples: tudo até aqui foi
+verificado lendo números no terminal. Ler `.wav` e escrever `.wav` é o que
+permite finalmente **ouvir** o que foi construído — a diferença entre fuzz e
+overdrive, o eco do delay, e o clique que o smoothing acabou de eliminar. O
+próprio guia lembra que testes não substituem audição.
 
 ## Regra
 

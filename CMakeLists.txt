@@ -74,6 +74,7 @@ add_library(ibifx_core STATIC
     src/AudioModule.cpp
     src/Parameter.cpp
     src/Delay.cpp
+    src/SmoothedValue.cpp
 )
 
 # Onde procurar os headers desta biblioteca.
