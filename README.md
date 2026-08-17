@@ -23,6 +23,8 @@ elétricos.
   offline de arquivo que permite finalmente **ouvir** o resultado;
 - a camada de plataforma (`AudioDevice`, `LiveEngine`) que toca em tempo real
   pela placa de som, isolada do núcleo de DSP;
+- uma pedaleira interativa em ASCII no terminal, com medidores ao vivo e
+  controle pelo teclado;
 - o `ModuleChain`, cadeia linear montada em tempo de execução: adicionar,
   remover, reordenar e colocar módulos em bypass;
 - o `AudioGraph`, roteamento em grafo com ordenação topológica e rejeição de
@@ -216,6 +218,63 @@ tem ordem válida — para processar A é preciso B, e para processar B é preci
 A — e em áudio é realimentação sem atraso, que estoura instantaneamente. Isso
 não proíbe realimentação: o `Delay` realimenta o tempo todo, mas dentro de si
 e com atraso de várias amostras.
+
+## A pedaleira no terminal
+
+```sh
+./build/ibifx --ui        # com a placa de som
+./build/ibifx --ui-demo   # sem hardware, só para ver a interface
+```
+
+```text
+  ╭──────────────────────────────────────────────────────────────╮
+  │  IbiFX   pedaleira   ● tocando                               │
+  ╰──────────────────────────────────────────────────────────────╯
+
+   Fones de Ouvido Externos   48000 Hz   1284 blocos
+
+   entrada  ████████████░░░░░░░░░░░░░░░░░░░░  -21.4 dB
+   saida    ██████████████████████████░░░░░░   -6.1 dB
+
+   ▪ HighPass
+     frequency ─●······················     280 Hz
+
+   ▪ Gain
+     gain      ────────────────────●···       6.00
+
+   ▪ SoftClipper
+     drive     ─●······················       4.00
+
+   ▪ Delay
+   ▸ time      ─────●··················     440 ms
+     feedback  ───────────●············       0.45
+     mix       ────────●···············       0.35
+
+   ↑↓ escolher    ←→ ajustar    b bypass    r reset    espaco liga/desliga    q sair
+```
+
+| tecla | o que faz |
+|---|---|
+| `↑` `↓` ou `k` `j` | escolher o parâmetro |
+| `←` `→` ou `h` `l` | ajustar em passos de 1% da faixa |
+| `b` | bypass do módulo selecionado |
+| `r` | descartar o estado do módulo (silencia o eco) |
+| `espaço` | liga e desliga o áudio |
+| `q` | sair |
+
+Os medidores mostram **decibéis**, não amplitude, porque o ouvido percebe
+volume de forma logarítmica: metade da amplitude não soa "metade do volume",
+soa 6 dB mais baixo. Uma barra linear ficaria quase sempre colada no canto
+esquerdo. As cores marcam as regiões que importam ao operar — verde saudável,
+amarelo perto do teto, vermelho onde vai cortar.
+
+A interface é uma **camada** sobre o engine, como pede o princípio 2 do
+ARCHITECTURE: ela lê estado para desenhar e envia comandos para alterar, sem
+calcular nada de áudio. Apagá-la não afetaria uma linha de DSP.
+
+As duas threads se falam pelos caminhos já construídos, e por nenhum outro:
+os ajustes descem pela fila de comandos, e os medidores sobem por valores
+atômicos. Nada na interface trava a thread de áudio nem espera por ela.
 
 ## Tocando ao vivo
 

@@ -10,6 +10,7 @@
 
 #include "AudioGraph.h"
 #include "LiveEngine.h"
+#include "PedalboardUI.h"
 #include "Clipper.h"
 #include "Delay.h"
 #include "GainProcessor.h"
@@ -478,6 +479,8 @@ void printUsage(const char* program)
               << "  " << program << " entrada.wav saida.wav    processa um arquivo\n"
               << "  " << program << " --live [segundos]        toca ao vivo pela placa de som\n"
               << "  " << program << " --devices                testa o dispositivo sem hardware\n"
+              << "  " << program << " --ui                     pedaleira interativa no terminal\n"
+              << "  " << program << " --ui-demo                a pedaleira sem placa de som\n"
               << "\n"
               << "opcoes do processamento de arquivo:\n"
               << "  --highpass N   corta grave antes do drive  (20 a 2000, padrao 100)\n"
@@ -559,6 +562,26 @@ int runLive(double seconds)
     return 0;
 }
 
+// Abre a pedaleira interativa.
+int runInteractive(bool withHardware)
+{
+    LiveEngine engine;
+    buildDefaultChain(engine.chain());
+
+    if (withHardware)
+    {
+        std::cout << "AVISO: se a entrada e a saida forem os dispositivos embutidos,\n"
+                  << "       o som realimenta e vira microfonia. Use fones.\n\n"
+                  << "abrindo em 2 segundos...\n";
+        std::this_thread::sleep_for(std::chrono::seconds(2));
+    }
+
+    PedalboardUI ui(engine);
+
+    return ui.run(withHardware ? AudioDevice::Mode::Duplex : AudioDevice::Mode::Null,
+                  48000.0, 128);
+}
+
 // Abre o dispositivo com o backend nulo, sem hardware.
 //
 // Serve para confirmar que a camada de plataforma funciona mesmo em maquina
@@ -607,6 +630,16 @@ int main(int argc, char** argv)
             std::cout << "\n\n";
             printUsage(argv[0]);
             return 0;
+        }
+
+        if (argc == 2 && std::string(argv[1]) == "--ui")
+        {
+            return runInteractive(true);
+        }
+
+        if (argc == 2 && std::string(argv[1]) == "--ui-demo")
+        {
+            return runInteractive(false);
         }
 
         if (argc >= 2 && std::string(argv[1]) == "--live")

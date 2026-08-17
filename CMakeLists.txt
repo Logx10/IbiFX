@@ -134,11 +134,23 @@ add_library(ibifx_core STATIC
 add_library(ibifx_platform STATIC
     src/platform/AudioDevice.cpp
     src/platform/LiveEngine.cpp
+    src/platform/Terminal.cpp
 )
 
 target_include_directories(ibifx_platform PUBLIC src/platform)
 target_compile_options(ibifx_platform PRIVATE ${IBIFX_WARNINGS})
 target_link_libraries(ibifx_platform PUBLIC ibifx_core PRIVATE ibifx_miniaudio)
+
+# A interface de terminal. É uma CAMADA sobre o engine, como pede o princípio
+# 2 do ARCHITECTURE: ela lê estado para desenhar e envia comandos para
+# alterar, sem calcular nada de áudio. Apagar este alvo não afetaria o DSP.
+add_library(ibifx_tui STATIC
+    src/tui/PedalboardUI.cpp
+)
+
+target_include_directories(ibifx_tui PUBLIC src/tui)
+target_compile_options(ibifx_tui PRIVATE ${IBIFX_WARNINGS})
+target_link_libraries(ibifx_tui PUBLIC ibifx_platform)
 
 # Onde procurar os headers desta biblioteca.
 #
@@ -159,7 +171,7 @@ add_executable(ibifx
 
 target_compile_options(ibifx PRIVATE ${IBIFX_WARNINGS})
 # ibifx_platform ja arrasta ibifx_core como dependencia PUBLIC.
-target_link_libraries(ibifx PRIVATE ibifx_platform)
+target_link_libraries(ibifx PRIVATE ibifx_tui)
 
 # Liga o CTest, o executor de testes que vem junto com o CMake.
 # Precisa vir ANTES do add_subdirectory abaixo, senão os add_test()

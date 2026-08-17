@@ -1,5 +1,6 @@
 #pragma once
 
+#include <atomic>
 #include <cstddef>
 #include <vector>
 
@@ -72,6 +73,14 @@ public:
     // Descarta o estado acumulado de um módulo com o áudio rodando.
     bool resetModule(std::size_t moduleIndex);
 
+    // Pico do sinal antes e depois da cadeia, para medidores de nível.
+    //
+    // Escritos pela thread de áudio, lidos pela interface — atômicos pelo
+    // mesmo motivo do Parameter. O valor decai sozinho a cada bloco: um
+    // medidor que só sobe ficaria travado no maior pico de sempre.
+    float inputPeak() const;
+    float outputPeak() const;
+
     // Informações do dispositivo negociado.
     double sampleRate() const;
     std::size_t channelCount() const;
@@ -89,4 +98,7 @@ private:
     // Buffer mono de trabalho, alocado no start(). O callback só muda o
     // tamanho lógico dele, nunca a capacidade — então não aloca.
     std::vector<float> m_monoBuffer;
+
+    std::atomic<float> m_inputPeak{0.0f};
+    std::atomic<float> m_outputPeak{0.0f};
 };

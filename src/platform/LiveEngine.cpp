@@ -1,6 +1,7 @@
 #include "LiveEngine.h"
 
 #include <algorithm>
+#include <cmath>
 
 ModuleChain& LiveEngine::chain()
 {
@@ -81,6 +82,16 @@ bool LiveEngine::resetModule(std::size_t moduleIndex)
     return m_chain.pushCommand(command);
 }
 
+float LiveEngine::inputPeak() const
+{
+    return m_inputPeak.load(std::memory_order_relaxed);
+}
+
+float LiveEngine::outputPeak() const
+{
+    return m_outputPeak.load(std::memory_order_relaxed);
+}
+
 double LiveEngine::sampleRate() const
 {
     return m_device.sampleRate();
@@ -125,11 +136,15 @@ void LiveEngine::processBlock(float* output,
 
     // Desintercala: pega o primeiro canal de entrada. Uma guitarra entrega um
     // sinal só, e é dele que a cadeia mono precisa.
+    float entrada = 0.0f;
+
     if (input != nullptr)
     {
         for (std::size_t frame = 0; frame < frames; ++frame)
         {
-            m_monoBuffer[frame] = input[frame * channelCount];
+            const float sample = input[frame * channelCount];
+            m_monoBuffer[frame] = sample;
+            entrada = std::max(entrada, std::fabs(sample));
         }
     }
     else
@@ -140,6 +155,23 @@ void LiveEngine::processBlock(float* output,
     }
 
     m_chain.process(m_monoBuffer);
+
+    float saida = 0.0f;
+    for (float sample : m_monoBuffer)
+    {
+        saida = std::max(saida, std::fabs(sample));
+    }
+
+    // Decaimento: o pico antigo cai um pouco a cada bloco, e o novo só o
+    // substitui se for maior. Sem isso o medidor travaria no maior pico de
+    // sempre; com decaimento rápido demais, ele piscaria e não daria para ler.
+    constexpr float kDecay = 0.85f;
+
+    const float picoEntrada = std::max(entrada, m_inputPeak.load(std::memory_order_relaxed) * kDecay);
+    const float picoSaida = std::max(saida, m_outputPeak.load(std::memory_order_relaxed) * kDecay);
+
+    m_inputPeak.store(picoEntrada, std::memory_order_relaxed);
+    m_outputPeak.store(picoSaida, std::memory_order_relaxed);
 
     // Reintercala: o mesmo sinal em todos os canais de saída.
     for (std::size_t frame = 0; frame < frames; ++frame)
