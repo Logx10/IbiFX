@@ -322,10 +322,8 @@ void runTerminalDemo()
 // Um pedal de drive seguido de eco — a ordem clássica de pedaleira, com a
 // distorção antes do delay para que os ecos repitam o som já distorcido, e
 // não o contrário.
-ModuleChain buildDefaultChain()
+void buildDefaultChain(ModuleChain& chain)
 {
-    ModuleChain chain;
-
     auto gain = std::make_unique<GainProcessor>();
     gain->setGain(6.0f);
     chain.add(std::move(gain));
@@ -339,8 +337,6 @@ ModuleChain buildDefaultChain()
     echo->setFeedback(0.45f);
     echo->setMix(0.35f);
     chain.add(std::move(echo));
-
-    return chain;
 }
 
 void printUsage(const char* program)
@@ -387,7 +383,8 @@ int main(int argc, char** argv)
                       << input.channelCount() << " canal(is), "
                       << input.frameCount() << " frames\n\n";
 
-            ModuleChain chain = buildDefaultChain();
+            ModuleChain chain;
+            buildDefaultChain(chain);
 
             std::cout << "cadeia: ";
             for (std::size_t i = 0; i < chain.size(); ++i)

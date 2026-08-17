@@ -158,10 +158,67 @@ A — e em áudio é realimentação sem atraso, que estoura instantaneamente. I
 não proíbe realimentação: o `Delay` realimenta o tempo todo, mas dentro de si
 e com atraso de várias amostras.
 
-Nenhum dos dois é seguro para uso concorrente. Alterar a estrutura enquanto
-ela processa seria corrida de dados; hoje tudo roda numa thread só. A
-comunicação entre o domínio de controle e a thread de áudio será uma decisão
-de projeto explícita quando o tempo real entrar.
+### Duas threads, sem bloqueio
+
+Quem gira um knob e quem processa o áudio são threads diferentes, e isso muda
+as regras. A thread de áudio tem prazo: a 48 kHz com blocos de 128 amostras,
+são **2,67 ms** para entregar o bloco. Quem chega atrasado produz estalo.
+
+Por isso ela nunca pode **esperar**. Um mutex resolveria a corrida, mas
+travar pode bloquear — e o escalonador do sistema pode suspender a thread de
+controle justamente enquanto ela segura o cadeado, fazendo a de áudio esperar
+uma fatia inteira de escalonamento. É a inversão de prioridade clássica.
+
+A solução tem duas partes:
+
+- **`Parameter` guarda um `std::atomic<float>`.** Mudar um valor de outra
+  thread passa a ser seguro, e como o tipo é lock-free a leitura na thread de
+  áudio continua sendo uma instrução comum.
+- **`CommandQueue`**, uma fila circular sem bloqueio, para o que não cabe num
+  número: bypass, reset. O controle deposita com `pushCommand()`; o
+  `process()` retira e aplica tudo no início do bloco, antes de tocar em
+  qualquer amostra. Fila cheia recusa em vez de esperar.
+
+```cpp
+Command command;
+command.type = Command::Type::SetBypass;
+command.moduleIndex = 1;
+command.value = 1.0f;
+
+chain.pushCommand(command);   // thread de controle, nunca bloqueia
+```
+
+O `ModuleChain` é deliberadamente **não-copiável e não-movível**: mover a
+cadeia mudaria o endereço dos índices atômicos que a thread de áudio pode
+estar lendo naquele instante.
+
+Mudanças estruturais — `add`, `remove`, `move` — continuam restritas ao
+domínio de controle e não podem ser feitas com o áudio rodando: elas realocam
+o vetor de módulos. Trocar a montagem durante o som exigirá construir a cadeia
+nova fora e trocá-la por ponteiro atômico.
+
+O `AudioGraph` ainda não tem fila de comandos.
+
+### Sobre performance e threads
+
+Medido com a cadeia `Gain -> SoftClipper -> Delay`, blocos de 128 amostras a
+48 kHz, compilado com `-O2`:
+
+```text
+orcamento por bloco : 2666.67 us
+custo da cadeia     :    3.026 us
+uso da CPU          :     0.11 %
+```
+
+Caberiam cerca de 880 cadeias dessas em um núcleo. **Performance não é o
+gargalo**, e paralelizar o processamento seria otimizar algo que já sobra
+quase mil vezes.
+
+Threads extras dentro do callback tendem a piorar, não melhorar: sincronizar
+custa dezenas de microssegundos e adiciona variação imprevisível. Trocar um
+trabalho estável por um mais rápido na média que ocasionalmente estoura o
+prazo é um mau negócio quando cada estouro é audível. Aqui previsibilidade
+vale mais que vazão — é o que o §69 do AI_GUIDELINES já orientava.
 
 ## Objetivos futuros
 
@@ -246,6 +303,7 @@ as verificações, inclusive as que passaram:
 ./build/tests/test_wav_file
 ./build/tests/test_offline
 ./build/tests/test_audio_graph
+./build/tests/test_command_queue
 ```
 
 Cada módulo tem seu próprio executável de teste, e não um binário único com

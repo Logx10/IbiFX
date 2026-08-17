@@ -19,15 +19,11 @@
 
 namespace
 {
-ModuleChain makeGainChain(float gain)
+void fillWithGain(ModuleChain& chain, float gain)
 {
-    ModuleChain chain;
-
     auto processor = std::make_unique<GainProcessor>();
     processor->setGain(gain);
     chain.add(std::move(processor));
-
-    return chain;
 }
 }
 
@@ -42,7 +38,8 @@ void testProcessesWholeFile()
     input.sampleRate = 1000.0;
     input.channels = {{0.1f, 0.2f, 0.3f, 0.4f}};
 
-    ModuleChain chain = makeGainChain(2.0f);
+    ModuleChain chain;
+    fillWithGain(chain, 2.0f);
     const WavFile output = offline::processFile(input, chain, 2);
 
     check(output.channelCount() == 1, "manteve 1 canal");
@@ -70,8 +67,10 @@ void testBlockSizeDoesNotChangeStatelessResult()
         input.channels[0][i] = static_cast<float>(i) / 100.0f;
     }
 
-    ModuleChain chainPequeno = makeGainChain(2.0f);
-    ModuleChain chainGrande = makeGainChain(2.0f);
+    ModuleChain chainPequeno;
+    ModuleChain chainGrande;
+    fillWithGain(chainPequeno, 2.0f);
+    fillWithGain(chainGrande, 2.0f);
 
     // 37 não é múltiplo de 4 nem de 64: o último bloco fica incompleto nos
     // dois casos, que é justamente onde erros de borda aparecem.

@@ -115,8 +115,60 @@ void ModuleChain::reset()
     }
 }
 
+bool ModuleChain::pushCommand(const Command& command)
+{
+    return m_commands.push(command);
+}
+
+std::size_t ModuleChain::pendingCommandCount() const
+{
+    return m_commands.size();
+}
+
+void ModuleChain::applyCommand(const Command& command)
+{
+    // Índice inválido é descartado em silêncio, e aqui isso é intencional:
+    // estamos na thread de áudio, onde lançar não é opção, e o comando pode
+    // ter sido criado antes de um módulo ser removido. Ignorar é a resposta
+    // menos danosa.
+    if (command.moduleIndex >= m_slots.size())
+    {
+        return;
+    }
+
+    Slot& slot = m_slots[command.moduleIndex];
+
+    switch (command.type)
+    {
+        case Command::Type::SetParameter:
+            if (command.parameterIndex < slot.module->parameterCount())
+            {
+                slot.module->parameterAt(command.parameterIndex).setValue(command.value);
+            }
+            break;
+
+        case Command::Type::SetBypass:
+            slot.bypassed = command.value != 0.0f;
+            break;
+
+        case Command::Type::Reset:
+            slot.module->reset();
+            break;
+    }
+}
+
 void ModuleChain::process(std::vector<float>& buffer)
 {
+    // Os comandos são aplicados ANTES de qualquer amostra ser tocada, para
+    // que a estrutura não mude no meio do bloco. Retirar da fila é apenas
+    // leitura de índice atômico: não bloqueia e não aloca.
+    Command command;
+
+    while (m_commands.pop(command))
+    {
+        applyCommand(command);
+    }
+
     for (Slot& slot : m_slots)
     {
         if (!slot.bypassed)

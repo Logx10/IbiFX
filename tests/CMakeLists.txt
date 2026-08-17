@@ -93,6 +93,17 @@ add_executable(test_audio_graph
 target_compile_options(test_audio_graph PRIVATE ${IBIFX_WARNINGS})
 target_link_libraries(test_audio_graph PRIVATE ibifx_core)
 
+# Este teste cria threads de verdade, entao precisa da biblioteca de threads
+# do sistema. Threads::Threads e o alvo portavel do CMake para isso: resolve
+# para -pthread no Linux, e para nada no macOS e no Windows, onde o suporte
+# ja vem embutido.
+add_executable(test_command_queue
+    test_command_queue.cpp
+)
+
+target_compile_options(test_command_queue PRIVATE ${IBIFX_WARNINGS})
+target_link_libraries(test_command_queue PRIVATE ibifx_core Threads::Threads)
+
 # Registra cada executável como um teste do CTest.
 #
 #   NAME     como o teste aparece nos relatórios
@@ -117,3 +128,4 @@ add_test(NAME smoothed_value COMMAND test_smoothed_value)
 add_test(NAME wav_file COMMAND test_wav_file)
 add_test(NAME offline COMMAND test_offline)
 add_test(NAME audio_graph COMMAND test_audio_graph)
+add_test(NAME command_queue COMMAND test_command_queue)

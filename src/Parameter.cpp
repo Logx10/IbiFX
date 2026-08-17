@@ -29,6 +29,31 @@ Parameter::Parameter(std::string id,
     }
 }
 
+Parameter::Parameter(const Parameter& other)
+    : m_id(other.m_id)
+    , m_label(other.m_label)
+    , m_minValue(other.m_minValue)
+    , m_maxValue(other.m_maxValue)
+    , m_defaultValue(other.m_defaultValue)
+    , m_value(other.m_value.load(std::memory_order_relaxed))
+{
+}
+
+Parameter& Parameter::operator=(const Parameter& other)
+{
+    if (this != &other)
+    {
+        m_id = other.m_id;
+        m_label = other.m_label;
+        m_minValue = other.m_minValue;
+        m_maxValue = other.m_maxValue;
+        m_defaultValue = other.m_defaultValue;
+        m_value.store(other.m_value.load(std::memory_order_relaxed), std::memory_order_relaxed);
+    }
+
+    return *this;
+}
+
 const std::string& Parameter::id() const
 {
     return m_id;
@@ -56,16 +81,17 @@ float Parameter::defaultValue() const
 
 float Parameter::value() const
 {
-    return m_value;
+    return m_value.load(std::memory_order_relaxed);
 }
 
 void Parameter::setValue(float newValue)
 {
-    m_value = std::clamp(newValue, m_minValue, m_maxValue);
+    m_value.store(std::clamp(newValue, m_minValue, m_maxValue), std::memory_order_relaxed);
 }
 
 float Parameter::normalized() const
 {
+    const float current = value();
     const float range = m_maxValue - m_minValue;
 
     // Faixa de largura zero não tem posição relativa; 0 é a resposta menos
@@ -75,7 +101,7 @@ float Parameter::normalized() const
         return 0.0f;
     }
 
-    return (m_value - m_minValue) / range;
+    return (current - m_minValue) / range;
 }
 
 void Parameter::setNormalized(float normalizedValue)
@@ -87,5 +113,5 @@ void Parameter::setNormalized(float normalizedValue)
 
 void Parameter::reset()
 {
-    m_value = m_defaultValue;
+    m_value.store(m_defaultValue, std::memory_order_relaxed);
 }

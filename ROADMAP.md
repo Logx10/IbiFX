@@ -92,10 +92,15 @@ arquivos `.wav`. Nada de tempo real nem de interface foi implementado.
   alimenta dois caminhos precisa que sua saída sobreviva ao primeiro leitor.
   Buffers maiores que o bloco preparado são fatiados em vez de realocados.
 
-- **Fase 7 — Real-Time Audio.** Não iniciada. É o próximo degrau, e o
-  primeiro que exige dependência externa (JUCE ou similar) para falar com o
-  dispositivo de áudio. Traz junto o problema adiado duas vezes: comunicar o
-  domínio de controle com a thread de áudio sem corrida de dados.
+- **Fase 7 — Real-Time Audio.** Em andamento.
+  A **parte de concorrência está pronta**, e era o problema adiado duas vezes:
+  `Parameter` guarda um `std::atomic<float>`, e a `CommandQueue` leva bypass e
+  reset do controle para a thread de áudio sem bloquear. Verificado com duas
+  threads de verdade e com o ThreadSanitizer, que não acusou nenhuma corrida.
+  Também foi medido que performance não é gargalo: a cadeia usa 0,11% do
+  orçamento de um bloco, então não há motivo para paralelizar o processamento.
+  **Falta o dispositivo de áudio**, que é a parte que exige dependência
+  externa.
 
 ## Regra
 

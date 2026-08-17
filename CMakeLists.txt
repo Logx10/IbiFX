@@ -45,6 +45,15 @@ endif()
 #               e pode corromper os acentos dos nossos comentários.
 #   /permissive- modo de conformidade com o padrão C++. É o equivalente
 #               conceitual do CMAKE_CXX_EXTENSIONS OFF definido acima.
+# Biblioteca de threads do sistema.
+#
+# THREADS_PREFER_PTHREAD_FLAG faz o CMake usar -pthread em vez de -lpthread
+# no Linux, que e a forma correta: a flag afeta compilacao e link, nao apenas
+# o link. No macOS e no Windows o alvo resolve para nada, porque o suporte a
+# threads ja vem embutido no compilador.
+set(THREADS_PREFER_PTHREAD_FLAG ON)
+find_package(Threads REQUIRED)
+
 if(MSVC)
     set(IBIFX_WARNINGS /W4 /utf-8 /permissive-)
 else()
@@ -78,6 +87,7 @@ add_library(ibifx_core STATIC
     src/WavFile.cpp
     src/offline.cpp
     src/AudioGraph.cpp
+    src/CommandQueue.cpp
 )
 
 # Onde procurar os headers desta biblioteca.

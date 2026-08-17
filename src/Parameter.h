@@ -1,5 +1,6 @@
 #pragma once
 
+#include <atomic>
 #include <string>
 
 // Parameter — um valor ajustável de um módulo, com identidade e limites.
@@ -37,17 +38,14 @@
 // controlador trabalha sempre em 0..1 e nunca precisa saber o que significa
 // "8" para o ganho; o parâmetro faz a conversão nos dois sentidos.
 //
-// O QUE FICOU DE FORA: SMOOTHING
-// Mudar um parâmetro de forma abrupta no meio de um bloco produz um degrau na
-// forma de onda, e degrau é um clique audível — o "zipper noise" que se ouve
-// ao girar um knob rápido demais em software mal feito. A solução é
-// interpolar o valor ao longo das amostras.
+// O PARÂMETRO GUARDA O DESTINO, NÃO O VALOR INSTANTÂNEO
+// Mudar um parâmetro de forma abrupta produz um degrau na onda, ouvido como
+// clique. Quem resolve isso é o SmoothedValue, dentro de cada módulo: ele
+// trata o valor daqui como ALVO e caminha até ele ao longo das amostras.
 //
-// Não está aqui de propósito. Smoothing precisa saber o sample rate e agir
-// amostra a amostra, o que exige um prepare() no AudioModule que ainda não
-// existe. O §29 do AI_GUIDELINES pede explicitamente que o problema seja
-// estudado antes de ser abstraído — e para estudá-lo é preciso primeiro
-// conseguir ouvir o clique.
+// A divisão é proposital. Este arquivo trata de identidade, limites e
+// conversão — assuntos do domínio de controle. A interpolação amostra a
+// amostra é assunto da thread de áudio, e vive lá.
 class Parameter
 {
 public:
@@ -56,6 +54,13 @@ public:
               float minValue,
               float maxValue,
               float defaultValue);
+
+    // std::atomic não é copiável nem movível, e sem estes construtores um
+    // std::vector<Parameter> não compilaria — ele precisa realocar. Copiar
+    // carrega o valor e o regrava; é seguro porque cópia de Parameter só
+    // acontece no domínio de controle, nunca durante o processamento.
+    Parameter(const Parameter& other);
+    Parameter& operator=(const Parameter& other);
 
     // Identificador estável, usado por presets e mapeamentos.
     const std::string& id() const;
@@ -90,5 +95,20 @@ private:
     float m_minValue;
     float m_maxValue;
     float m_defaultValue;
-    float m_value;
+
+    // ATÔMICO PORQUE DUAS THREADS TOCAM NELE
+    // O domínio de controle escreve (knob, MIDI, preset) enquanto a thread de
+    // áudio lê, a cada bloco. Um float comum lido e escrito ao mesmo tempo é
+    // corrida de dados — comportamento indefinido pelo padrão, mesmo que na
+    // prática costume "funcionar" nas arquiteturas atuais.
+    //
+    // std::atomic<float> é lock-free em toda plataforma que nos interessa
+    // (há verificação em teste), então a leitura na thread de áudio continua
+    // sendo uma instrução comum, sem bloqueio e sem espera.
+    //
+    // memory_order_relaxed basta aqui: cada parâmetro é independente, e não
+    // há outro dado cuja visibilidade precise ser ordenada junto com ele. O
+    // pior caso é a thread de áudio usar o valor antigo por um bloco, o que
+    // é imperceptível — e a suavização ainda o transforma numa rampa.
+    std::atomic<float> m_value;
 };

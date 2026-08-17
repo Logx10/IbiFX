@@ -5,6 +5,7 @@
 #include <vector>
 
 #include "AudioModule.h"
+#include "CommandQueue.h"
 
 // ModuleChain — uma cadeia linear de módulos, montada em tempo de execução.
 //
@@ -38,16 +39,41 @@
 // add(), remove(), move() e clear() pertencem ao domínio de controle —
 // alocam, realocam e lançam exceção em índice inválido.
 //
-// LIMITAÇÃO CONHECIDA: esta classe NÃO é segura para uso concorrente.
-// Chamar add() enquanto a thread de áudio executa process() é corrida de
-// dados, e um realloc do vetor no meio do laço seria falha grave. Hoje tudo
-// roda numa thread só e o problema não existe. Quando o áudio em tempo real
-// entrar (Fase 7), a comunicação entre os dois domínios precisará de
-// mecanismo próprio — fila de comandos ou troca atômica de ponteiro — e essa
-// será uma decisão de projeto explícita, não um detalhe resolvido no susto.
+// COMO FALAR COM A CADEIA DE OUTRA THREAD
+// add(), remove() e move() continuam sendo chamadas do domínio de controle e
+// NÃO podem ser usadas enquanto a thread de áudio processa: elas realocam o
+// vetor, e percorrer memória liberada é falha grave, não valor errado.
+//
+// Para mudanças durante o som existe a fila de comandos. O controle deposita
+// com pushCommand(); o process() retira e aplica tudo no começo do bloco,
+// antes de tocar em qualquer amostra. Ninguém espera por ninguém, e a
+// estrutura só muda em um ponto conhecido do ciclo.
+//
+// Isso cobre ajustar parâmetro, ligar bypass e resetar — o que basta para
+// tocar. Trocar a montagem da cadeia com o áudio rodando exigirá construir a
+// cadeia nova fora e trocá-la por ponteiro atômico, e isso fica para quando
+// houver um dispositivo de áudio de verdade do outro lado.
 class ModuleChain
 {
 public:
+    ModuleChain() = default;
+
+    // NEM COPIÁVEL NEM MOVÍVEL, DE PROPÓSITO
+    // A fila de comandos contém índices atômicos que a thread de áudio pode
+    // estar lendo neste instante. Mover a cadeia mudaria o endereço deles no
+    // meio da leitura — falha silenciosa e difícil de rastrear.
+    //
+    // O compilador já removeria a cópia por causa do unique_ptr; declarar as
+    // quatro operações torna a intenção explícita e faz o erro aparecer com
+    // uma mensagem clara em vez de "construtor implicitamente removido".
+    //
+    // Consequência prática: uma função não pode DEVOLVER uma cadeia por
+    // valor. Ela recebe uma por referência e a preenche.
+    ModuleChain(const ModuleChain&) = delete;
+    ModuleChain& operator=(const ModuleChain&) = delete;
+    ModuleChain(ModuleChain&&) = delete;
+    ModuleChain& operator=(ModuleChain&&) = delete;
+
     // Acrescenta um módulo ao fim da cadeia e assume a posse dele.
     void add(std::unique_ptr<AudioModule> module);
 
@@ -86,7 +112,17 @@ public:
     // em bypass — um eco parado não deve ressurgir ao religar o módulo.
     void reset();
 
-    // Passa o buffer por todos os módulos ativos, na ordem da cadeia.
+    // Deposita um comando para ser aplicado no próximo bloco.
+    //
+    // Chamada do domínio de controle. Devolve false se a fila estiver cheia,
+    // sem bloquear — bloquear aqui poderia travar quem chama, e a decisão do
+    // que fazer (tentar de novo, descartar, avisar) é de quem chama.
+    bool pushCommand(const Command& command);
+
+    // Comandos pendentes, ainda não aplicados.
+    std::size_t pendingCommandCount() const;
+
+    // Aplica os comandos pendentes e passa o buffer pelos módulos ativos.
     void process(std::vector<float>& buffer);
 
 private:
@@ -97,5 +133,9 @@ private:
         bool bypassed = false;
     };
 
+    // Aplica um comando à cadeia. Chamada só de dentro do process().
+    void applyCommand(const Command& command);
+
     std::vector<Slot> m_slots;
+    CommandQueue m_commands;
 };
