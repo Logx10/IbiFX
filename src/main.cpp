@@ -13,6 +13,7 @@
 #include "Clipper.h"
 #include "Delay.h"
 #include "GainProcessor.h"
+#include "HighPassFilter.h"
 #include "ModuleChain.h"
 #include "SoftClipper.h"
 #include "WavFile.h"
@@ -327,12 +328,14 @@ void runTerminalDemo()
 // diferença entre entrada e saída ficar óbvia, não para soar bonito.
 struct ChainSettings
 {
+    float highPass = 100.0f;
     float gain = 6.0f;
     float drive = 4.0f;
     float delayTime = 0.28f;
     float feedback = 0.45f;
     float mix = 0.35f;
 
+    bool useHighPass = true;
     bool useDrive = true;
     bool useDelay = true;
 };
@@ -344,6 +347,19 @@ struct ChainSettings
 // limpos que depois seriam distorcidos juntos, e o resultado vira uma pasta.
 void buildChain(ModuleChain& chain, const ChainSettings& settings)
 {
+    // O filtro vem PRIMEIRO, antes de qualquer ganho ou distorção.
+    //
+    // Saturação mistura as frequências que entram, e grave forte ocupa a
+    // curva inteira do saturador, empastando tudo que vem junto. Cortar o
+    // grave depois não conserta: a mistura já aconteceu. É a mesma ordem que
+    // todo amplificador de guitarra usa.
+    if (settings.useHighPass)
+    {
+        auto filter = std::make_unique<HighPassFilter>();
+        filter->setFrequency(settings.highPass);
+        chain.add(std::move(filter));
+    }
+
     auto gain = std::make_unique<GainProcessor>();
     gain->setGain(settings.gain);
     chain.add(std::move(gain));
@@ -383,6 +399,12 @@ ChainSettings parseSettings(int argc, char** argv, int first)
     {
         const std::string option = argv[i];
 
+        if (option == "--no-highpass")
+        {
+            settings.useHighPass = false;
+            continue;
+        }
+
         if (option == "--no-drive")
         {
             settings.useDrive = false;
@@ -412,7 +434,8 @@ ChainSettings parseSettings(int argc, char** argv, int first)
             throw std::runtime_error("valor invalido para " + option + ": '" + raw + "'");
         }
 
-        if (option == "--gain")          settings.gain = value;
+        if (option == "--highpass")      settings.highPass = value;
+        else if (option == "--gain")     settings.gain = value;
         else if (option == "--drive")    settings.drive = value;
         else if (option == "--time")     settings.delayTime = value;
         else if (option == "--feedback") settings.feedback = value;
@@ -457,11 +480,13 @@ void printUsage(const char* program)
               << "  " << program << " --devices                testa o dispositivo sem hardware\n"
               << "\n"
               << "opcoes do processamento de arquivo:\n"
+              << "  --highpass N   corta grave antes do drive  (20 a 2000, padrao 100)\n"
               << "  --gain N       volume antes da distorcao   (-8 a 8,   padrao 6.0)\n"
               << "  --drive N      quantidade de distorcao     (0 a 100,  padrao 4.0)\n"
               << "  --time N       atraso do eco em segundos   (0 a 2,    padrao 0.28)\n"
               << "  --feedback N   quantas repeticoes          (0 a 0.95, padrao 0.45)\n"
               << "  --mix N        quanto do eco na saida      (0 a 1,    padrao 0.35)\n"
+              << "  --no-highpass  tira o filtro da cadeia\n"
               << "  --no-drive     tira a distorcao da cadeia\n"
               << "  --no-delay     tira o eco da cadeia\n"
               << "\n"
@@ -470,7 +495,11 @@ void printUsage(const char* program)
               << "exemplos:\n"
               << "  " << program << " audio/guitar.wav audio/limpo.wav --gain 1 --no-drive\n"
               << "  " << program << " audio/guitar.wav audio/suave.wav --gain 2 --drive 1.5 --mix 0.2\n"
-              << "  " << program << " audio/guitar.wav audio/fuzz.wav --gain 8 --drive 40\n";
+              << "  " << program << " audio/guitar.wav audio/crunch.wav --highpass 250 --gain 2 --drive 2 --no-delay\n"
+              << "  " << program << " audio/guitar.wav audio/fuzz.wav --gain 8 --drive 40\n"
+              << "\n"
+              << "nota: --gain e --drive multiplicam antes da mesma curva, entao\n"
+              << "so o PRODUTO deles importa. gain 2 drive 4 soa igual a gain 4 drive 2.\n";
 }
 
 // Toca ao vivo: entrada da placa de som -> efeitos -> saida.

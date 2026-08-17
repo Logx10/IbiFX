@@ -113,6 +113,13 @@ add_executable(test_live_engine
 target_compile_options(test_live_engine PRIVATE ${IBIFX_WARNINGS})
 target_link_libraries(test_live_engine PRIVATE ibifx_platform Threads::Threads)
 
+add_executable(test_high_pass_filter
+    test_high_pass_filter.cpp
+)
+
+target_compile_options(test_high_pass_filter PRIVATE ${IBIFX_WARNINGS})
+target_link_libraries(test_high_pass_filter PRIVATE ibifx_core)
+
 # Registra cada executável como um teste do CTest.
 #
 #   NAME     como o teste aparece nos relatórios
@@ -139,3 +146,4 @@ add_test(NAME offline COMMAND test_offline)
 add_test(NAME audio_graph COMMAND test_audio_graph)
 add_test(NAME command_queue COMMAND test_command_queue)
 add_test(NAME live_engine COMMAND test_live_engine)
+add_test(NAME high_pass_filter COMMAND test_high_pass_filter)

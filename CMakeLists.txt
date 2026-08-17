@@ -122,6 +122,7 @@ add_library(ibifx_core STATIC
     src/offline.cpp
     src/AudioGraph.cpp
     src/CommandQueue.cpp
+    src/HighPassFilter.cpp
 )
 
 # A camada de plataforma, separada do core.

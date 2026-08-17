@@ -46,6 +46,11 @@ arquivos `.wav`. Nada de tempo real nem de interface foi implementado.
   primeiro módulo com memória entre blocos, e foi ele que justificou
   `prepare()` e `reset()` no contrato. Toda alocação acontece no `prepare()`;
   o `process()` não aloca.
+  Acrescentado depois o `HighPassFilter`, um filtro de um polo com corte
+  ajustável. Ele não estava na lista original, mas apareceu como necessidade
+  real ao buscar um som de crunch apertado: saturar um sinal com muito grave
+  produz intermodulação e empasta o resultado, e cortar depois não conserta.
+  É também o primeiro filtro do projeto, e a base para tone stack e cabinet.
   Faltam da lista do §25 do AI_GUIDELINES o noise gate e uma distorção
   assimétrica.
 

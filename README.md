@@ -130,6 +130,7 @@ Os parâmetros da cadeia são opções de linha de comando:
 
 | opção | o que faz | faixa | padrão |
 |---|---|---|---|
+| `--highpass N` | corta grave antes do drive | 20 a 2000 Hz | 100 |
 | `--gain N` | volume antes da distorção | -8 a 8 | 6.0 |
 | `--drive N` | quantidade de distorção | 0 a 100 | 4.0 |
 | `--time N` | atraso do eco em segundos | 0 a 2 | 0.28 |
@@ -144,6 +145,34 @@ e ver `0.95` na tela é o comportamento esperado, não um erro silencioso.
 
 Opção desconhecida, valor faltando ou número inválido interrompem com mensagem
 clara em vez de seguir com um parâmetro errado.
+
+**`--gain` e `--drive` fazem a mesma coisa.** Os dois multiplicam o sinal
+antes da mesma curva, então só o produto deles importa: `--gain 2 --drive 4`
+soa idêntico a `--gain 4 --drive 2`. Eles só viram controles independentes
+quando houver algo sensível a frequência entre os dois.
+
+### Por que o filtro vem antes da distorção
+
+Saturação é não-linear, e não-linearidade **mistura** as frequências que
+entram — duas notas juntas geram soma e diferença entre elas, além dos
+harmônicos de cada uma. Chama-se intermodulação.
+
+Grave forte é o pior caso: tem muita energia e ocupa a curva inteira do
+saturador, empastando tudo que vem junto. Cortá-lo **antes** resolve; depois
+não conserta nada, porque a mistura já aconteceu. É a mesma ordem que todo
+amplificador de guitarra usa.
+
+O efeito é mensurável. Com o mesmo crunch e só mudando o corte:
+
+```text
+   corte     RMS   crest   ataque preservado
+    80 Hz   0.151     6.6x    39.9%
+   250 Hz   0.133     7.4x    45.1%
+   600 Hz   0.108     9.2x    55.5%
+```
+
+Quanto mais grave sai antes da distorção, mais o ataque sobrevive — e ataque
+preservado é o que o ouvido lê como som "apertado".
 
 O sinal gerado são quatro notas que decaem, com fundamental e dois harmônicos.
 Não é uma guitarra, mas tem dinâmica suficiente para a saturação responder ao
