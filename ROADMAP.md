@@ -99,8 +99,16 @@ arquivos `.wav`. Nada de tempo real nem de interface foi implementado.
   threads de verdade e com o ThreadSanitizer, que não acusou nenhuma corrida.
   Também foi medido que performance não é gargalo: a cadeia usa 0,11% do
   orçamento de um bloco, então não há motivo para paralelizar o processamento.
-  **Falta o dispositivo de áudio**, que é a parte que exige dependência
-  externa.
+  O **dispositivo de áudio** também está pronto, via miniaudio 0.11.25
+  vendorizado — um único header, domínio público. A camada fica confinada em
+  `src/platform/` e o núcleo não a enxerga: o alvo `ibifx_core` nem tem o
+  diretório dela no include, então a separação é verificada pelo compilador.
+  O `LiveEngine` converte entre o buffer intercalado do driver e os buffers
+  mono dos módulos, com tudo alocado no `start()`.
+  Verificado com o backend nulo do miniaudio, que roda sem hardware, e o
+  dispositivo real foi aberto à parte para confirmar o caminho do CoreAudio.
+  **Falta ajustar latência e medir o comportamento sob carga real**, o que só
+  faz sentido tocando de verdade.
 
 ## Regra
 

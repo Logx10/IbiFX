@@ -104,6 +104,15 @@ add_executable(test_command_queue
 target_compile_options(test_command_queue PRIVATE ${IBIFX_WARNINGS})
 target_link_libraries(test_command_queue PRIVATE ibifx_core Threads::Threads)
 
+# Este e o unico teste que liga na camada de plataforma. Ele usa o backend
+# nulo do miniaudio, entao roda sem placa de som e sem permissao de microfone.
+add_executable(test_live_engine
+    test_live_engine.cpp
+)
+
+target_compile_options(test_live_engine PRIVATE ${IBIFX_WARNINGS})
+target_link_libraries(test_live_engine PRIVATE ibifx_platform Threads::Threads)
+
 # Registra cada executável como um teste do CTest.
 #
 #   NAME     como o teste aparece nos relatórios
@@ -129,3 +138,4 @@ add_test(NAME wav_file COMMAND test_wav_file)
 add_test(NAME offline COMMAND test_offline)
 add_test(NAME audio_graph COMMAND test_audio_graph)
 add_test(NAME command_queue COMMAND test_command_queue)
+add_test(NAME live_engine COMMAND test_live_engine)

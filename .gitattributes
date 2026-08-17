@@ -31,3 +31,9 @@
 *.jpg  binary
 *.ico  binary
 *.pdf  binary
+
+# Dependência vendorizada: um único header de ~96 mil linhas.
+# Marcada como código de terceiros para não poluir as estatísticas de
+# linguagem do repositório nem aparecer em diffs por padrão.
+third_party/** linguist-vendored
+third_party/** -diff

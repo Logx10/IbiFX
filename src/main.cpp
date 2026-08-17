@@ -1,11 +1,14 @@
+#include <chrono>
 #include <exception>
 #include <iomanip>
 #include <iostream>
 #include <memory>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include "AudioGraph.h"
+#include "LiveEngine.h"
 #include "Clipper.h"
 #include "Delay.h"
 #include "GainProcessor.h"
@@ -344,7 +347,102 @@ void printUsage(const char* program)
     std::cout << "uso:\n"
               << "  " << program << "                          demonstracao no terminal\n"
               << "  " << program << " --generate saida.wav     gera um sinal de teste\n"
-              << "  " << program << " entrada.wav saida.wav    processa um arquivo\n";
+              << "  " << program << " entrada.wav saida.wav    processa um arquivo\n"
+              << "  " << program << " --live [segundos]        toca ao vivo pela placa de som\n"
+              << "  " << program << " --devices                testa o dispositivo sem hardware\n";
+}
+
+// Toca ao vivo: entrada da placa de som -> efeitos -> saida.
+//
+// CUIDADO COM MICROFONIA: se a entrada for o microfone embutido e a saida for
+// o alto-falante embutido, o som volta para a entrada e realimenta. Com ganho
+// e distorcao no caminho, isso vira um apito alto muito rapido. Use fones.
+int runLive(double seconds)
+{
+    LiveEngine engine;
+    buildDefaultChain(engine.chain());
+
+    std::cout << "AVISO: se a entrada e a saida forem os dispositivos embutidos,\n"
+              << "       o som realimenta e vira microfonia. Use fones de ouvido.\n\n";
+
+    if (!engine.start(AudioDevice::Mode::Duplex, 48000.0, 128))
+    {
+        std::cerr << "erro: " << engine.lastError() << "\n";
+        return 1;
+    }
+
+    std::cout << "dispositivo: " << engine.deviceName() << "\n"
+              << "  " << engine.sampleRate() << " Hz, "
+              << engine.channelCount() << " canal(is) de saida\n\n";
+
+    std::cout << "cadeia: ";
+    for (std::size_t i = 0; i < engine.chain().size(); ++i)
+    {
+        if (i > 0)
+            std::cout << " -> ";
+        std::cout << engine.chain().moduleAt(i).name();
+    }
+    std::cout << "\n\n";
+
+    std::cout << "tocando por " << seconds << " segundos...\n";
+
+    // O bypass do drive e ligado e desligado durante a execucao, para
+    // demonstrar que da para mudar a cadeia com o audio rodando. O comando
+    // atravessa a fila sem bloquear a thread de audio.
+    const auto inicio = std::chrono::steady_clock::now();
+    bool driveDesligado = false;
+
+    while (std::chrono::duration<double>(std::chrono::steady_clock::now() - inicio).count() < seconds)
+    {
+        std::this_thread::sleep_for(std::chrono::milliseconds(2000));
+
+        driveDesligado = !driveDesligado;
+        engine.setBypassed(1, driveDesligado);
+
+        std::cout << "  drive " << (driveDesligado ? "em bypass" : "ligado")
+                  << "  (" << engine.processedBlocks() << " blocos processados)\n";
+    }
+
+    engine.stop();
+
+    std::cout << "\nparado. " << engine.processedBlocks() << " blocos no total.\n";
+    return 0;
+}
+
+// Abre o dispositivo com o backend nulo, sem hardware.
+//
+// Serve para confirmar que a camada de plataforma funciona mesmo em maquina
+// sem placa de som, sem permissao de microfone ou rodando em servidor.
+int runDeviceCheck()
+{
+    LiveEngine engine;
+    buildDefaultChain(engine.chain());
+
+    if (!engine.start(AudioDevice::Mode::Null, 48000.0, 128))
+    {
+        std::cerr << "erro: " << engine.lastError() << "\n";
+        return 1;
+    }
+
+    std::cout << "backend nulo aberto (sem hardware)\n"
+              << "  " << engine.sampleRate() << " Hz, "
+              << engine.channelCount() << " canal(is)\n\n";
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(500));
+
+    const std::size_t blocos = engine.processedBlocks();
+    engine.stop();
+
+    std::cout << blocos << " blocos processados em 0.5 s\n";
+
+    if (blocos == 0)
+    {
+        std::cerr << "erro: o dispositivo abriu mas nao chamou o callback\n";
+        return 1;
+    }
+
+    std::cout << "a camada de plataforma esta funcionando.\n";
+    return 0;
 }
 
 int main(int argc, char** argv)
@@ -359,6 +457,17 @@ int main(int argc, char** argv)
             std::cout << "\n\n";
             printUsage(argv[0]);
             return 0;
+        }
+
+        if (argc >= 2 && std::string(argv[1]) == "--live")
+        {
+            const double seconds = (argc == 3) ? std::stod(argv[2]) : 10.0;
+            return runLive(seconds);
+        }
+
+        if (argc == 2 && std::string(argv[1]) == "--devices")
+        {
+            return runDeviceCheck();
         }
 
         if (argc == 3 && std::string(argv[1]) == "--generate")

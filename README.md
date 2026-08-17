@@ -21,6 +21,8 @@ elétricos.
   saltar, eliminando o clique da mudança abrupta;
 - leitura e escrita de `.wav` sem dependência externa, e o processamento
   offline de arquivo que permite finalmente **ouvir** o resultado;
+- a camada de plataforma (`AudioDevice`, `LiveEngine`) que toca em tempo real
+  pela placa de som, isolada do núcleo de DSP;
 - o `ModuleChain`, cadeia linear montada em tempo de execução: adicionar,
   remover, reordenar e colocar módulos em bypass;
 - o `AudioGraph`, roteamento em grafo com ordenação topológica e rejeição de
@@ -158,6 +160,26 @@ A — e em áudio é realimentação sem atraso, que estoura instantaneamente. I
 não proíbe realimentação: o `Delay` realimenta o tempo todo, mas dentro de si
 e com atraso de várias amostras.
 
+## Tocando ao vivo
+
+```sh
+./build/ibifx --live 20      # toca por 20 segundos
+./build/ibifx --devices      # testa a camada de audio sem hardware
+```
+
+O modo ao vivo abre o dispositivo em duplex — entrada da interface, efeitos,
+saída — e alterna o bypass do drive a cada 2 segundos, para demonstrar que a
+cadeia muda com o áudio rodando.
+
+> **Microfonia.** Se a entrada for o microfone embutido e a saída o
+> alto-falante embutido, o som volta para a entrada e realimenta. Com ganho e
+> distorção no caminho isso vira um apito alto em segundos. **Use fones.**
+
+O `--devices` abre o dispositivo pelo backend nulo do miniaudio, que gera os
+blocos pelo relógio sem hardware nenhum. Serve para confirmar que a camada de
+plataforma funciona em máquina sem placa de som, sem permissão de microfone ou
+em servidor — e é o mesmo backend que a suíte de testes usa.
+
 ### Duas threads, sem bloqueio
 
 Quem gira um knob e quem processa o áudio são threads diferentes, e isso muda
@@ -240,7 +262,22 @@ As funcionalidades abaixo são **planejadas**, não implementadas:
 - CMake 3.20 ou superior;
 - um compilador com suporte a C++20 (Clang, GCC ou MSVC recentes).
 
-O projeto não tem dependências externas.
+### Dependências
+
+Uma só, e ela já está no repositório:
+
+**[miniaudio](https://miniaud.io) 0.11.25** — acesso ao dispositivo de áudio
+do sistema. Domínio público (ou MIT-0, à escolha), um único header em
+`third_party/miniaudio/`. Não precisa ser instalada nem baixada no build.
+
+Foi escolhida por três motivos: é um arquivo, não impõe modelo de projeto, e
+fica confinada a `src/platform/`. O núcleo de DSP não a enxerga — o alvo
+`ibifx_core` sequer tem o diretório dela no caminho de include, então incluí-la
+por engano dentro do core quebra o build. Isso torna o princípio 1 do
+ARCHITECTURE verificável pelo compilador, e não apenas uma intenção.
+
+Trocar por JUCE ou RtAudio depois significa reescrever
+`src/platform/AudioDevice.cpp`, sem tocar em uma linha de DSP.
 
 ## Como compilar
 
@@ -304,6 +341,7 @@ as verificações, inclusive as que passaram:
 ./build/tests/test_offline
 ./build/tests/test_audio_graph
 ./build/tests/test_command_queue
+./build/tests/test_live_engine
 ```
 
 Cada módulo tem seu próprio executável de teste, e não um binário único com

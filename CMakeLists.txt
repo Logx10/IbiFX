@@ -60,6 +60,40 @@ else()
     set(IBIFX_WARNINGS -Wall -Wextra -Wpedantic)
 endif()
 
+# miniaudio — a camada de plataforma para falar com o dispositivo de áudio.
+#
+# Vendorizada como um único header em third_party/, versão 0.11.25, domínio
+# público (ou MIT-0, à escolha). Não precisa ser instalada nem baixada no
+# build: está no repositório e compila junto.
+#
+# ALVO SEPARADO, DE PROPÓSITO
+# Este é código de terceiros e não segue o nosso padrão. Compilá-lo sob
+# -Wall -Wextra -Wpedantic produziria centenas de avisos que não podemos
+# corrigir e que esconderiam os nossos. Por isso ele fica num alvo próprio,
+# SEM as flags do IbiFX.
+#
+# O include é PUBLIC para que quem depende deste alvo enxergue o header, e é
+# marcado como SYSTEM para que o compilador também silencie os avisos vindos
+# de dentro dele.
+add_library(ibifx_miniaudio STATIC
+    src/platform/miniaudio_impl.cpp
+)
+
+target_include_directories(ibifx_miniaudio SYSTEM PUBLIC third_party/miniaudio)
+
+# O miniaudio precisa das bibliotecas de áudio do sistema. No macOS são
+# frameworks do CoreAudio; no Linux, dl/pthread/math; no Windows ele resolve
+# sozinho pelas bibliotecas padrão.
+if(APPLE)
+    target_link_libraries(ibifx_miniaudio PUBLIC
+        "-framework CoreFoundation"
+        "-framework CoreAudio"
+        "-framework AudioToolbox"
+    )
+elseif(UNIX)
+    target_link_libraries(ibifx_miniaudio PUBLIC ${CMAKE_DL_LIBS} m Threads::Threads)
+endif()
+
 # A biblioteca com o código de verdade do IbiFX.
 #
 # POR QUE UMA BIBLIOTECA, E NÃO SÓ O EXECUTÁVEL
@@ -90,6 +124,21 @@ add_library(ibifx_core STATIC
     src/CommandQueue.cpp
 )
 
+# A camada de plataforma, separada do core.
+#
+# O princípio 1 do ARCHITECTURE pede que o núcleo não conheça sistema
+# operacional nem driver. Manter isto num alvo próprio torna a regra
+# verificável: se alguém incluir miniaudio.h dentro do core, o build quebra,
+# porque o ibifx_core não enxerga esse diretório.
+add_library(ibifx_platform STATIC
+    src/platform/AudioDevice.cpp
+    src/platform/LiveEngine.cpp
+)
+
+target_include_directories(ibifx_platform PUBLIC src/platform)
+target_compile_options(ibifx_platform PRIVATE ${IBIFX_WARNINGS})
+target_link_libraries(ibifx_platform PUBLIC ibifx_core PRIVATE ibifx_miniaudio)
+
 # Onde procurar os headers desta biblioteca.
 #
 # PUBLIC, e não PRIVATE: quem usar a ibifx_core herda este diretório
@@ -108,7 +157,8 @@ add_executable(ibifx
 )
 
 target_compile_options(ibifx PRIVATE ${IBIFX_WARNINGS})
-target_link_libraries(ibifx PRIVATE ibifx_core)
+# ibifx_platform ja arrasta ibifx_core como dependencia PUBLIC.
+target_link_libraries(ibifx PRIVATE ibifx_platform)
 
 # Liga o CTest, o executor de testes que vem junto com o CMake.
 # Precisa vir ANTES do add_subdirectory abaixo, senão os add_test()
