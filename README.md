@@ -19,6 +19,8 @@ elétricos.
 - o `Parameter`, com id estável, faixa, clamp e forma normalizada;
 - o `SmoothedValue`, que faz um parâmetro caminhar até o novo valor em vez de
   saltar, eliminando o clique da mudança abrupta;
+- leitura e escrita de `.wav` sem dependência externa, e o processamento
+  offline de arquivo que permite finalmente **ouvir** o resultado;
 - o `ModuleChain`, cadeia linear montada em tempo de execução: adicionar,
   remover, reordenar e colocar módulos em bypass;
 - três módulos de DSP que implementam o contrato, cada um com sua bateria
@@ -97,9 +99,32 @@ Sem `prepare()`, a suavização fica inativa e os valores saltam. É o
 comportamento correto para processamento offline, e foi o que permitiu ligar a
 suavização sem alterar nenhum dos testes já existentes.
 
-O processamento ainda é **offline**: o buffer é um vetor fixo escrito no
-código, não áudio vindo de uma placa de som. Não há entrada/saída de áudio em
-tempo real, nem interface gráfica.
+## Processando um arquivo
+
+O executável aceita arquivos `.wav`. Para gerar um sinal de teste e ouvi-lo
+passando pela cadeia:
+
+```sh
+./build/ibifx --generate entrada.wav
+./build/ibifx entrada.wav saida.wav
+```
+
+A cadeia padrão é `Gain -> SoftClipper -> Delay`: um pedal de drive seguido de
+eco, com a distorção antes do delay para que os ecos repitam o som já
+distorcido. Abra os dois arquivos em qualquer tocador e compare.
+
+O sinal gerado são quatro notas que decaem, com fundamental e dois harmônicos.
+Não é uma guitarra, mas tem dinâmica suficiente para a saturação responder ao
+volume — que é o comportamento descrito no `SoftClipper`.
+
+A leitura aceita PCM de 16, 24 e 32 bits e float de 32 bits, mono ou estéreo.
+A escrita produz PCM de 16 bits, o formato mais universal. Formatos fora dessa
+lista geram erro explícito dizendo o que foi encontrado.
+
+O processamento é **offline**: não há entrada de áudio em tempo real, nem
+interface gráfica. Cada canal passa pela mesma cadeia, com `reset()` entre
+eles para que o eco de um não vaze para o outro, e em blocos de 512 amostras
+para simular o que um dispositivo real entregaria.
 
 O `ModuleChain` **não é seguro para uso concorrente**. Alterar a cadeia
 enquanto ela processa seria corrida de dados; hoje tudo roda numa thread só.
@@ -186,6 +211,8 @@ as verificações, inclusive as que passaram:
 ./build/tests/test_parameter
 ./build/tests/test_delay
 ./build/tests/test_smoothed_value
+./build/tests/test_wav_file
+./build/tests/test_offline
 ```
 
 Cada módulo tem seu próprio executável de teste, e não um binário único com

@@ -71,18 +71,16 @@ tempo real, arquivo ou interface foi implementado.
   gradualmente altera a altura do som, e fazê-lo direito exige interpolação
   entre amostras vizinhas — assunto próprio.
 
-- **Fase 6 — Audio Graph.** Não iniciada.
+- **Processamento offline de arquivo** (§26 do AI_GUIDELINES, fora da tabela
+  acima). Concluída. Leitura de `.wav` em PCM de 16, 24 e 32 bits e float de
+  32 bits; escrita em PCM de 16 bits. Parser RIFF escrito à mão, sem
+  dependência externa. Um gerador de sinal de teste permite experimentar sem
+  arquivo externo.
+  Era o passo que faltava para **ouvir** o que foi construído: até aqui tudo
+  havia sido verificado lendo números no terminal, e o próprio guia lembra
+  que testes não substituem audição.
 
-### Fora da tabela, e recomendado antes da Fase 6
-
-O §26 do AI_GUIDELINES prevê uma etapa de **processamento offline de
-arquivo** — `input.wav` → DSP → `output.wav` — que a tabela acima não lista.
-
-Ela vale mais agora do que o grafo, por um motivo simples: tudo até aqui foi
-verificado lendo números no terminal. Ler `.wav` e escrever `.wav` é o que
-permite finalmente **ouvir** o que foi construído — a diferença entre fuzz e
-overdrive, o eco do delay, e o clique que o smoothing acabou de eliminar. O
-próprio guia lembra que testes não substituem audição.
+- **Fase 6 — Audio Graph.** Em andamento.
 
 ## Regra
 

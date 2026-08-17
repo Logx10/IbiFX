@@ -72,6 +72,20 @@ add_executable(test_smoothed_value
 target_compile_options(test_smoothed_value PRIVATE ${IBIFX_WARNINGS})
 target_link_libraries(test_smoothed_value PRIVATE ibifx_core)
 
+add_executable(test_wav_file
+    test_wav_file.cpp
+)
+
+target_compile_options(test_wav_file PRIVATE ${IBIFX_WARNINGS})
+target_link_libraries(test_wav_file PRIVATE ibifx_core)
+
+add_executable(test_offline
+    test_offline.cpp
+)
+
+target_compile_options(test_offline PRIVATE ${IBIFX_WARNINGS})
+target_link_libraries(test_offline PRIVATE ibifx_core)
+
 # Registra cada executável como um teste do CTest.
 #
 #   NAME     como o teste aparece nos relatórios
@@ -93,3 +107,5 @@ add_test(NAME module_chain COMMAND test_module_chain)
 add_test(NAME parameter COMMAND test_parameter)
 add_test(NAME delay COMMAND test_delay)
 add_test(NAME smoothed_value COMMAND test_smoothed_value)
+add_test(NAME wav_file COMMAND test_wav_file)
+add_test(NAME offline COMMAND test_offline)

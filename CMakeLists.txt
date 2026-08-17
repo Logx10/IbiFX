@@ -75,6 +75,8 @@ add_library(ibifx_core STATIC
     src/Parameter.cpp
     src/Delay.cpp
     src/SmoothedValue.cpp
+    src/WavFile.cpp
+    src/offline.cpp
 )
 
 # Onde procurar os headers desta biblioteca.

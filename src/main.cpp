@@ -1,3 +1,4 @@
+#include <exception>
 #include <iomanip>
 #include <iostream>
 #include <memory>
@@ -9,6 +10,8 @@
 #include "GainProcessor.h"
 #include "ModuleChain.h"
 #include "SoftClipper.h"
+#include "WavFile.h"
+#include "offline.h"
 
 // Demo do IbiFX.
 //
@@ -122,9 +125,9 @@ void runChain(ModuleChain& chain, const std::vector<float>& original)
     printBuffer("saida:", buffer);
 }
 
-int main()
+// Demonstração no terminal, com buffers pequenos e valores conferíveis.
+void runTerminalDemo()
 {
-    std::cout << "IbiFX starting...\n\n";
 
     // Valores escolhidos para o ganho 4.0 produzir os três casos de uma vez:
     // amostras que continuam na faixa, uma que cai exatamente no teto
@@ -242,6 +245,104 @@ int main()
     std::cout << "\nsem rampa o valor cai de 1.00 para 0.00 entre duas amostras vizinhas.\n";
     std::cout << "esse degrau nao estava no sinal: o ouvido escuta um clique.\n";
     std::cout << "com rampa a queda leva 10 amostras e a onda continua continua.\n";
+}
 
-    return 0;
+// Monta a cadeia usada no processamento de arquivo.
+//
+// Um pedal de drive seguido de eco — a ordem clássica de pedaleira, com a
+// distorção antes do delay para que os ecos repitam o som já distorcido, e
+// não o contrário.
+ModuleChain buildDefaultChain()
+{
+    ModuleChain chain;
+
+    auto gain = std::make_unique<GainProcessor>();
+    gain->setGain(6.0f);
+    chain.add(std::move(gain));
+
+    auto drive = std::make_unique<SoftClipper>();
+    drive->setDrive(4.0f);
+    chain.add(std::move(drive));
+
+    auto echo = std::make_unique<Delay>();
+    echo->setTime(0.28f);
+    echo->setFeedback(0.45f);
+    echo->setMix(0.35f);
+    chain.add(std::move(echo));
+
+    return chain;
+}
+
+void printUsage(const char* program)
+{
+    std::cout << "uso:\n"
+              << "  " << program << "                          demonstracao no terminal\n"
+              << "  " << program << " --generate saida.wav     gera um sinal de teste\n"
+              << "  " << program << " entrada.wav saida.wav    processa um arquivo\n";
+}
+
+int main(int argc, char** argv)
+{
+    std::cout << "IbiFX starting...\n\n";
+
+    try
+    {
+        if (argc == 1)
+        {
+            runTerminalDemo();
+            std::cout << "\n\n";
+            printUsage(argv[0]);
+            return 0;
+        }
+
+        if (argc == 3 && std::string(argv[1]) == "--generate")
+        {
+            const WavFile signal = offline::generateTestSignal();
+            wav::write(argv[2], signal);
+
+            std::cout << "sinal de teste gravado em " << argv[2] << "\n"
+                      << "  " << signal.durationSeconds() << " s, "
+                      << signal.sampleRate << " Hz, "
+                      << signal.channelCount() << " canal\n";
+            return 0;
+        }
+
+        if (argc == 3)
+        {
+            const WavFile input = wav::read(argv[1]);
+
+            std::cout << "lido " << argv[1] << "\n"
+                      << "  " << input.durationSeconds() << " s, "
+                      << input.sampleRate << " Hz, "
+                      << input.channelCount() << " canal(is), "
+                      << input.frameCount() << " frames\n\n";
+
+            ModuleChain chain = buildDefaultChain();
+
+            std::cout << "cadeia: ";
+            for (std::size_t i = 0; i < chain.size(); ++i)
+            {
+                if (i > 0)
+                    std::cout << " -> ";
+                std::cout << chain.moduleAt(i).name();
+            }
+            std::cout << "\n\n";
+
+            const WavFile output = offline::processFile(input, chain);
+            wav::write(argv[2], output);
+
+            std::cout << "gravado " << argv[2] << "\n";
+            return 0;
+        }
+
+        printUsage(argv[0]);
+        return 1;
+    }
+    catch (const std::exception& error)
+    {
+        // Erro de arquivo é do domínio de controle: aqui exceção é o
+        // mecanismo certo, e a mensagem precisa dizer o que houve.
+        std::cerr << "erro: " << error.what() << "\n";
+        return 1;
+    }
 }
