@@ -5,6 +5,7 @@
 #include <string>
 #include <vector>
 
+#include "AudioGraph.h"
 #include "Clipper.h"
 #include "Delay.h"
 #include "GainProcessor.h"
@@ -245,6 +246,75 @@ void runTerminalDemo()
     std::cout << "\nsem rampa o valor cai de 1.00 para 0.00 entre duas amostras vizinhas.\n";
     std::cout << "esse degrau nao estava no sinal: o ouvido escuta um clique.\n";
     std::cout << "com rampa a queda leva 10 amostras e a onda continua continua.\n";
+
+    // -----------------------------------------------------------------
+    // O GRAFO — roteamento que a cadeia linear nao consegue fazer.
+    // -----------------------------------------------------------------
+    //
+    // Na cadeia, cada modulo recebe a saida do anterior. Aqui o sinal se
+    // divide em dois caminhos independentes e volta a se somar:
+    //
+    //              ┌── Gain x2 ──┐
+    //     entrada ─┤             ├─ saida
+    //              └── Gain x3 ──┘
+    //
+    // Numa fila isso seria impossivel: o segundo caminho receberia a saida
+    // do primeiro em vez do sinal original, e o resultado seria x6 em vez
+    // de x2 + x3 = x5.
+    std::cout << "\n\n10. GRAFO — dois caminhos paralelos somados\n\n";
+
+    AudioGraph graph;
+
+    auto caminhoA = std::make_unique<GainProcessor>();
+    caminhoA->setGain(2.0f);
+    const AudioGraph::NodeId noA = graph.addNode(std::move(caminhoA));
+
+    auto caminhoB = std::make_unique<GainProcessor>();
+    caminhoB->setGain(3.0f);
+    const AudioGraph::NodeId noB = graph.addNode(std::move(caminhoB));
+
+    graph.connectFromInput(noA);
+    graph.connectFromInput(noB);
+    graph.connectToOutput(noA);
+    graph.connectToOutput(noB);
+
+    graph.prepare(1000.0, 16);
+
+    std::vector<float> paralelo = {1.0f, 0.5f, -0.25f, 0.1f};
+    printBuffer("entrada:", paralelo);
+    graph.process(paralelo);
+    printBuffer("A(x2) + B(x3):", paralelo);
+
+    std::cout << "\ncada caminho recebeu o sinal ORIGINAL, nao a saida do outro.\n";
+    std::cout << "1.00 virou 2.00 + 3.00 = 5.00, e nao 1.00 x 2 x 3 = 6.00.\n";
+
+    // Um ciclo nao tem ordem valida: para processar A e preciso B, e para
+    // processar B e preciso A. O connect() recusa antes de criar.
+    std::cout << "\n11. CICLO — o grafo recusa realimentacao sem atraso\n\n";
+
+    auto extra = std::make_unique<GainProcessor>();
+    const AudioGraph::NodeId noC = graph.addNode(std::move(extra));
+    graph.connect(noA, noC);
+
+    std::cout << "conectar C -> A fecharia um ciclo? "
+              << (graph.wouldCreateCycle(noC, noA) ? "sim" : "nao") << "\n";
+
+    try
+    {
+        graph.connect(noC, noA);
+        std::cout << "conexao aceita (isto seria um bug)\n";
+    }
+    catch (const std::exception& error)
+    {
+        std::cout << "recusada: " << error.what() << "\n";
+    }
+
+    std::cout << "\nordem de processamento: ";
+    for (AudioGraph::NodeId id : graph.processingOrder())
+    {
+        std::cout << graph.moduleAt(id).name() << "(" << id << ") ";
+    }
+    std::cout << "\n";
 }
 
 // Monta a cadeia usada no processamento de arquivo.

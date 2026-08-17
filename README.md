@@ -23,6 +23,8 @@ elétricos.
   offline de arquivo que permite finalmente **ouvir** o resultado;
 - o `ModuleChain`, cadeia linear montada em tempo de execução: adicionar,
   remover, reordenar e colocar módulos em bypass;
+- o `AudioGraph`, roteamento em grafo com ordenação topológica e rejeição de
+  ciclos, para caminhos paralelos que a cadeia linear não consegue expressar;
 - três módulos de DSP que implementam o contrato, cada um com sua bateria
   de testes:
   - `GainProcessor` — aplica um ganho (volume) a um buffer de amostras;
@@ -126,9 +128,39 @@ interface gráfica. Cada canal passa pela mesma cadeia, com `reset()` entre
 eles para que o eco de um não vaze para o outro, e em blocos de 512 amostras
 para simular o que um dispositivo real entregaria.
 
-O `ModuleChain` **não é seguro para uso concorrente**. Alterar a cadeia
-enquanto ela processa seria corrida de dados; hoje tudo roda numa thread só.
-A comunicação entre o domínio de controle e a thread de áudio será uma decisão
+### Cadeia ou grafo
+
+O `ModuleChain` é uma fila: cada módulo recebe a saída do anterior. Cobre a
+maior parte de uma pedaleira e é o caminho mais simples.
+
+O `AudioGraph` existe para o que a fila não expressa — roteamento paralelo:
+
+```text
+                 ┌── Delay ────┐
+                 │             │
+Amp → Cabinet ───┤             ├── saída
+                 │             │
+                 └── Reverb ───┘
+```
+
+Aqui o sinal se divide e volta a se somar. Numa fila o reverb receberia a
+saída do delay em vez do sinal limpo. É o roteamento de qualquer efeito em
+paralelo, de loop de efeitos e de mistura entre seco e processado.
+
+Num grafo a ordem de processamento deixa de ser óbvia: um nó só pode ser
+processado depois de todos que o alimentam. O `AudioGraph` resolve isso com
+**ordenação topológica** (algoritmo de Kahn) e recalcula a ordem apenas quando
+a estrutura muda, nunca a cada bloco.
+
+Ciclos são recusados no `connect()`, antes de a conexão existir. Um ciclo não
+tem ordem válida — para processar A é preciso B, e para processar B é preciso
+A — e em áudio é realimentação sem atraso, que estoura instantaneamente. Isso
+não proíbe realimentação: o `Delay` realimenta o tempo todo, mas dentro de si
+e com atraso de várias amostras.
+
+Nenhum dos dois é seguro para uso concorrente. Alterar a estrutura enquanto
+ela processa seria corrida de dados; hoje tudo roda numa thread só. A
+comunicação entre o domínio de controle e a thread de áudio será uma decisão
 de projeto explícita quando o tempo real entrar.
 
 ## Objetivos futuros
@@ -213,6 +245,7 @@ as verificações, inclusive as que passaram:
 ./build/tests/test_smoothed_value
 ./build/tests/test_wav_file
 ./build/tests/test_offline
+./build/tests/test_audio_graph
 ```
 
 Cada módulo tem seu próprio executável de teste, e não um binário único com
@@ -296,6 +329,28 @@ com rampa:                  0.90    0.80    0.70    0.60    0.50    0.40    0.30
 sem rampa o valor cai de 1.00 para 0.00 entre duas amostras vizinhas.
 esse degrau nao estava no sinal: o ouvido escuta um clique.
 com rampa a queda leva 10 amostras e a onda continua continua.
+
+
+10. GRAFO — dois caminhos paralelos somados
+
+entrada:                    1.00    0.50   -0.25    0.10
+A(x2) + B(x3):              5.00    2.50   -1.25    0.50
+
+cada caminho recebeu o sinal ORIGINAL, nao a saida do outro.
+1.00 virou 2.00 + 3.00 = 5.00, e nao 1.00 x 2 x 3 = 6.00.
+
+11. CICLO — o grafo recusa realimentacao sem atraso
+
+conectar C -> A fecharia um ciclo? sim
+recusada: AudioGraph::connect: a conexao fecharia um ciclo
+
+ordem de processamento: Gain(1) Gain(2) Gain(3) 
+
+
+uso:
+  ./build/ibifx                          demonstracao no terminal
+  ./build/ibifx --generate saida.wav     gera um sinal de teste
+  ./build/ibifx entrada.wav saida.wav    processa um arquivo
 ```
 
 O demo monta **uma única cadeia** e a manipula cinco vezes, sem recompilar.
@@ -353,6 +408,16 @@ como clique. Com a rampa, a mesma queda leva 10 amostras (`0.90`, `0.80`,
 `0.70`...) e a onda permanece contínua. O valor final é idêntico nos dois
 casos: o erro nunca esteve em *para onde* o parâmetro foi, e sim em *quão
 rápido* chegou lá.
+
+**As etapas 10 e 11** mostram o grafo. Dois ganhos recebem o mesmo sinal de
+entrada e suas saídas são somadas: `1.00` vira `2.00 + 3.00 = 5.00`. Numa
+cadeia linear o resultado seria `1.00 × 2 × 3 = 6.00`, porque o segundo módulo
+receberia a saída do primeiro — e é exatamente essa diferença que justifica o
+grafo existir.
+
+A etapa 11 tenta fechar um ciclo e é recusada, com a mensagem dizendo o
+motivo. Em seguida o grafo imprime sua ordem de processamento, calculada por
+ordenação topológica.
 
 Note também a amostra `0.25`: com ganho 4.0 ela cai exatamente em `1.0`, o
 limite. Ela **não** é cortada — valores no teto são válidos, e há um teste

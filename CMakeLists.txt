@@ -77,6 +77,7 @@ add_library(ibifx_core STATIC
     src/SmoothedValue.cpp
     src/WavFile.cpp
     src/offline.cpp
+    src/AudioGraph.cpp
 )
 
 # Onde procurar os headers desta biblioteca.

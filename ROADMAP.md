@@ -3,8 +3,8 @@
 Fases de alto nível. Cada uma será iniciada apenas quando a anterior estiver
 compreendida e funcionando.
 
-**Fases 0 a 5 concluídas.** O engine de DSP offline está de pé; nada de
-tempo real, arquivo ou interface foi implementado.
+**Fases 0 a 6 concluídas.** O engine de DSP offline está de pé e já processa
+arquivos `.wav`. Nada de tempo real nem de interface foi implementado.
 
 | # | Fase | Objetivo |
 |---|------|----------|
@@ -80,7 +80,22 @@ tempo real, arquivo ou interface foi implementado.
   havia sido verificado lendo números no terminal, e o próprio guia lembra
   que testes não substituem audição.
 
-- **Fase 6 — Audio Graph.** Em andamento.
+- **Fase 6 — Audio Graph.** Concluída. Nós com identificador estável,
+  conexões, terminais de entrada e saída, e mistura por soma quando um nó
+  recebe de vários. A ordem de processamento sai de uma ordenação topológica
+  (algoritmo de Kahn), recalculada só quando a estrutura muda — nunca a cada
+  bloco.
+  Ciclos são recusados no `connect()`, antes de a conexão existir: um ciclo
+  não tem ordem válida e em áudio é realimentação sem atraso. Isso não proíbe
+  realimentação interna, como a do `Delay`.
+  Cada nó tem buffer próprio, alocado no `prepare()`, porque um nó que
+  alimenta dois caminhos precisa que sua saída sobreviva ao primeiro leitor.
+  Buffers maiores que o bloco preparado são fatiados em vez de realocados.
+
+- **Fase 7 — Real-Time Audio.** Não iniciada. É o próximo degrau, e o
+  primeiro que exige dependência externa (JUCE ou similar) para falar com o
+  dispositivo de áudio. Traz junto o problema adiado duas vezes: comunicar o
+  domínio de controle com a thread de áudio sem corrida de dados.
 
 ## Regra
 
