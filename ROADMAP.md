@@ -6,8 +6,7 @@ compreendida e funcionando.
 **Fases 0 a 8 concluídas.** Tempo real tocando pela placa de som, com
 interface de terminal e pedalboard completo (gate, compressor, filtro,
 drive simétrico e assimétrico, delay, reverb, limiter). Fase 9 (Amp
-Simulation) em andamento — Tone Stack pronto, faltam Preamp multi-estágio
-e Power Amp.
+Simulation) em andamento — Tone Stack e Preamp prontos, falta Power Amp.
 
 | # | Fase | Objetivo |
 |---|------|----------|
@@ -184,8 +183,17 @@ e Power Amp.
   controles não são independentes — são nós do mesmo circuito RC) que um
   EQ de filtros separados não reproduziria. Um achado do próprio artigo: só
   bass e mid controlam os polos do sistema, treble só move os zeros.
-  Ainda não entra na cadeia padrão — `--tonestack` liga. Faltam Preamp
-  multi-estágio e Power Amp pra fechar a fase.
+  Ainda não entra na cadeia padrão — `--tonestack` liga.
+  `Preamp` concluído — 3 estágios de `tanh(drive*x)` em cascata, com ganho
+  de reexpansão entre eles (2.0x), não um único estágio com drive alto. É
+  a diferença real entre a textura de um amplificador high-gain (múltiplos
+  estágios moderados) e simplesmente aumentar o drive de um distorcedor só,
+  que colapsa num degrau em vez de ganhar densidade harmônica. Só o último
+  estágio fica sem reexpansão, o que garante saída sempre em [-1, +1] sem
+  precisar de lógica extra. 3 estágios fixo por enquanto, não é parâmetro.
+  Troca de lugar com `SoftClipper`/`AsymmetricClipper` via `--preamp`, não
+  acrescenta uma segunda distorção à cadeia padrão.
+  Falta Power Amp pra fechar a fase.
 
 ## Regra
 
