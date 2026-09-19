@@ -21,6 +21,7 @@
 #include "Limiter.h"
 #include "ModuleChain.h"
 #include "NoiseGate.h"
+#include "Preamp.h"
 #include "Reverb.h"
 #include "SoftClipper.h"
 #include "ToneStack.h"
@@ -355,12 +356,14 @@ struct ChainSettings
     float toneBass = 0.5f;
     float toneMid = 0.5f;
     float toneTreble = 0.5f;
+    float preampDrive = 1.0f;
 
     bool useGate = true;
     bool useCompressor = true;
     bool useHighPass = true;
     bool useDrive = true;
     bool useAsymmetric = false;
+    bool usePreamp = false;
     bool useToneStack = false;
     bool useDelay = true;
     bool useReverb = true;
@@ -420,10 +423,17 @@ void buildChain(ModuleChain& chain, const ChainSettings& settings)
 
     if (settings.useDrive)
     {
-        // --asymmetric troca a curva, não acrescenta uma segunda distorção:
-        // as duas fazem o mesmo papel na cadeia (um estágio de saturação), e
-        // empilhar as duas por padrão mudaria o tom sem ninguém ter pedido.
-        if (settings.useAsymmetric)
+        // --preamp e --asymmetric trocam a curva, não acrescentam uma
+        // segunda distorção: os três fazem o mesmo papel na cadeia (um
+        // estágio de saturação), e empilhar mais de um por padrão mudaria o
+        // tom sem ninguém ter pedido.
+        if (settings.usePreamp)
+        {
+            auto drive = std::make_unique<Preamp>();
+            drive->setDrive(settings.preampDrive);
+            chain.add(std::move(drive));
+        }
+        else if (settings.useAsymmetric)
         {
             auto drive = std::make_unique<AsymmetricClipper>();
             drive->setDrive(settings.drive);
@@ -538,6 +548,12 @@ ChainSettings parseSettings(int argc, char** argv, int first)
             continue;
         }
 
+        if (option == "--preamp")
+        {
+            settings.usePreamp = true;
+            continue;
+        }
+
         if (option == "--tonestack")
         {
             settings.useToneStack = true;
@@ -562,6 +578,7 @@ ChainSettings parseSettings(int argc, char** argv, int first)
         }
 
         if (option == "--bias")              settings.bias = value;
+        else if (option == "--preamp-drive")   settings.preampDrive = value;
         else if (option == "--tone-bass")      settings.toneBass = value;
         else if (option == "--tone-mid")       settings.toneMid = value;
         else if (option == "--tone-treble")    settings.toneTreble = value;
@@ -635,6 +652,8 @@ void printUsage(const char* program)
               << "  --drive N      quantidade de distorcao     (0 a 100,  padrao 4.0)\n"
               << "  --asymmetric   troca a distorcao simetrica por uma assimetrica\n"
               << "  --bias N       polarizacao (so com --asymmetric) (-1 a 1, padrao 0.3)\n"
+              << "  --preamp       troca a distorcao por 3 estagios de saturacao em cascata\n"
+              << "  --preamp-drive N  (so com --preamp)  (0.1 a 5, padrao 1.0)\n"
               << "  --tonestack    acrescenta o tone stack (bass/mid/treble) do ampli\n"
               << "  --tone-bass N     (so com --tonestack)  (0 a 1, padrao 0.5)\n"
               << "  --tone-mid N      (so com --tonestack)  (0 a 1, padrao 0.5)\n"
