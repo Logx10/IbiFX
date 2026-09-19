@@ -16,6 +16,7 @@
 #include "Delay.h"
 #include "GainProcessor.h"
 #include "HighPassFilter.h"
+#include "Limiter.h"
 #include "ModuleChain.h"
 #include "SoftClipper.h"
 #include "WavFile.h"
@@ -381,6 +382,11 @@ void buildChain(ModuleChain& chain, const ChainSettings& settings)
         echo->setMix(settings.mix);
         chain.add(std::move(echo));
     }
+
+    // Sempre por último, e sem "use": não é uma cor de pedal que se liga ou
+    // desliga, é a garantia de que nada que sair daqui passa de 1.0 — vale
+    // tanto para a cadeia cheia quanto para qualquer subconjunto dela.
+    chain.add(std::make_unique<Limiter>());
 }
 
 void buildDefaultChain(ModuleChain& chain)
