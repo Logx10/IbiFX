@@ -155,6 +155,13 @@ add_executable(test_asymmetric_clipper
 target_compile_options(test_asymmetric_clipper PRIVATE ${IBIFX_WARNINGS})
 target_link_libraries(test_asymmetric_clipper PRIVATE ibifx_core)
 
+add_executable(test_tone_stack
+    test_tone_stack.cpp
+)
+
+target_compile_options(test_tone_stack PRIVATE ${IBIFX_WARNINGS})
+target_link_libraries(test_tone_stack PRIVATE ibifx_core)
+
 # Registra cada executável como um teste do CTest.
 #
 #   NAME     como o teste aparece nos relatórios
@@ -187,3 +194,4 @@ add_test(NAME noise_gate COMMAND test_noise_gate)
 add_test(NAME compressor COMMAND test_compressor)
 add_test(NAME reverb COMMAND test_reverb)
 add_test(NAME asymmetric_clipper COMMAND test_asymmetric_clipper)
+add_test(NAME tone_stack COMMAND test_tone_stack)

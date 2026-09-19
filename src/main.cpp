@@ -23,6 +23,7 @@
 #include "NoiseGate.h"
 #include "Reverb.h"
 #include "SoftClipper.h"
+#include "ToneStack.h"
 #include "WavFile.h"
 #include "offline.h"
 
@@ -351,12 +352,16 @@ struct ChainSettings
     float reverbDecay = 0.5f;
     float reverbDamping = 0.5f;
     float reverbMix = 0.3f;
+    float toneBass = 0.5f;
+    float toneMid = 0.5f;
+    float toneTreble = 0.5f;
 
     bool useGate = true;
     bool useCompressor = true;
     bool useHighPass = true;
     bool useDrive = true;
     bool useAsymmetric = false;
+    bool useToneStack = false;
     bool useDelay = true;
     bool useReverb = true;
 };
@@ -431,6 +436,19 @@ void buildChain(ModuleChain& chain, const ChainSettings& settings)
             drive->setDrive(settings.drive);
             chain.add(std::move(drive));
         }
+    }
+
+    // Preamp -> Tone Stack -> Power Amp e a ordem classica de um ampli de
+    // guitarra (AI_GUIDELINES §33) — o tone stack vem DEPOIS da distorcao,
+    // porque no circuito real ele fica entre os estagios de preamplificacao
+    // e o phase splitter, nunca antes.
+    if (settings.useToneStack)
+    {
+        auto toneStack = std::make_unique<ToneStack>();
+        toneStack->setBass(settings.toneBass);
+        toneStack->setMid(settings.toneMid);
+        toneStack->setTreble(settings.toneTreble);
+        chain.add(std::move(toneStack));
     }
 
     if (settings.useDelay)
@@ -520,6 +538,12 @@ ChainSettings parseSettings(int argc, char** argv, int first)
             continue;
         }
 
+        if (option == "--tonestack")
+        {
+            settings.useToneStack = true;
+            continue;
+        }
+
         if (i + 1 >= argc)
         {
             throw std::runtime_error("a opcao " + option + " precisa de um valor");
@@ -538,6 +562,9 @@ ChainSettings parseSettings(int argc, char** argv, int first)
         }
 
         if (option == "--bias")              settings.bias = value;
+        else if (option == "--tone-bass")      settings.toneBass = value;
+        else if (option == "--tone-mid")       settings.toneMid = value;
+        else if (option == "--tone-treble")    settings.toneTreble = value;
         else if (option == "--gate-threshold") settings.gateThreshold = value;
         else if (option == "--gate-release") settings.gateRelease = value;
         else if (option == "--comp-threshold") settings.compThreshold = value;
@@ -608,6 +635,10 @@ void printUsage(const char* program)
               << "  --drive N      quantidade de distorcao     (0 a 100,  padrao 4.0)\n"
               << "  --asymmetric   troca a distorcao simetrica por uma assimetrica\n"
               << "  --bias N       polarizacao (so com --asymmetric) (-1 a 1, padrao 0.3)\n"
+              << "  --tonestack    acrescenta o tone stack (bass/mid/treble) do ampli\n"
+              << "  --tone-bass N     (so com --tonestack)  (0 a 1, padrao 0.5)\n"
+              << "  --tone-mid N      (so com --tonestack)  (0 a 1, padrao 0.5)\n"
+              << "  --tone-treble N   (so com --tonestack)  (0 a 1, padrao 0.5)\n"
               << "  --time N       atraso do eco em segundos   (0 a 2,    padrao 0.28)\n"
               << "  --feedback N   quantas repeticoes          (0 a 0.95, padrao 0.45)\n"
               << "  --mix N        quanto do eco na saida      (0 a 1,    padrao 0.35)\n"
