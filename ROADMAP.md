@@ -132,11 +132,25 @@ interface de terminal. Fase 8 (Pedalboard) começando.
     novo, `Limiter`, sempre por último na cadeia — ver o comentário em
     `src/Limiter.h` para o raciocínio completo.
 
-- **Fase 8 — Pedalboard.** Começando.
+- **Fase 8 — Pedalboard.** Em andamento.
   Da lista do §32 do AI_GUIDELINES (Noise Gate, Compressor, Overdrive,
-  Distortion, Delay, Reverb), `Overdrive`/`Distortion` já existem como
-  `SoftClipper`/`Clipper`, e `Delay` já existe. Faltam `Noise Gate`,
-  `Compressor` e `Reverb` — e, da lista do §25, uma distorção assimétrica.
+  Distortion, Delay, Reverb): `Overdrive`/`Distortion` já existiam como
+  `SoftClipper`/`Clipper`, e `Delay` já existia.
+  `NoiseGate` — filtro de um polo aplicado ao ganho, não ao sinal: ataque
+  fixo em 2ms, release ajustável (padrão 150ms). Entra primeiro na cadeia,
+  antes do `HighPass`, porque ruído amplificado depois de passar por
+  `Gain`/`SoftClipper` pode ultrapassar o threshold sem ser reconhecido como
+  ruído.
+  `Compressor` — o primeiro módulo do projeto que trabalha em decibéis por
+  dentro, porque "ratio 4:1" só significa o que deveria significar em
+  domínio logarítmico. Mesmo desenho de detector de nível do `NoiseGate`
+  (filtro de um polo com ataque e release), mas aqui os dois tempos são
+  ajustáveis. Fica logo após o `NoiseGate`, antes de qualquer distorção —
+  ordem clássica de pedaleira. Makeup gain e soft knee ficaram de fora de
+  propósito: o primeiro porque o `GainProcessor` já resolve isso encadeado
+  depois, o segundo porque a versão mais simples (hard knee) ainda não tinha
+  sido compreendida.
+  Faltam `Reverb` — e, da lista do §25, uma distorção assimétrica.
 
 ## Regra
 
