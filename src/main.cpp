@@ -20,6 +20,7 @@
 #include "Limiter.h"
 #include "ModuleChain.h"
 #include "NoiseGate.h"
+#include "Reverb.h"
 #include "SoftClipper.h"
 #include "WavFile.h"
 #include "offline.h"
@@ -345,12 +346,16 @@ struct ChainSettings
     float delayTime = 0.28f;
     float feedback = 0.45f;
     float mix = 0.35f;
+    float reverbDecay = 0.5f;
+    float reverbDamping = 0.5f;
+    float reverbMix = 0.3f;
 
     bool useGate = true;
     bool useCompressor = true;
     bool useHighPass = true;
     bool useDrive = true;
     bool useDelay = true;
+    bool useReverb = true;
 };
 
 // Monta a cadeia — um pedal de drive seguido de eco.
@@ -421,6 +426,18 @@ void buildChain(ModuleChain& chain, const ChainSettings& settings)
         chain.add(std::move(echo));
     }
 
+    // O reverb vem por último entre os efeitos, depois do delay — molha o
+    // eco discreto do delay numa cauda contínua, em vez do contrário (o que
+    // faria o delay soar como repetições dentro de uma sala, menos definido).
+    if (settings.useReverb)
+    {
+        auto reverb = std::make_unique<Reverb>();
+        reverb->setDecay(settings.reverbDecay);
+        reverb->setDamping(settings.reverbDamping);
+        reverb->setMix(settings.reverbMix);
+        chain.add(std::move(reverb));
+    }
+
     // Sempre por último, e sem "use": não é uma cor de pedal que se liga ou
     // desliga, é a garantia de que nada que sair daqui passa de 1.0 — vale
     // tanto para a cadeia cheia quanto para qualquer subconjunto dela.
@@ -475,6 +492,12 @@ ChainSettings parseSettings(int argc, char** argv, int first)
             continue;
         }
 
+        if (option == "--no-reverb")
+        {
+            settings.useReverb = false;
+            continue;
+        }
+
         if (i + 1 >= argc)
         {
             throw std::runtime_error("a opcao " + option + " precisa de um valor");
@@ -504,6 +527,9 @@ ChainSettings parseSettings(int argc, char** argv, int first)
         else if (option == "--time")         settings.delayTime = value;
         else if (option == "--feedback")     settings.feedback = value;
         else if (option == "--mix")          settings.mix = value;
+        else if (option == "--reverb-decay")    settings.reverbDecay = value;
+        else if (option == "--reverb-damping")  settings.reverbDamping = value;
+        else if (option == "--reverb-mix")      settings.reverbMix = value;
         else throw std::runtime_error("opcao desconhecida: " + option);
     }
 
@@ -560,11 +586,15 @@ void printUsage(const char* program)
               << "  --time N       atraso do eco em segundos   (0 a 2,    padrao 0.28)\n"
               << "  --feedback N   quantas repeticoes          (0 a 0.95, padrao 0.45)\n"
               << "  --mix N        quanto do eco na saida      (0 a 1,    padrao 0.35)\n"
+              << "  --reverb-decay N    duracao da cauda        (0 a 0.98, padrao 0.5)\n"
+              << "  --reverb-damping N  quanto a cauda escurece (0 a 1,    padrao 0.5)\n"
+              << "  --reverb-mix N      quanto do reverb na saida (0 a 1,  padrao 0.3)\n"
               << "  --no-gate       tira o noise gate da cadeia\n"
               << "  --no-compressor tira o compressor da cadeia\n"
               << "  --no-highpass  tira o filtro da cadeia\n"
               << "  --no-drive     tira a distorcao da cadeia\n"
               << "  --no-delay     tira o eco da cadeia\n"
+              << "  --no-reverb    tira o reverb da cadeia\n"
               << "\n"
               << "valores fora da faixa param na borda, como o batente de um knob.\n"
               << "\n"

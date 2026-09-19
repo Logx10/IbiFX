@@ -116,6 +116,7 @@ add_library(ibifx_core STATIC
     src/Limiter.cpp
     src/NoiseGate.cpp
     src/Compressor.cpp
+    src/Reverb.cpp
     src/ModuleChain.cpp
     src/AudioModule.cpp
     src/Parameter.cpp
