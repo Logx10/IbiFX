@@ -13,6 +13,7 @@
 #include "LiveEngine.h"
 #include "PedalboardUI.h"
 #include "Clipper.h"
+#include "Compressor.h"
 #include "Delay.h"
 #include "GainProcessor.h"
 #include "HighPassFilter.h"
@@ -334,6 +335,10 @@ struct ChainSettings
 {
     float gateThreshold = 0.02f;
     float gateRelease = 0.15f;
+    float compThreshold = -20.0f;
+    float compRatio = 4.0f;
+    float compAttack = 0.01f;
+    float compRelease = 0.15f;
     float highPass = 100.0f;
     float gain = 6.0f;
     float drive = 4.0f;
@@ -342,6 +347,7 @@ struct ChainSettings
     float mix = 0.35f;
 
     bool useGate = true;
+    bool useCompressor = true;
     bool useHighPass = true;
     bool useDrive = true;
     bool useDelay = true;
@@ -365,6 +371,21 @@ void buildChain(ModuleChain& chain, const ChainSettings& settings)
         gate->setThreshold(settings.gateThreshold);
         gate->setRelease(settings.gateRelease);
         chain.add(std::move(gate));
+    }
+
+    // O compressor vem logo depois do gate, e ANTES de qualquer distorção —
+    // é a ordem clássica de pedaleira: nivelar a dinâmica da corda primeiro,
+    // pra depois a distorção reagir de forma mais previsível a ela. Feito ao
+    // contrário, o compressor reagiria ao sinal já distorcido, que tem uma
+    // dinâmica bem mais achatada — e comprimir algo já achatado faz pouco.
+    if (settings.useCompressor)
+    {
+        auto compressor = std::make_unique<Compressor>();
+        compressor->setThreshold(settings.compThreshold);
+        compressor->setRatio(settings.compRatio);
+        compressor->setAttack(settings.compAttack);
+        compressor->setRelease(settings.compRelease);
+        chain.add(std::move(compressor));
     }
 
     // O filtro vem em seguida, antes de qualquer ganho ou distorção.
@@ -430,6 +451,12 @@ ChainSettings parseSettings(int argc, char** argv, int first)
             continue;
         }
 
+        if (option == "--no-compressor")
+        {
+            settings.useCompressor = false;
+            continue;
+        }
+
         if (option == "--no-highpass")
         {
             settings.useHighPass = false;
@@ -467,6 +494,10 @@ ChainSettings parseSettings(int argc, char** argv, int first)
 
         if (option == "--gate-threshold")    settings.gateThreshold = value;
         else if (option == "--gate-release") settings.gateRelease = value;
+        else if (option == "--comp-threshold") settings.compThreshold = value;
+        else if (option == "--comp-ratio")     settings.compRatio = value;
+        else if (option == "--comp-attack")    settings.compAttack = value;
+        else if (option == "--comp-release")   settings.compRelease = value;
         else if (option == "--highpass")     settings.highPass = value;
         else if (option == "--gain")         settings.gain = value;
         else if (option == "--drive")        settings.drive = value;
@@ -519,13 +550,18 @@ void printUsage(const char* program)
               << "opcoes do processamento de arquivo:\n"
               << "  --gate-threshold N  piso do noise gate      (0 a 0.3,  padrao 0.02)\n"
               << "  --gate-release N    tempo pra fechar (s)    (0.01 a 1, padrao 0.15)\n"
+              << "  --comp-threshold N  piso do compressor (dB) (-60 a 0,  padrao -20)\n"
+              << "  --comp-ratio N      taxa de compressao      (1 a 20,   padrao 4.0)\n"
+              << "  --comp-attack N     ataque do compressor(s) (0.001 a 0.5, padrao 0.01)\n"
+              << "  --comp-release N    release do compressor(s)(0.01 a 2, padrao 0.15)\n"
               << "  --highpass N   corta grave antes do drive  (20 a 2000, padrao 100)\n"
               << "  --gain N       volume antes da distorcao   (-8 a 8,   padrao 6.0)\n"
               << "  --drive N      quantidade de distorcao     (0 a 100,  padrao 4.0)\n"
               << "  --time N       atraso do eco em segundos   (0 a 2,    padrao 0.28)\n"
               << "  --feedback N   quantas repeticoes          (0 a 0.95, padrao 0.45)\n"
               << "  --mix N        quanto do eco na saida      (0 a 1,    padrao 0.35)\n"
-              << "  --no-gate      tira o noise gate da cadeia\n"
+              << "  --no-gate       tira o noise gate da cadeia\n"
+              << "  --no-compressor tira o compressor da cadeia\n"
               << "  --no-highpass  tira o filtro da cadeia\n"
               << "  --no-drive     tira a distorcao da cadeia\n"
               << "  --no-delay     tira o eco da cadeia\n"

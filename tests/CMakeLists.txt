@@ -134,6 +134,13 @@ add_executable(test_noise_gate
 target_compile_options(test_noise_gate PRIVATE ${IBIFX_WARNINGS})
 target_link_libraries(test_noise_gate PRIVATE ibifx_core)
 
+add_executable(test_compressor
+    test_compressor.cpp
+)
+
+target_compile_options(test_compressor PRIVATE ${IBIFX_WARNINGS})
+target_link_libraries(test_compressor PRIVATE ibifx_core)
+
 # Registra cada executável como um teste do CTest.
 #
 #   NAME     como o teste aparece nos relatórios
@@ -163,3 +170,4 @@ add_test(NAME live_engine COMMAND test_live_engine)
 add_test(NAME high_pass_filter COMMAND test_high_pass_filter)
 add_test(NAME limiter COMMAND test_limiter)
 add_test(NAME noise_gate COMMAND test_noise_gate)
+add_test(NAME compressor COMMAND test_compressor)
