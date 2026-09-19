@@ -4,6 +4,25 @@
 #include <stdexcept>
 #include <utility>
 
+namespace
+{
+// std::clamp exige lo <= hi; com a faixa invertida ele é comportamento
+// indefinido, não uma exceção. Os membros são inicializados antes do corpo
+// do construtor rodar, então o clamp de m_defaultValue aconteceria ANTES da
+// checagem de minValue > maxValue lá embaixo. Esta função absorve o caso
+// inválido devolvendo o valor como veio — o construtor lança em seguida, e
+// esse valor nunca chega a ser lido.
+float clampedDefault(float value, float minValue, float maxValue)
+{
+    if (minValue > maxValue)
+    {
+        return value;
+    }
+
+    return std::clamp(value, minValue, maxValue);
+}
+}
+
 Parameter::Parameter(std::string id,
                      std::string label,
                      float minValue,
@@ -13,7 +32,7 @@ Parameter::Parameter(std::string id,
     , m_label(std::move(label))
     , m_minValue(minValue)
     , m_maxValue(maxValue)
-    , m_defaultValue(std::clamp(defaultValue, minValue, maxValue))
+    , m_defaultValue(clampedDefault(defaultValue, minValue, maxValue))
     , m_value(m_defaultValue)
 {
     // Faixa invertida é erro de programação, não entrada de usuário: nenhum
