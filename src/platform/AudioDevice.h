@@ -89,8 +89,22 @@ public:
     double sampleRate() const;
     std::size_t channelCount() const;
 
-    // Nome do dispositivo escolhido pelo sistema.
+    // Nome do dispositivo de SAÍDA escolhido pelo sistema — sempre o padrão
+    // do Windows/macOS/Linux, porque esta classe ainda não permite escolher
+    // um dispositivo específico.
     std::string deviceName() const;
+
+    // Nome do dispositivo de ENTRADA, no modo Duplex. Vazio nos outros modos.
+    //
+    // Existe separado de deviceName() porque em Duplex o sistema escolhe DOIS
+    // padrões independentes — um de gravação, um de reprodução — e eles não
+    // precisam ser a mesma interface física. Uma guitarra ligada numa
+    // interface de áudio só é ouvida de verdade se essa interface for o
+    // padrão de GRAVAÇÃO do sistema; se o padrão for o microfone embutido do
+    // notebook, o som capturado é outro, bem mais fraco e sujeito ao
+    // processamento de voz do Windows (AGC, supressão de ruído), que pode
+    // soar cortado ou "em pacotes".
+    std::string captureDeviceName() const;
 
     // Descrição da última falha, ou string vazia.
     std::string lastError() const;

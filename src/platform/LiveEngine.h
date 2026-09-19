@@ -86,6 +86,7 @@ public:
     double sampleRate() const;
     std::size_t channelCount() const;
     std::string deviceName() const;
+    std::string captureDeviceName() const;
     std::string lastError() const;
     std::size_t processedBlocks() const;
 

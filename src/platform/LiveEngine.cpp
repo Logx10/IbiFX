@@ -107,6 +107,11 @@ std::string LiveEngine::deviceName() const
     return m_device.deviceName();
 }
 
+std::string LiveEngine::captureDeviceName() const
+{
+    return m_device.captureDeviceName();
+}
+
 std::string LiveEngine::lastError() const
 {
     return m_device.lastError();

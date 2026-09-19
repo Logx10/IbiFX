@@ -478,7 +478,8 @@ void printUsage(const char* program)
               << "  " << program << "                          demonstracao no terminal\n"
               << "  " << program << " --generate saida.wav     gera um sinal de teste\n"
               << "  " << program << " entrada.wav saida.wav    processa um arquivo\n"
-              << "  " << program << " --live [segundos]        toca ao vivo pela placa de som\n"
+              << "  " << program << " --live [segundos] [bloco]  toca ao vivo pela placa de som\n"
+              << "                            bloco: tamanho do bloco em amostras (padrao 128)\n"
               << "  " << program << " --devices                testa o dispositivo sem hardware\n"
               << "  " << program << " --ui                     pedaleira interativa no terminal\n"
               << "  " << program << " --ui-demo                a pedaleira sem placa de som\n"
@@ -511,7 +512,7 @@ void printUsage(const char* program)
 // CUIDADO COM MICROFONIA: se a entrada for o microfone embutido e a saida for
 // o alto-falante embutido, o som volta para a entrada e realimenta. Com ganho
 // e distorcao no caminho, isso vira um apito alto muito rapido. Use fones.
-int runLive(double seconds)
+int runLive(double seconds, int blockSize)
 {
     LiveEngine engine;
     buildDefaultChain(engine.chain());
@@ -519,15 +520,17 @@ int runLive(double seconds)
     std::cout << "AVISO: se a entrada e a saida forem os dispositivos embutidos,\n"
               << "       o som realimenta e vira microfonia. Use fones de ouvido.\n\n";
 
-    if (!engine.start(AudioDevice::Mode::Duplex, 48000.0, 128))
+    if (!engine.start(AudioDevice::Mode::Duplex, 48000.0, blockSize))
     {
         std::cerr << "erro: " << engine.lastError() << "\n";
         return 1;
     }
 
-    std::cout << "dispositivo: " << engine.deviceName() << "\n"
+    std::cout << "saida:  " << engine.deviceName() << "\n"
+              << "entrada: " << engine.captureDeviceName() << "\n"
               << "  " << engine.sampleRate() << " Hz, "
-              << engine.channelCount() << " canal(is) de saida\n\n";
+              << engine.channelCount() << " canal(is) de saida, "
+              << "bloco pedido de " << blockSize << " amostras\n\n";
 
     std::cout << "cadeia: ";
     for (std::size_t i = 0; i < engine.chain().size(); ++i)
@@ -668,8 +671,9 @@ int main(int argc, char** argv)
 
         if (argc >= 2 && std::string(argv[1]) == "--live")
         {
-            const double seconds = (argc == 3) ? std::stod(argv[2]) : 10.0;
-            return runLive(seconds);
+            const double seconds = (argc >= 3) ? std::stod(argv[2]) : 10.0;
+            const int blockSize = (argc >= 4) ? std::stoi(argv[3]) : 128;
+            return runLive(seconds, blockSize);
         }
 
         if (argc == 2 && std::string(argv[1]) == "--devices")

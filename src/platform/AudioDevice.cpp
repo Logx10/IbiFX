@@ -21,6 +21,7 @@ struct AudioDevice::Impl
     double sampleRate = 0.0;
     std::size_t channelCount = 0;
     std::string deviceName;
+    std::string captureDeviceName;
     std::string lastError;
 
     // Escrito pela thread de áudio, lido pela de controle. Atômico pelo mesmo
@@ -155,6 +156,7 @@ bool AudioDevice::start(ProcessCallback callback, Mode mode, double sampleRate, 
 
     m_impl->callback = std::move(callback);
     m_impl->lastError.clear();
+    m_impl->captureDeviceName.clear();
     m_impl->processedBlocks.store(0, std::memory_order_relaxed);
     m_impl->lastCallbackMicros.store(0, std::memory_order_relaxed);
     m_impl->maxCallbackMicros.store(0, std::memory_order_relaxed);
@@ -230,6 +232,11 @@ bool AudioDevice::start(ProcessCallback callback, Mode mode, double sampleRate, 
     m_impl->channelCount = static_cast<std::size_t>(m_impl->device.playback.channels);
     m_impl->deviceName = m_impl->device.playback.name;
 
+    if (deviceType == ma_device_type_duplex)
+    {
+        m_impl->captureDeviceName = m_impl->device.capture.name;
+    }
+
     result = ma_device_start(&m_impl->device);
 
     if (result != MA_SUCCESS)
@@ -282,6 +289,11 @@ std::size_t AudioDevice::channelCount() const
 std::string AudioDevice::deviceName() const
 {
     return m_impl->deviceName;
+}
+
+std::string AudioDevice::captureDeviceName() const
+{
+    return m_impl->captureDeviceName;
 }
 
 std::string AudioDevice::lastError() const
