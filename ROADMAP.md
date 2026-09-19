@@ -3,8 +3,8 @@
 Fases de alto nível. Cada uma será iniciada apenas quando a anterior estiver
 compreendida e funcionando.
 
-**Fases 0 a 6 concluídas.** O engine de DSP offline está de pé e já processa
-arquivos `.wav`. Nada de tempo real nem de interface foi implementado.
+**Fases 0 a 7 concluídas.** Tempo real tocando pela placa de som, com
+interface de terminal. Fase 8 (Pedalboard) começando.
 
 | # | Fase | Objetivo |
 |---|------|----------|
@@ -97,23 +97,46 @@ arquivos `.wav`. Nada de tempo real nem de interface foi implementado.
   alimenta dois caminhos precisa que sua saída sobreviva ao primeiro leitor.
   Buffers maiores que o bloco preparado são fatiados em vez de realocados.
 
-- **Fase 7 — Real-Time Audio.** Em andamento.
-  A **parte de concorrência está pronta**, e era o problema adiado duas vezes:
-  `Parameter` guarda um `std::atomic<float>`, e a `CommandQueue` leva bypass e
-  reset do controle para a thread de áudio sem bloquear. Verificado com duas
-  threads de verdade e com o ThreadSanitizer, que não acusou nenhuma corrida.
-  Também foi medido que performance não é gargalo: a cadeia usa 0,11% do
-  orçamento de um bloco, então não há motivo para paralelizar o processamento.
-  O **dispositivo de áudio** também está pronto, via miniaudio 0.11.25
+- **Fase 7 — Real-Time Audio.** Concluída.
+  A **parte de concorrência** ficou pronta primeiro, e era o problema adiado
+  duas vezes: `Parameter` guarda um `std::atomic<float>`, e a `CommandQueue`
+  leva bypass e reset do controle para a thread de áudio sem bloquear.
+  Verificado com duas threads de verdade e com o ThreadSanitizer, que não
+  acusou nenhuma corrida. Também foi medido que performance não é gargalo: a
+  cadeia usa 0,11% do orçamento de um bloco, então não há motivo para
+  paralelizar o processamento.
+  O **dispositivo de áudio** também ficou pronto, via miniaudio 0.11.25
   vendorizado — um único header, domínio público. A camada fica confinada em
   `src/platform/` e o núcleo não a enxerga: o alvo `ibifx_core` nem tem o
   diretório dela no include, então a separação é verificada pelo compilador.
   O `LiveEngine` converte entre o buffer intercalado do driver e os buffers
   mono dos módulos, com tudo alocado no `start()`.
-  Verificado com o backend nulo do miniaudio, que roda sem hardware, e o
-  dispositivo real foi aberto à parte para confirmar o caminho do CoreAudio.
-  **Falta ajustar latência e medir o comportamento sob carga real**, o que só
-  faz sentido tocando de verdade.
+  Faltava ajustar latência e medir o comportamento sob carga real — o que só
+  fazia sentido tocando de verdade, com hardware. Ao testar com a interface
+  real (`mvsilicon B1 usb audio`), apareceram três problemas, todos
+  corrigidos:
+  - `AudioDevice` media duração de callback, blocos acima do orçamento e
+    eventos de reroteamento/interrupção do driver — nenhum dos três acusou
+    nada. A cadeia nunca esteve perto do orçamento de tempo real.
+  - O que parecia "captura instável" era o próprio `--live` alternando o
+    bypass do drive a cada 2s para demonstrar comando ao vivo — confundia
+    quem só queria ouvir a cadeia tocando. Virou opcional (`--no-toggle`), e
+    `deviceName()`/`captureDeviceName()` passaram a mostrar separadamente o
+    dispositivo de saída e o de entrada, porque o Windows pode negociar dois
+    dispositivos padrão diferentes para cada lado.
+  - O que soava como "toum TOUM toum toum" era clipping de verdade: o
+    `Delay` soma o ataque de uma nota nova, já quase saturado pelo
+    `SoftClipper`, com a cauda que ainda ecoa da nota anterior — sem teto
+    embutido nessa soma. Medido com o sinal de teste padrão: 4514, 6497 e
+    6694 amostras cortadas reto nas notas 2, 3 e 4. Resolvido com um módulo
+    novo, `Limiter`, sempre por último na cadeia — ver o comentário em
+    `src/Limiter.h` para o raciocínio completo.
+
+- **Fase 8 — Pedalboard.** Começando.
+  Da lista do §32 do AI_GUIDELINES (Noise Gate, Compressor, Overdrive,
+  Distortion, Delay, Reverb), `Overdrive`/`Distortion` já existem como
+  `SoftClipper`/`Clipper`, e `Delay` já existe. Faltam `Noise Gate`,
+  `Compressor` e `Reverb` — e, da lista do §25, uma distorção assimétrica.
 
 ## Regra
 
