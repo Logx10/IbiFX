@@ -12,6 +12,7 @@
 #include "AudioGraph.h"
 #include "LiveEngine.h"
 #include "PedalboardUI.h"
+#include "AsymmetricClipper.h"
 #include "Clipper.h"
 #include "Compressor.h"
 #include "Delay.h"
@@ -69,7 +70,7 @@ void printChain(const ModuleChain& chain)
 // Lista todos os parâmetros da cadeia, com valor, faixa e forma normalizada.
 void printParameters(const ModuleChain& chain)
 {
-    std::cout << std::left << std::setw(14) << "MODULO"
+    std::cout << std::left << std::setw(20) << "MODULO"
               << std::setw(12) << "ID"
               << std::setw(10) << "VALOR"
               << std::setw(16) << "FAIXA"
@@ -87,7 +88,7 @@ void printParameters(const ModuleChain& chain)
                                     + " .. "
                                     + std::to_string(static_cast<int>(parameter.maxValue()));
 
-            std::cout << std::left << std::setw(14) << module.name()
+            std::cout << std::left << std::setw(20) << module.name()
                       << std::setw(12) << parameter.id()
                       << std::fixed << std::setprecision(2)
                       << std::setw(10) << parameter.value()
@@ -343,6 +344,7 @@ struct ChainSettings
     float highPass = 100.0f;
     float gain = 6.0f;
     float drive = 4.0f;
+    float bias = 0.3f;
     float delayTime = 0.28f;
     float feedback = 0.45f;
     float mix = 0.35f;
@@ -354,6 +356,7 @@ struct ChainSettings
     bool useCompressor = true;
     bool useHighPass = true;
     bool useDrive = true;
+    bool useAsymmetric = false;
     bool useDelay = true;
     bool useReverb = true;
 };
@@ -412,9 +415,22 @@ void buildChain(ModuleChain& chain, const ChainSettings& settings)
 
     if (settings.useDrive)
     {
-        auto drive = std::make_unique<SoftClipper>();
-        drive->setDrive(settings.drive);
-        chain.add(std::move(drive));
+        // --asymmetric troca a curva, não acrescenta uma segunda distorção:
+        // as duas fazem o mesmo papel na cadeia (um estágio de saturação), e
+        // empilhar as duas por padrão mudaria o tom sem ninguém ter pedido.
+        if (settings.useAsymmetric)
+        {
+            auto drive = std::make_unique<AsymmetricClipper>();
+            drive->setDrive(settings.drive);
+            drive->setBias(settings.bias);
+            chain.add(std::move(drive));
+        }
+        else
+        {
+            auto drive = std::make_unique<SoftClipper>();
+            drive->setDrive(settings.drive);
+            chain.add(std::move(drive));
+        }
     }
 
     if (settings.useDelay)
@@ -498,6 +514,12 @@ ChainSettings parseSettings(int argc, char** argv, int first)
             continue;
         }
 
+        if (option == "--asymmetric")
+        {
+            settings.useAsymmetric = true;
+            continue;
+        }
+
         if (i + 1 >= argc)
         {
             throw std::runtime_error("a opcao " + option + " precisa de um valor");
@@ -515,7 +537,8 @@ ChainSettings parseSettings(int argc, char** argv, int first)
             throw std::runtime_error("valor invalido para " + option + ": '" + raw + "'");
         }
 
-        if (option == "--gate-threshold")    settings.gateThreshold = value;
+        if (option == "--bias")              settings.bias = value;
+        else if (option == "--gate-threshold") settings.gateThreshold = value;
         else if (option == "--gate-release") settings.gateRelease = value;
         else if (option == "--comp-threshold") settings.compThreshold = value;
         else if (option == "--comp-ratio")     settings.compRatio = value;
@@ -551,7 +574,7 @@ void printChainSettings(const ModuleChain& chain)
         {
             const Parameter& parameter = module.parameterAt(p);
 
-            std::cout << "  " << std::left << std::setw(14) << module.name()
+            std::cout << "  " << std::left << std::setw(20) << module.name()
                       << std::setw(10) << parameter.id()
                       << std::fixed << std::setprecision(2) << parameter.value() << "\n";
         }
@@ -583,6 +606,8 @@ void printUsage(const char* program)
               << "  --highpass N   corta grave antes do drive  (20 a 2000, padrao 100)\n"
               << "  --gain N       volume antes da distorcao   (-8 a 8,   padrao 6.0)\n"
               << "  --drive N      quantidade de distorcao     (0 a 100,  padrao 4.0)\n"
+              << "  --asymmetric   troca a distorcao simetrica por uma assimetrica\n"
+              << "  --bias N       polarizacao (so com --asymmetric) (-1 a 1, padrao 0.3)\n"
               << "  --time N       atraso do eco em segundos   (0 a 2,    padrao 0.28)\n"
               << "  --feedback N   quantas repeticoes          (0 a 0.95, padrao 0.45)\n"
               << "  --mix N        quanto do eco na saida      (0 a 1,    padrao 0.35)\n"
