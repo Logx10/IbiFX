@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstddef>
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <string>
@@ -99,6 +100,33 @@ public:
     // Serve para teste e diagnóstico: se o número não cresce, o dispositivo
     // abriu mas não está rodando.
     std::size_t processedBlocks() const;
+
+    // MEDIÇÃO DE CARGA REAL
+    //
+    // O §51 do AI_GUIDELINES pede para medir, não adivinhar, quando
+    // performance importa. Estes três números respondem "o callback está
+    // dentro do prazo?" sem exigir estatísticas específicas de driver, que
+    // variam entre WASAPI, CoreAudio e ALSA.
+    //
+    // O ORÇAMENTO de um bloco é o tempo real que ele representa: com
+    // blockSize=128 e sampleRate=48000, chegam 128/48000 s ≈ 2,67 ms de
+    // áudio por vez, e o callback precisa devolver o bloco processado antes
+    // que esse tempo passe. Ultrapassar o orçamento é o que causa o estalo
+    // de um underrun — o driver pede o próximo bloco e ele ainda não está
+    // pronto.
+
+    // Duração do callback mais recente, em microssegundos.
+    std::uint64_t lastCallbackMicros() const;
+
+    // Maior duração observada desde o start(), em microssegundos.
+    //
+    // O pico importa mais que a média: um callback que estoura o orçamento
+    // uma vez a cada mil já produz um estalo audível, mesmo que a média
+    // pareça tranquila.
+    std::uint64_t maxCallbackMicros() const;
+
+    // Quantos blocos, desde o start(), levaram mais tempo que o orçamento.
+    std::size_t overBudgetBlocks() const;
 
     // Público apenas para que a função de ponte com o miniaudio, no .cpp,
     // possa acessá-la. O tipo é declarado sem definição aqui, então ninguém

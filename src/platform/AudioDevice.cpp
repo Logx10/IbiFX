@@ -1,6 +1,8 @@
 #include "AudioDevice.h"
 
 #include <atomic>
+#include <chrono>
+#include <cstdint>
 
 #include "miniaudio.h"
 
@@ -24,6 +26,11 @@ struct AudioDevice::Impl
     // Escrito pela thread de áudio, lido pela de controle. Atômico pelo mesmo
     // motivo do Parameter: sem isso seria corrida de dados.
     std::atomic<std::size_t> processedBlocks{0};
+
+    // Mesma razão dos três: escritos na thread de áudio, lidos no controle.
+    std::atomic<std::uint64_t> lastCallbackMicros{0};
+    std::atomic<std::uint64_t> maxCallbackMicros{0};
+    std::atomic<std::size_t> overBudgetBlocks{0};
 };
 
 namespace
@@ -41,12 +48,45 @@ void dataCallback(ma_device* device, void* output, const void* input, ma_uint32 
         return;
     }
 
+    // steady_clock::now() é uma leitura de contador de hardware, não um
+    // syscall bloqueante — seguro dentro do callback, ao contrário de
+    // qualquer relógio que dependa de fuso ou de NTP.
+    const auto inicio = std::chrono::steady_clock::now();
+
     impl->callback(static_cast<float*>(output),
                    static_cast<const float*>(input),
                    static_cast<std::size_t>(frameCount),
                    impl->channelCount);
 
+    const auto duracao = std::chrono::steady_clock::now() - inicio;
+    const auto duracaoMicros = static_cast<std::uint64_t>(
+        std::chrono::duration_cast<std::chrono::microseconds>(duracao).count());
+
     impl->processedBlocks.fetch_add(1, std::memory_order_relaxed);
+    impl->lastCallbackMicros.store(duracaoMicros, std::memory_order_relaxed);
+
+    // Atualiza o máximo sem lock: lê o valor atual e tenta trocar, repetindo
+    // só se outra escrita colidiu no meio do caminho. Como só a thread de
+    // áudio escreve aqui, na prática essa troca sempre funciona de primeira.
+    std::uint64_t maximoAtual = impl->maxCallbackMicros.load(std::memory_order_relaxed);
+    while (duracaoMicros > maximoAtual &&
+           !impl->maxCallbackMicros.compare_exchange_weak(
+               maximoAtual, duracaoMicros, std::memory_order_relaxed))
+    {
+    }
+
+    // O orçamento do bloco é quanto tempo de áudio ele representa: um bloco
+    // de 128 amostras a 48000 Hz "vale" 128/48000 s. Estourar isso é o que
+    // provoca o estalo de um underrun.
+    if (impl->sampleRate > 0.0)
+    {
+        const double orcamentoMicros = (static_cast<double>(frameCount) / impl->sampleRate) * 1'000'000.0;
+
+        if (static_cast<double>(duracaoMicros) > orcamentoMicros)
+        {
+            impl->overBudgetBlocks.fetch_add(1, std::memory_order_relaxed);
+        }
+    }
 }
 }
 
@@ -83,6 +123,9 @@ bool AudioDevice::start(ProcessCallback callback, Mode mode, double sampleRate, 
     m_impl->callback = std::move(callback);
     m_impl->lastError.clear();
     m_impl->processedBlocks.store(0, std::memory_order_relaxed);
+    m_impl->lastCallbackMicros.store(0, std::memory_order_relaxed);
+    m_impl->maxCallbackMicros.store(0, std::memory_order_relaxed);
+    m_impl->overBudgetBlocks.store(0, std::memory_order_relaxed);
 
     // O backend nulo é escolhido explicitamente; nos outros modos deixamos o
     // miniaudio decidir, para que ele use CoreAudio, WASAPI ou ALSA conforme
@@ -213,4 +256,19 @@ std::string AudioDevice::lastError() const
 std::size_t AudioDevice::processedBlocks() const
 {
     return m_impl->processedBlocks.load(std::memory_order_relaxed);
+}
+
+std::uint64_t AudioDevice::lastCallbackMicros() const
+{
+    return m_impl->lastCallbackMicros.load(std::memory_order_relaxed);
+}
+
+std::uint64_t AudioDevice::maxCallbackMicros() const
+{
+    return m_impl->maxCallbackMicros.load(std::memory_order_relaxed);
+}
+
+std::size_t AudioDevice::overBudgetBlocks() const
+{
+    return m_impl->overBudgetBlocks.load(std::memory_order_relaxed);
 }

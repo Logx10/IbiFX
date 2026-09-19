@@ -117,6 +117,21 @@ std::size_t LiveEngine::processedBlocks() const
     return m_device.processedBlocks();
 }
 
+std::uint64_t LiveEngine::lastCallbackMicros() const
+{
+    return m_device.lastCallbackMicros();
+}
+
+std::uint64_t LiveEngine::maxCallbackMicros() const
+{
+    return m_device.maxCallbackMicros();
+}
+
+std::size_t LiveEngine::overBudgetBlocks() const
+{
+    return m_device.overBudgetBlocks();
+}
+
 void LiveEngine::processBlock(float* output,
                               const float* input,
                               std::size_t frameCount,

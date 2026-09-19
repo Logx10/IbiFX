@@ -297,6 +297,30 @@ void testChainSurvivesRunning()
     check(std::string(engine.chain().moduleAt(1).name()) == "Delay", "o segundo e o Delay");
 }
 
+// A medição de carga do callback fica disponível e é consistente.
+void testCallbackTimingIsTracked()
+{
+    std::cout << "a medicao de duracao do callback funciona\n";
+
+    LiveEngine engine;
+    engine.chain().add(std::make_unique<GainProcessor>());
+
+    if (!engine.start(AudioDevice::Mode::Null, 48000.0, 128))
+    {
+        check(false, "o engine deveria ter iniciado");
+        return;
+    }
+
+    check(waitForEngineBlocks(engine, 10), "processou blocos suficientes para medir");
+
+    // O pico é, por definição, o maior valor já visto — inclusive o do
+    // último bloco medido.
+    check(engine.maxCallbackMicros() >= engine.lastCallbackMicros(),
+          "o pico nunca fica abaixo da duracao mais recente");
+
+    engine.stop();
+}
+
 // Um engine sem módulo nenhum roda sem quebrar.
 void testEmptyChainRuns()
 {
@@ -351,6 +375,7 @@ int main()
     testEmptyCallbackIsRefused();
     testInvalidParametersAreRefused();
     testEngineRunsTheChain();
+    testCallbackTimingIsTracked();
     testNegotiatedSampleRateReachesModules();
     testCommandsReachModulesWhileRunning();
     testChainSurvivesRunning();

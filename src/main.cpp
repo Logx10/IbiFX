@@ -1,4 +1,5 @@
 #include <chrono>
+#include <cstdint>
 #include <exception>
 #include <iomanip>
 #include <iostream>
@@ -553,12 +554,22 @@ int runLive(double seconds)
         engine.setBypassed(1, driveDesligado);
 
         std::cout << "  drive " << (driveDesligado ? "em bypass" : "ligado")
-                  << "  (" << engine.processedBlocks() << " blocos processados)\n";
+                  << "  (" << engine.processedBlocks() << " blocos processados)\n"
+                  << "  callback: " << engine.lastCallbackMicros() << " us"
+                  << "  (pico " << engine.maxCallbackMicros() << " us)"
+                  << "  acima do orcamento: " << engine.overBudgetBlocks() << "\n";
     }
+
+    // Lidos ANTES do stop(): parar o dispositivo zera o device por dentro, e
+    // depois disso os números não teriam mais sentido.
+    const std::uint64_t picoFinal = engine.maxCallbackMicros();
+    const std::size_t acimaDoOrcamento = engine.overBudgetBlocks();
 
     engine.stop();
 
-    std::cout << "\nparado. " << engine.processedBlocks() << " blocos no total.\n";
+    std::cout << "\nparado. " << engine.processedBlocks() << " blocos no total.\n"
+              << "pico do callback: " << picoFinal << " us"
+              << "  (" << acimaDoOrcamento << " blocos acima do orcamento)\n";
     return 0;
 }
 

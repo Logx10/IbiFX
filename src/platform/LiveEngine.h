@@ -2,6 +2,7 @@
 
 #include <atomic>
 #include <cstddef>
+#include <cstdint>
 #include <vector>
 
 #include "AudioDevice.h"
@@ -87,6 +88,12 @@ public:
     std::string deviceName() const;
     std::string lastError() const;
     std::size_t processedBlocks() const;
+
+    // Repassados do AudioDevice — ver o comentário lá sobre o que significam
+    // e por que orçamento de bloco é o jeito certo de olhar para latência.
+    std::uint64_t lastCallbackMicros() const;
+    std::uint64_t maxCallbackMicros() const;
+    std::size_t overBudgetBlocks() const;
 
 private:
     // Chamado na thread de áudio.
