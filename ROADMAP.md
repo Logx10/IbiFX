@@ -150,7 +150,14 @@ interface de terminal. Fase 8 (Pedalboard) começando.
   propósito: o primeiro porque o `GainProcessor` já resolve isso encadeado
   depois, o segundo porque a versão mais simples (hard knee) ainda não tinha
   sido compreendida.
-  Faltam `Reverb` — e, da lista do §25, uma distorção assimétrica.
+  `Reverb` — estrutura clássica de Schroeder (1962): 4 combs em paralelo
+  (cada um com um passa-baixas no loop de feedback, pra cauda escurecer com
+  o tempo) somados, seguidos de 2 allpass em série (aumentam a densidade sem
+  colorir o timbre). Comprimentos dos delays vêm do Freeverb (domínio
+  público), escalados pelo sample rate real. Fica depois do `Delay` na
+  cadeia: molha o eco discreto numa cauda contínua, não o contrário.
+  Com isso, a lista do §32 está completa. Falta só, da lista do §25, uma
+  distorção assimétrica.
 
 ## Regra
 
