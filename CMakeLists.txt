@@ -114,6 +114,7 @@ add_library(ibifx_core STATIC
     src/Clipper.cpp
     src/SoftClipper.cpp
     src/Limiter.cpp
+    src/NoiseGate.cpp
     src/ModuleChain.cpp
     src/AudioModule.cpp
     src/Parameter.cpp

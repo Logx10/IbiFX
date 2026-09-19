@@ -18,6 +18,7 @@
 #include "HighPassFilter.h"
 #include "Limiter.h"
 #include "ModuleChain.h"
+#include "NoiseGate.h"
 #include "SoftClipper.h"
 #include "WavFile.h"
 #include "offline.h"
@@ -331,6 +332,8 @@ void runTerminalDemo()
 // diferença entre entrada e saída ficar óbvia, não para soar bonito.
 struct ChainSettings
 {
+    float gateThreshold = 0.02f;
+    float gateRelease = 0.15f;
     float highPass = 100.0f;
     float gain = 6.0f;
     float drive = 4.0f;
@@ -338,6 +341,7 @@ struct ChainSettings
     float feedback = 0.45f;
     float mix = 0.35f;
 
+    bool useGate = true;
     bool useHighPass = true;
     bool useDrive = true;
     bool useDelay = true;
@@ -350,7 +354,20 @@ struct ChainSettings
 // limpos que depois seriam distorcidos juntos, e o resultado vira uma pasta.
 void buildChain(ModuleChain& chain, const ChainSettings& settings)
 {
-    // O filtro vem PRIMEIRO, antes de qualquer ganho ou distorção.
+    // O gate vem ANTES de tudo, inclusive do filtro. Ruído de fundo entra
+    // junto com o sinal, e precisa ser cortado antes de qualquer estágio que
+    // amplifique (Gain, SoftClipper) — depois deles, o próprio ruído já
+    // amplificado pode passar do threshold e o gate deixa de enxergá-lo como
+    // ruído.
+    if (settings.useGate)
+    {
+        auto gate = std::make_unique<NoiseGate>();
+        gate->setThreshold(settings.gateThreshold);
+        gate->setRelease(settings.gateRelease);
+        chain.add(std::move(gate));
+    }
+
+    // O filtro vem em seguida, antes de qualquer ganho ou distorção.
     //
     // Saturação mistura as frequências que entram, e grave forte ocupa a
     // curva inteira do saturador, empastando tudo que vem junto. Cortar o
@@ -407,6 +424,12 @@ ChainSettings parseSettings(int argc, char** argv, int first)
     {
         const std::string option = argv[i];
 
+        if (option == "--no-gate")
+        {
+            settings.useGate = false;
+            continue;
+        }
+
         if (option == "--no-highpass")
         {
             settings.useHighPass = false;
@@ -442,12 +465,14 @@ ChainSettings parseSettings(int argc, char** argv, int first)
             throw std::runtime_error("valor invalido para " + option + ": '" + raw + "'");
         }
 
-        if (option == "--highpass")      settings.highPass = value;
-        else if (option == "--gain")     settings.gain = value;
-        else if (option == "--drive")    settings.drive = value;
-        else if (option == "--time")     settings.delayTime = value;
-        else if (option == "--feedback") settings.feedback = value;
-        else if (option == "--mix")      settings.mix = value;
+        if (option == "--gate-threshold")    settings.gateThreshold = value;
+        else if (option == "--gate-release") settings.gateRelease = value;
+        else if (option == "--highpass")     settings.highPass = value;
+        else if (option == "--gain")         settings.gain = value;
+        else if (option == "--drive")        settings.drive = value;
+        else if (option == "--time")         settings.delayTime = value;
+        else if (option == "--feedback")     settings.feedback = value;
+        else if (option == "--mix")          settings.mix = value;
         else throw std::runtime_error("opcao desconhecida: " + option);
     }
 
@@ -492,12 +517,15 @@ void printUsage(const char* program)
               << "  " << program << " --ui-demo                a pedaleira sem placa de som\n"
               << "\n"
               << "opcoes do processamento de arquivo:\n"
+              << "  --gate-threshold N  piso do noise gate      (0 a 0.3,  padrao 0.02)\n"
+              << "  --gate-release N    tempo pra fechar (s)    (0.01 a 1, padrao 0.15)\n"
               << "  --highpass N   corta grave antes do drive  (20 a 2000, padrao 100)\n"
               << "  --gain N       volume antes da distorcao   (-8 a 8,   padrao 6.0)\n"
               << "  --drive N      quantidade de distorcao     (0 a 100,  padrao 4.0)\n"
               << "  --time N       atraso do eco em segundos   (0 a 2,    padrao 0.28)\n"
               << "  --feedback N   quantas repeticoes          (0 a 0.95, padrao 0.45)\n"
               << "  --mix N        quanto do eco na saida      (0 a 1,    padrao 0.35)\n"
+              << "  --no-gate      tira o noise gate da cadeia\n"
               << "  --no-highpass  tira o filtro da cadeia\n"
               << "  --no-drive     tira a distorcao da cadeia\n"
               << "  --no-delay     tira o eco da cadeia\n"
