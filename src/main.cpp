@@ -480,6 +480,7 @@ void printUsage(const char* program)
               << "  " << program << " entrada.wav saida.wav    processa um arquivo\n"
               << "  " << program << " --live [segundos] [bloco]  toca ao vivo pela placa de som\n"
               << "                            bloco: tamanho do bloco em amostras (padrao 128)\n"
+              << "                            --no-toggle: nao alterna o bypass do drive sozinho\n"
               << "  " << program << " --devices                testa o dispositivo sem hardware\n"
               << "  " << program << " --ui                     pedaleira interativa no terminal\n"
               << "  " << program << " --ui-demo                a pedaleira sem placa de som\n"
@@ -512,7 +513,7 @@ void printUsage(const char* program)
 // CUIDADO COM MICROFONIA: se a entrada for o microfone embutido e a saida for
 // o alto-falante embutido, o som volta para a entrada e realimenta. Com ganho
 // e distorcao no caminho, isso vira um apito alto muito rapido. Use fones.
-int runLive(double seconds, int blockSize)
+int runLive(double seconds, int blockSize, bool toggleDrive)
 {
     LiveEngine engine;
     buildDefaultChain(engine.chain());
@@ -543,9 +544,12 @@ int runLive(double seconds, int blockSize)
 
     std::cout << "tocando por " << seconds << " segundos...\n";
 
-    // O bypass do drive e ligado e desligado durante a execucao, para
-    // demonstrar que da para mudar a cadeia com o audio rodando. O comando
-    // atravessa a fila sem bloquear a thread de audio.
+    // Por padrao, o bypass do drive e ligado e desligado durante a execucao,
+    // para demonstrar que da para mudar a cadeia com o audio rodando (o
+    // comando atravessa a fila sem bloquear a thread de audio). Isso muda o
+    // volume e o timbre a cada 2 segundos de forma bem perceptivel, o que
+    // atrapalha quem quer só ouvir a propria cadeia tocando — por isso
+    // toggleDrive existe, para desligar essa parte da demonstracao.
     const auto inicio = std::chrono::steady_clock::now();
     bool driveDesligado = false;
 
@@ -553,11 +557,19 @@ int runLive(double seconds, int blockSize)
     {
         std::this_thread::sleep_for(std::chrono::milliseconds(2000));
 
-        driveDesligado = !driveDesligado;
-        engine.setBypassed(1, driveDesligado);
+        if (toggleDrive)
+        {
+            driveDesligado = !driveDesligado;
+            engine.setBypassed(1, driveDesligado);
 
-        std::cout << "  drive " << (driveDesligado ? "em bypass" : "ligado")
-                  << "  (" << engine.processedBlocks() << " blocos processados)\n"
+            std::cout << "  drive " << (driveDesligado ? "em bypass" : "ligado") << "  ";
+        }
+        else
+        {
+            std::cout << "  ";
+        }
+
+        std::cout << "(" << engine.processedBlocks() << " blocos processados)\n"
                   << "  callback: " << engine.lastCallbackMicros() << " us"
                   << "  (pico " << engine.maxCallbackMicros() << " us)"
                   << "  acima do orcamento: " << engine.overBudgetBlocks() << "\n"
@@ -671,9 +683,29 @@ int main(int argc, char** argv)
 
         if (argc >= 2 && std::string(argv[1]) == "--live")
         {
-            const double seconds = (argc >= 3) ? std::stod(argv[2]) : 10.0;
-            const int blockSize = (argc >= 4) ? std::stoi(argv[3]) : 128;
-            return runLive(seconds, blockSize);
+            // --no-toggle pode vir em qualquer posicao depois de --live; o
+            // resto dos argumentos, em ordem, e segundos e depois bloco.
+            std::vector<std::string> posicionais;
+            bool toggleDrive = true;
+
+            for (int i = 2; i < argc; ++i)
+            {
+                const std::string arg = argv[i];
+
+                if (arg == "--no-toggle")
+                {
+                    toggleDrive = false;
+                }
+                else
+                {
+                    posicionais.push_back(arg);
+                }
+            }
+
+            const double seconds = (!posicionais.empty()) ? std::stod(posicionais[0]) : 10.0;
+            const int blockSize = (posicionais.size() >= 2) ? std::stoi(posicionais[1]) : 128;
+
+            return runLive(seconds, blockSize, toggleDrive);
         }
 
         if (argc == 2 && std::string(argv[1]) == "--devices")
