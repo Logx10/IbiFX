@@ -30,6 +30,12 @@ Terminal::Terminal()
         return;
     }
 
+    // Sem isto o console le os bytes UTF-8 da moldura (╭─╮│● etc.) com a code
+    // page padrao do sistema (850/1252 em Windows em portugues), e cada
+    // caractere de varios bytes vira uma sequencia de simbolos quebrados.
+    SetConsoleOutputCP(CP_UTF8);
+    SetConsoleCP(CP_UTF8);
+
     GetConsoleMode(input, &m_state->inputMode);
     GetConsoleMode(output, &m_state->outputMode);
 
