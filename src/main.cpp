@@ -557,7 +557,20 @@ int runLive(double seconds)
                   << "  (" << engine.processedBlocks() << " blocos processados)\n"
                   << "  callback: " << engine.lastCallbackMicros() << " us"
                   << "  (pico " << engine.maxCallbackMicros() << " us)"
-                  << "  acima do orcamento: " << engine.overBudgetBlocks() << "\n";
+                  << "  acima do orcamento: " << engine.overBudgetBlocks() << "\n"
+                  << "  pico de entrada: " << engine.inputPeak()
+                  << "  pico de saida: " << engine.outputPeak()
+                  << "  reroteamentos: " << engine.rerouteCount()
+                  << "  interrupcoes: " << engine.interruptionCount() << "\n";
+
+        // Pico de entrada zerado com o dispositivo ainda rodando e sem
+        // reroteamento registrado e o sintoma de "parou de pegar audio sem
+        // erro nenhum": o driver aceita os blocos, mas o que chega e
+        // silencio. Vale registrar em qual momento isso comecou.
+        if (engine.inputPeak() == 0.0f)
+        {
+            std::cout << "  (sem sinal de entrada neste instante)\n";
+        }
     }
 
     // Lidos ANTES do stop(): parar o dispositivo zera o device por dentro, e

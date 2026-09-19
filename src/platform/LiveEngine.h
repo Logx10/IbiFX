@@ -94,6 +94,8 @@ public:
     std::uint64_t lastCallbackMicros() const;
     std::uint64_t maxCallbackMicros() const;
     std::size_t overBudgetBlocks() const;
+    std::size_t rerouteCount() const;
+    std::size_t interruptionCount() const;
 
 private:
     // Chamado na thread de áudio.

@@ -128,6 +128,26 @@ public:
     // Quantos blocos, desde o start(), levaram mais tempo que o orçamento.
     std::size_t overBudgetBlocks() const;
 
+    // EVENTOS DO DRIVER
+    //
+    // O sistema operacional pode reconfigurar o stream por baixo do nosso
+    // código: trocar o dispositivo padrão, suspender a captura por política
+    // de energia, ou interromper por causa de outro processo. O app continua
+    // rodando e o callback continua sendo chamado, mas o sinal capturado
+    // pode virar silêncio sem nenhum erro devolvido por start().
+    //
+    // Estes contadores existem para diferenciar "não chegou som porque a
+    // guitarra não tocou" de "o driver reconfigurou o stream e a captura
+    // não voltou".
+
+    // Quantas vezes o driver reencaminhou o stream para outro dispositivo
+    // físico (ex.: o padrão do sistema mudou enquanto tocava).
+    std::size_t rerouteCount() const;
+
+    // Quantas vezes a captura foi interrompida por outro processo ou pelo
+    // sistema (ex.: uma chamada de voz tomando prioridade).
+    std::size_t interruptionCount() const;
+
     // Público apenas para que a função de ponte com o miniaudio, no .cpp,
     // possa acessá-la. O tipo é declarado sem definição aqui, então ninguém
     // de fora consegue fazer nada com ele — é opaco na prática.

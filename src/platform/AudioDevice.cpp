@@ -31,6 +31,12 @@ struct AudioDevice::Impl
     std::atomic<std::uint64_t> lastCallbackMicros{0};
     std::atomic<std::uint64_t> maxCallbackMicros{0};
     std::atomic<std::size_t> overBudgetBlocks{0};
+
+    // Escritos pelo miniaudio a partir da thread de notificação dele — que
+    // não é necessariamente a mesma do callback de áudio —, lidos no
+    // controle. Atômicos pelo mesmo motivo dos outros.
+    std::atomic<std::size_t> rerouteCount{0};
+    std::atomic<std::size_t> interruptionCount{0};
 };
 
 namespace
@@ -88,6 +94,33 @@ void dataCallback(ma_device* device, void* output, const void* input, ma_uint32 
         }
     }
 }
+
+// O miniaudio chama isto quando o estado do stream muda por fora do nosso
+// controle. Só incrementa contadores — nada de log pesado nem alocação,
+// porque não temos garantia de que thread o backend usa para notificar.
+void notificationCallback(const ma_device_notification* notification)
+{
+    auto* impl = static_cast<AudioDevice::Impl*>(notification->pDevice->pUserData);
+
+    if (impl == nullptr)
+    {
+        return;
+    }
+
+    switch (notification->type)
+    {
+        case ma_device_notification_type_rerouted:
+            impl->rerouteCount.fetch_add(1, std::memory_order_relaxed);
+            break;
+
+        case ma_device_notification_type_interruption_began:
+            impl->interruptionCount.fetch_add(1, std::memory_order_relaxed);
+            break;
+
+        default:
+            break;
+    }
+}
 }
 
 AudioDevice::AudioDevice()
@@ -126,6 +159,8 @@ bool AudioDevice::start(ProcessCallback callback, Mode mode, double sampleRate, 
     m_impl->lastCallbackMicros.store(0, std::memory_order_relaxed);
     m_impl->maxCallbackMicros.store(0, std::memory_order_relaxed);
     m_impl->overBudgetBlocks.store(0, std::memory_order_relaxed);
+    m_impl->rerouteCount.store(0, std::memory_order_relaxed);
+    m_impl->interruptionCount.store(0, std::memory_order_relaxed);
 
     // O backend nulo é escolhido explicitamente; nos outros modos deixamos o
     // miniaudio decidir, para que ele use CoreAudio, WASAPI ou ALSA conforme
@@ -173,6 +208,7 @@ bool AudioDevice::start(ProcessCallback callback, Mode mode, double sampleRate, 
     config.sampleRate = static_cast<ma_uint32>(sampleRate);
     config.periodSizeInFrames = static_cast<ma_uint32>(blockSize);
     config.dataCallback = dataCallback;
+    config.notificationCallback = notificationCallback;
     config.pUserData = m_impl.get();
 
     result = ma_device_init(&m_impl->context, &config, &m_impl->device);
@@ -271,4 +307,14 @@ std::uint64_t AudioDevice::maxCallbackMicros() const
 std::size_t AudioDevice::overBudgetBlocks() const
 {
     return m_impl->overBudgetBlocks.load(std::memory_order_relaxed);
+}
+
+std::size_t AudioDevice::rerouteCount() const
+{
+    return m_impl->rerouteCount.load(std::memory_order_relaxed);
+}
+
+std::size_t AudioDevice::interruptionCount() const
+{
+    return m_impl->interruptionCount.load(std::memory_order_relaxed);
 }

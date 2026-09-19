@@ -132,6 +132,16 @@ std::size_t LiveEngine::overBudgetBlocks() const
     return m_device.overBudgetBlocks();
 }
 
+std::size_t LiveEngine::rerouteCount() const
+{
+    return m_device.rerouteCount();
+}
+
+std::size_t LiveEngine::interruptionCount() const
+{
+    return m_device.interruptionCount();
+}
+
 void LiveEngine::processBlock(float* output,
                               const float* input,
                               std::size_t frameCount,
