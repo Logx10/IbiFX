@@ -3,8 +3,10 @@
 Fases de alto nível. Cada uma será iniciada apenas quando a anterior estiver
 compreendida e funcionando.
 
-**Fases 0 a 7 concluídas.** Tempo real tocando pela placa de som, com
-interface de terminal. Fase 8 (Pedalboard) começando.
+**Fases 0 a 8 concluídas.** Tempo real tocando pela placa de som, com
+interface de terminal e pedalboard completo (gate, compressor, filtro,
+drive simétrico e assimétrico, delay, reverb, limiter). Fase 9 (Amp
+Simulation) é a próxima.
 
 | # | Fase | Objetivo |
 |---|------|----------|
@@ -132,7 +134,7 @@ interface de terminal. Fase 8 (Pedalboard) começando.
     novo, `Limiter`, sempre por último na cadeia — ver o comentário em
     `src/Limiter.h` para o raciocínio completo.
 
-- **Fase 8 — Pedalboard.** Em andamento.
+- **Fase 8 — Pedalboard.** Concluída.
   Da lista do §32 do AI_GUIDELINES (Noise Gate, Compressor, Overdrive,
   Distortion, Delay, Reverb): `Overdrive`/`Distortion` já existiam como
   `SoftClipper`/`Clipper`, e `Delay` já existia.
@@ -156,8 +158,20 @@ interface de terminal. Fase 8 (Pedalboard) começando.
   colorir o timbre). Comprimentos dos delays vêm do Freeverb (domínio
   público), escalados pelo sample rate real. Fica depois do `Delay` na
   cadeia: molha o eco discreto numa cauda contínua, não o contrário.
-  Com isso, a lista do §32 está completa. Falta só, da lista do §25, uma
-  distorção assimétrica.
+  `AsymmetricClipper` — a mesma curva do `SoftClipper`, deslocada por um
+  bias que simula o ponto de polarização de um estágio single-ended: os dois
+  semiciclos saturam diferente, acrescentando harmônicos pares (som
+  "quente") além dos ímpares que uma curva simétrica produz sozinha. Não
+  entra na cadeia padrão — `SoftClipper` já cumpre o papel de distorção — e
+  sim troca de lugar com ele via `--asymmetric`, para não empilhar uma
+  segunda distorção sem pedido. Um teste pegou a saída passando de ±1 (a
+  diferença de duas tanh não tem a mesma garantia de faixa que uma tanh
+  sozinha) e outro revelou uma propriedade real do desenho: no lado do
+  sinal que compartilha o sinal do bias, mais drive pode ENCOLHER a
+  distorção em vez de aumentar — os dois termos convergem pra mesma
+  assíntota. Não é bug, é a física de um estágio "faminto" de um lado.
+  Com isso, tanto a lista do §32 quanto o pendente do §25 estão completos.
+  Fase 8 encerrada.
 
 ## Regra
 
