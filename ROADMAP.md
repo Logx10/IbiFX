@@ -6,7 +6,8 @@ compreendida e funcionando.
 **Fases 0 a 8 concluídas.** Tempo real tocando pela placa de som, com
 interface de terminal e pedalboard completo (gate, compressor, filtro,
 drive simétrico e assimétrico, delay, reverb, limiter). Fase 9 (Amp
-Simulation) é a próxima.
+Simulation) em andamento — Tone Stack pronto, faltam Preamp multi-estágio
+e Power Amp.
 
 | # | Fase | Objetivo |
 |---|------|----------|
@@ -172,6 +173,19 @@ Simulation) é a próxima.
   assíntota. Não é bug, é a física de um estágio "faminto" de um lado.
   Com isso, tanto a lista do §32 quanto o pendente do §25 estão completos.
   Fase 8 encerrada.
+
+- **Fase 9 — Amp Simulation.** Em andamento.
+  Objetivo do §33: `Preamp -> Tone Stack -> Power Amp`. `ToneStack`
+  concluído — implementado a partir da fonte primária (Yeh & Smith,
+  DAFx-06, CCRMA/Stanford), não de memória: análise nodal simbólica do
+  circuito passivo real do Fender '59 Bassman, verificada pelos autores
+  contra SPICE, discretizada por transformada bilinear num filtro IIR de
+  3ª ordem. Reproduz a interação real entre bass/mid/treble (os três
+  controles não são independentes — são nós do mesmo circuito RC) que um
+  EQ de filtros separados não reproduziria. Um achado do próprio artigo: só
+  bass e mid controlam os polos do sistema, treble só move os zeros.
+  Ainda não entra na cadeia padrão — `--tonestack` liga. Faltam Preamp
+  multi-estágio e Power Amp pra fechar a fase.
 
 ## Regra
 
