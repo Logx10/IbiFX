@@ -6,7 +6,8 @@ compreendida e funcionando.
 **Fases 0 a 8 concluídas.** Tempo real tocando pela placa de som, com
 interface de terminal e pedalboard completo (gate, compressor, filtro,
 drive simétrico e assimétrico, delay, reverb, limiter). Fase 9 (Amp
-Simulation) em andamento — Tone Stack e Preamp prontos, falta Power Amp.
+Simulation) concluída — Tone Stack, Preamp e Power Amp prontos. Fase 10
+(Cabinet/IR) é a próxima.
 
 | # | Fase | Objetivo |
 |---|------|----------|
@@ -173,7 +174,7 @@ Simulation) em andamento — Tone Stack e Preamp prontos, falta Power Amp.
   Com isso, tanto a lista do §32 quanto o pendente do §25 estão completos.
   Fase 8 encerrada.
 
-- **Fase 9 — Amp Simulation.** Em andamento.
+- **Fase 9 — Amp Simulation.** Concluída.
   Objetivo do §33: `Preamp -> Tone Stack -> Power Amp`. `ToneStack`
   concluído — implementado a partir da fonte primária (Yeh & Smith,
   DAFx-06, CCRMA/Stanford), não de memória: análise nodal simbólica do
@@ -193,7 +194,22 @@ Simulation) em andamento — Tone Stack e Preamp prontos, falta Power Amp.
   precisar de lógica extra. 3 estágios fixo por enquanto, não é parâmetro.
   Troca de lugar com `SoftClipper`/`AsymmetricClipper` via `--preamp`, não
   acrescenta uma segunda distorção à cadeia padrão.
-  Falta Power Amp pra fechar a fase.
+  `PowerAmp` concluído — a diferença pro `Preamp` é ter MEMÓRIA: um
+  envelope de nível (mesmo filtro de um polo do `NoiseGate`/`Compressor`,
+  agora em `OnePole.h`) acompanha o volume sustentado recente, não a
+  amostra instantânea, e aumenta o drive efetivo da saturação conforme esse
+  volume sobe — simula o "sag" da fonte de alimentação sob carga pesada.
+  Uma seção tocada forte deixa a nota seguinte mais comprimida mesmo que
+  ela mesma seja fraca. Tempos de ataque/release bem mais lentos (50ms/
+  300ms) que os do gate ou do compressor, de propósito: reage à música, não
+  à nota. `onePoleCoefficient` foi extraído pra `OnePole.h` nesta fase —
+  era a terceira repetição da fórmula (`NoiseGate`, `Compressor`,
+  `PowerAmp`), e o próprio comentário no `Compressor.cpp` já previa que a
+  terceira vez seria o sinal pra extrair (regra do §55).
+  Não entra na cadeia padrão — `--poweramp` liga, no fim, antes do
+  `Limiter`.
+  Com isso, `Preamp -> Tone Stack -> Power Amp` (§33) está completo. Fase 9
+  encerrada.
 
 ## Regra
 
