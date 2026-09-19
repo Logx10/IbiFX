@@ -2,6 +2,8 @@
 
 #include <cmath>
 
+#include "OnePole.h"
+
 namespace
 {
 // 2 ms: rápido o bastante para o ataque de uma nota tocada normalmente não
@@ -10,24 +12,6 @@ namespace
 // caso de uso real pediu isso — abre-se um parâmetro quando houver um
 // problema concreto, não por antecipação.
 constexpr float kAttackSeconds = 0.002f;
-
-// Converte um tempo em segundos no coeficiente de um filtro de um polo:
-//
-//     atual += coeficiente * (alvo - atual)
-//
-// Quanto maior o coeficiente, mais rápido "atual" se aproxima de "alvo" a
-// cada amostra. A fórmula vem de pedir que, depois de `seconds` segundos, a
-// distância até o alvo tenha caído para 1/e (~37%) do valor inicial — a
-// definição usual de "tempo de resposta" de um filtro exponencial.
-float onePoleCoefficient(float seconds, double sampleRate)
-{
-    if (seconds <= 0.0f)
-    {
-        return 1.0f;
-    }
-
-    return 1.0f - std::exp(-1.0f / (seconds * static_cast<float>(sampleRate)));
-}
 }
 
 NoiseGate::NoiseGate()

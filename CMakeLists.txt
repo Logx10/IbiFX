@@ -120,6 +120,7 @@ add_library(ibifx_core STATIC
     src/AsymmetricClipper.cpp
     src/ToneStack.cpp
     src/Preamp.cpp
+    src/PowerAmp.cpp
     src/ModuleChain.cpp
     src/AudioModule.cpp
     src/Parameter.cpp

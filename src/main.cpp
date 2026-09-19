@@ -21,6 +21,7 @@
 #include "Limiter.h"
 #include "ModuleChain.h"
 #include "NoiseGate.h"
+#include "PowerAmp.h"
 #include "Preamp.h"
 #include "Reverb.h"
 #include "SoftClipper.h"
@@ -357,6 +358,8 @@ struct ChainSettings
     float toneMid = 0.5f;
     float toneTreble = 0.5f;
     float preampDrive = 1.0f;
+    float powerAmpDrive = 1.0f;
+    float powerAmpSag = 0.3f;
 
     bool useGate = true;
     bool useCompressor = true;
@@ -367,6 +370,7 @@ struct ChainSettings
     bool useToneStack = false;
     bool useDelay = true;
     bool useReverb = true;
+    bool usePowerAmp = false;
 };
 
 // Monta a cadeia — um pedal de drive seguido de eco.
@@ -482,6 +486,17 @@ void buildChain(ModuleChain& chain, const ChainSettings& settings)
         chain.add(std::move(reverb));
     }
 
+    // Power amp vem por ultimo entre os estagios de amplificacao, depois de
+    // tudo o mais ja ter formado o sinal — e o ultimo estagio de verdade
+    // antes da saida, tanto na cadeia quanto num ampli real.
+    if (settings.usePowerAmp)
+    {
+        auto powerAmp = std::make_unique<PowerAmp>();
+        powerAmp->setDrive(settings.powerAmpDrive);
+        powerAmp->setSag(settings.powerAmpSag);
+        chain.add(std::move(powerAmp));
+    }
+
     // Sempre por último, e sem "use": não é uma cor de pedal que se liga ou
     // desliga, é a garantia de que nada que sair daqui passa de 1.0 — vale
     // tanto para a cadeia cheia quanto para qualquer subconjunto dela.
@@ -560,6 +575,12 @@ ChainSettings parseSettings(int argc, char** argv, int first)
             continue;
         }
 
+        if (option == "--poweramp")
+        {
+            settings.usePowerAmp = true;
+            continue;
+        }
+
         if (i + 1 >= argc)
         {
             throw std::runtime_error("a opcao " + option + " precisa de um valor");
@@ -597,6 +618,8 @@ ChainSettings parseSettings(int argc, char** argv, int first)
         else if (option == "--reverb-decay")    settings.reverbDecay = value;
         else if (option == "--reverb-damping")  settings.reverbDamping = value;
         else if (option == "--reverb-mix")      settings.reverbMix = value;
+        else if (option == "--poweramp-drive")  settings.powerAmpDrive = value;
+        else if (option == "--poweramp-sag")    settings.powerAmpSag = value;
         else throw std::runtime_error("opcao desconhecida: " + option);
     }
 
@@ -664,6 +687,9 @@ void printUsage(const char* program)
               << "  --reverb-decay N    duracao da cauda        (0 a 0.98, padrao 0.5)\n"
               << "  --reverb-damping N  quanto a cauda escurece (0 a 1,    padrao 0.5)\n"
               << "  --reverb-mix N      quanto do reverb na saida (0 a 1,  padrao 0.3)\n"
+              << "  --poweramp      acrescenta o estagio de power amp (com sag) no fim\n"
+              << "  --poweramp-drive N  (so com --poweramp)  (0.1 a 5, padrao 1.0)\n"
+              << "  --poweramp-sag N    (so com --poweramp)  (0 a 1,   padrao 0.3)\n"
               << "  --no-gate       tira o noise gate da cadeia\n"
               << "  --no-compressor tira o compressor da cadeia\n"
               << "  --no-highpass  tira o filtro da cadeia\n"

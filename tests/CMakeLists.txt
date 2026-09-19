@@ -169,6 +169,13 @@ add_executable(test_preamp
 target_compile_options(test_preamp PRIVATE ${IBIFX_WARNINGS})
 target_link_libraries(test_preamp PRIVATE ibifx_core)
 
+add_executable(test_power_amp
+    test_power_amp.cpp
+)
+
+target_compile_options(test_power_amp PRIVATE ${IBIFX_WARNINGS})
+target_link_libraries(test_power_amp PRIVATE ibifx_core)
+
 # Registra cada executável como um teste do CTest.
 #
 #   NAME     como o teste aparece nos relatórios
@@ -203,3 +210,4 @@ add_test(NAME reverb COMMAND test_reverb)
 add_test(NAME asymmetric_clipper COMMAND test_asymmetric_clipper)
 add_test(NAME tone_stack COMMAND test_tone_stack)
 add_test(NAME preamp COMMAND test_preamp)
+add_test(NAME power_amp COMMAND test_power_amp)

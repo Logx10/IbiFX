@@ -3,22 +3,10 @@
 #include <algorithm>
 #include <cmath>
 
+#include "OnePole.h"
+
 namespace
 {
-// Repetida do NoiseGate.cpp — é a segunda vez que esta fórmula aparece no
-// projeto. Pela regra do §55 do AI_GUIDELINES ("primeiro problema: resolver;
-// segundo: observar; terceiro: considerar abstração"), ainda não é hora de
-// extrair para um lugar comum. Se aparecer uma terceira vez, é o sinal.
-float onePoleCoefficient(float seconds, double sampleRate)
-{
-    if (seconds <= 0.0f)
-    {
-        return 1.0f;
-    }
-
-    return 1.0f - std::exp(-1.0f / (seconds * static_cast<float>(sampleRate)));
-}
-
 // Piso de amplitude antes de converter pra dB. log10(0) é -infinito, e
 // -infinito contamina qualquer conta que o use depois. -120 dB (o piso que
 // este valor produz) já está bem abaixo do que qualquer amostra de áudio
