@@ -29,6 +29,38 @@ std::vector<float> generateSine(double frequency, float amplitude = 0.5f, std::s
 
     return signal;
 }
+
+// Uma nota "de guitarra de verdade" para efeitos de teste: fundamental
+// FRACA, harmônicos (2×, 3×) mais FORTES que ela — o que motivou trocar
+// autocorrelação simples por YIN (ver Tuner.h). Amplitudes escolhidas pra
+// exagerar o problema de propósito: se o detector confundisse fundamental
+// com harmônico, é exatamente aqui que apareceria.
+std::vector<float> generateNoteWithStrongHarmonics(double fundamentalHz, std::size_t sampleCount = 4096)
+{
+    std::vector<float> signal(sampleCount, 0.0f);
+
+    const struct { double multiplier; float amplitude; } partials[] = {
+        {1.0, 0.15f},  // fundamental, fraca de propósito
+        {2.0, 0.5f},   // 2º harmônico, mais forte que a fundamental
+        {3.0, 0.3f},   // 3º harmônico
+    };
+
+    for (std::size_t i = 0; i < sampleCount; ++i)
+    {
+        float sample = 0.0f;
+
+        for (const auto& partial : partials)
+        {
+            const double phase = 2.0 * 3.14159265358979323846 * fundamentalHz * partial.multiplier
+                                * static_cast<double>(i) / kSampleRate;
+            sample += partial.amplitude * static_cast<float>(std::sin(phase));
+        }
+
+        signal[i] = sample;
+    }
+
+    return signal;
+}
 }
 
 // ---------------------------------------------------------------------
@@ -102,6 +134,27 @@ void testSharpNoteShowsPositiveCents()
     check(tuner.centsOff() > 10.0f, "cents e claramente positivo (desafinado pra cima)");
 }
 
+// O CASO QUE MOTIVOU TROCAR AUTOCORRELAÇÃO POR YIN: testado ao vivo, o mi
+// grave saía detectado como outra nota a cada janela — o sinal real tem
+// harmônicos mais fortes que a fundamental, e a autocorrelação simples
+// confundia um harmônico com o período de verdade. Reproduzido aqui com um
+// sinal sintético onde o 2º harmônico é deliberadamente mais forte que a
+// fundamental.
+void testDetectsFundamentalDespiteStrongHarmonics()
+{
+    std::cout << "acha a fundamental mesmo com harmonicos mais fortes\n";
+
+    std::vector<float> buffer = generateNoteWithStrongHarmonics(82.41);
+
+    Tuner tuner;
+    tuner.prepare(kSampleRate, 64);
+    tuner.process(buffer);
+
+    check(tuner.isValid(), "isValid() e verdadeiro");
+    check(tuner.noteName() == "E2", "detecta E2 (a fundamental), nao E3 nem B3 (harmonicos)");
+    check(std::fabs(tuner.frequencyHz() - 82.41f) < 3.0f, "frequencia perto de 82.41 Hz, nao do dobro/triplo");
+}
+
 // process() não altera o áudio que passa por ele — o Tuner só escuta.
 void testDoesNotModifyTheSignal()
 {
@@ -170,6 +223,7 @@ int main()
     testDetectsA440();
     testDetectsLowE();
     testSharpNoteShowsPositiveCents();
+    testDetectsFundamentalDespiteStrongHarmonics();
     testDoesNotModifyTheSignal();
     testResetClearsTheReading();
     testEmptyBufferDoesNotCrash();

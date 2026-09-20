@@ -15,14 +15,14 @@ constexpr std::size_t kWindowSize = 2048;
 constexpr float kMinFrequencyHz = 70.0f;
 constexpr float kMaxFrequencyHz = 1200.0f;
 
-// Abaixo disso, a janela é silêncio/ruído de fundo — nem vale rodar a
-// autocorrelação.
+// Abaixo disso, a janela é silêncio/ruído de fundo — nem vale rodar o YIN.
 constexpr float kMinEnergy = 0.0005f;
 
-// Correlação normalizada mínima pra aceitar uma leitura como confiável.
-// Um tom limpo e sustentado costuma passar de 0.6-0.9; ruído fica bem
-// abaixo disso.
-constexpr float kMinConfidence = 0.35f;
+// Limiar do YIN: d'(lag) precisa cair abaixo disso pra virar candidato.
+// 0.15 é o valor de referência do artigo original para sinal com algum
+// ruído — 0.1 seria mais rígido (mais preciso em sinal limpo, mais
+// propenso a não achar nada em sinal ruidoso).
+constexpr float kYinThreshold = 0.15f;
 
 constexpr float kA4Frequency = 440.0f;
 constexpr int kA4MidiNumber = 69;
@@ -33,9 +33,12 @@ const char* const kNoteNames[12] =
 
 Tuner::Tuner()
 {
-    // Alocado uma vez, no construtor — não depende do sample rate (é um
-    // número fixo de amostras), então não precisa esperar o prepare().
+    // Alocados uma vez, no construtor — nenhum depende do sample rate (são
+    // números fixos de amostras), então não precisam esperar o prepare(), e
+    // analyzeWindow() nunca aloca dentro da thread de áudio.
     m_window.assign(kWindowSize, 0.0f);
+    m_difference.assign(kWindowSize, 0.0f);
+    m_cumulativeMeanDifference.assign(kWindowSize, 1.0f);
 }
 
 const char* Tuner::name() const
@@ -75,20 +78,11 @@ void Tuner::process(std::vector<float>& buffer)
 
 namespace
 {
-// Média (não soma) do produto amostra-a-amostra do sinal com uma cópia
-// deslocada de si mesmo por `lag` amostras.
-//
-// POR QUE MÉDIA, E NÃO SOMA BRUTA
-// Um lag maior sobrepõe MENOS pares de amostras (window.size() - lag). Uma
-// soma bruta cresce com a quantidade de termos somados, então lags curtos
-// ganham uma vantagem artificial só por somarem mais parcelas — mesmo que
-// cada parcela, em média, esteja menos correlacionada. Isso favorece
-// exatamente o lag errado: sem dividir pela quantidade de termos, a busca
-// abaixo encontrava sempre o menor lag da faixa (a frequência mais aguda
-// permitida), não o período de verdade do sinal. Dividir pela quantidade de
-// termos sobrepostos remove esse viés e deixa lags diferentes comparáveis
-// entre si.
-float correlationAtLag(const std::vector<float>& window, int lag)
+// Soma do quadrado da diferença amostra a amostra entre o sinal e uma cópia
+// deslocada de si mesmo por `lag` amostras — d(lag) do YIN. Ver o
+// comentário na classe (Tuner.h) sobre por que diferença, e não semelhança
+// como a autocorrelação usava antes.
+float differenceAtLag(const std::vector<float>& window, int lag)
 {
     const std::size_t count = window.size() - static_cast<std::size_t>(lag);
 
@@ -96,31 +90,24 @@ float correlationAtLag(const std::vector<float>& window, int lag)
 
     for (std::size_t i = 0; i < count; ++i)
     {
-        sum += window[i] * window[i + static_cast<std::size_t>(lag)];
+        const float diff = window[i] - window[i + static_cast<std::size_t>(lag)];
+        sum += diff * diff;
     }
 
-    return sum / static_cast<float>(count);
+    return sum;
 }
 }
 
-// Autocorrelação: compara o sinal com uma cópia deslocada de si mesmo, pra
-// cada deslocamento (lag) candidato dentro da faixa de frequência de
-// interesse. Um sinal periódico produz uma correlação alta no lag igual ao
-// período — e TAMBÉM em qualquer múltiplo inteiro dele (2×, 3×...), porque
-// duas cópias deslocadas por dois períodos inteiros ficam tão alinhadas
-// quanto por um período só. Uma onda de 440 Hz "parece" tanto com ela mesma
-// deslocada por 1 período quanto por 5.
+// YIN: ver o comentário completo em Tuner.h. Resumo dos passos:
 //
-// POR QUE PARAR NO PRIMEIRO PICO, NÃO NO MAIOR
-// Se a busca pegasse o lag de MAIOR correlação em toda a faixa, um múltiplo
-// do período verdadeiro poderia vencer por uma margem numérica mínima —
-// aconteceu na prática: a primeira versão deste código detectava 440 Hz
-// como 88 Hz (lag 5× maior) só porque a correlação nesse lag saiu
-// marginalmente mais alta. É o "erro de oitava" clássico de detecção de
-// altura por autocorrelação. A correção: caminhar dos lags mais curtos para
-// os mais longos e parar no PRIMEIRO máximo local que passe do limiar de
-// confiança — o período fundamental sempre aparece antes de qualquer
-// múltiplo dele, porque é o de menor lag.
+//   1. d(lag) para cada lag: soma do quadrado da diferença amostra a
+//      amostra entre o sinal e sua cópia deslocada.
+//   2. d'(lag): d(lag) normalizado pela média acumulada de d(1..lag) — cai
+//      perto de 0 exatamente no período verdadeiro, mesmo com harmônicos
+//      fortes atrapalhando.
+//   3. Primeiro lag, dentro da faixa de frequência de interesse, em que
+//      d'(lag) cruza um limiar baixo — e a partir daí, desce até o mínimo
+//      local (o fundo do vale), não para assim que cruza a linha.
 void Tuner::analyzeWindow()
 {
     float energy = 0.0f;
@@ -137,42 +124,48 @@ void Tuner::analyzeWindow()
         return;
     }
 
-    // energy é a SOMA bruta (usada só no piso de silêncio acima); a busca
-    // abaixo compara contra a MÉDIA, para ficar na mesma grandeza da
-    // correlação, que também é uma média (ver correlationAtLag).
-    const float meanEnergy = energy / static_cast<float>(m_window.size());
-
     const int minLag = static_cast<int>(m_sampleRate / kMaxFrequencyHz);
     const int maxLag = std::min(
         static_cast<int>(m_sampleRate / kMinFrequencyHz),
         static_cast<int>(m_window.size()) - 1);
 
-    float bestCorrelation = 0.0f;
-    int bestLag = -1;
+    // Passos 1 e 2. Calculados para TODO lag de 1 até maxLag, não só dentro
+    // de [minLag, maxLag]: a média acumulada em qualquer lag depende de
+    // todos os d(j) anteriores a ele, incluindo os de frequência mais aguda
+    // que kMaxFrequencyHz.
+    m_difference[0] = 0.0f;
+    m_cumulativeMeanDifference[0] = 1.0f;
 
-    float previousCorrelation = correlationAtLag(m_window, minLag);
-    bool wasRising = false;
+    float runningSum = 0.0f;
 
-    for (int lag = minLag + 1; lag <= maxLag; ++lag)
+    for (int lag = 1; lag <= maxLag; ++lag)
     {
-        const float currentCorrelation = correlationAtLag(m_window, lag);
-        const bool isRising = currentCorrelation > previousCorrelation;
+        m_difference[lag] = differenceAtLag(m_window, lag);
+        runningSum += m_difference[lag];
 
-        // Acabou de passar de subindo para descendo: lag-1 foi um máximo
-        // local. Só aceita como candidato se for confiável o bastante pra
-        // não ser apenas ruído balançando.
-        if (wasRising && !isRising && previousCorrelation / meanEnergy > kMinConfidence)
-        {
-            bestLag = lag - 1;
-            bestCorrelation = previousCorrelation;
-            break;
-        }
-
-        wasRising = isRising;
-        previousCorrelation = currentCorrelation;
+        m_cumulativeMeanDifference[lag] =
+            (runningSum > 0.0f) ? m_difference[lag] * static_cast<float>(lag) / runningSum : 1.0f;
     }
 
-    if (bestLag <= 0)
+    // Passo 3.
+    int candidateLag = -1;
+
+    for (int lag = minLag; lag <= maxLag; ++lag)
+    {
+        if (m_cumulativeMeanDifference[lag] < kYinThreshold)
+        {
+            while (lag + 1 <= maxLag
+                && m_cumulativeMeanDifference[lag + 1] < m_cumulativeMeanDifference[lag])
+            {
+                ++lag;
+            }
+
+            candidateLag = lag;
+            break;
+        }
+    }
+
+    if (candidateLag <= 0)
     {
         m_frequencyHz.store(0.0f, std::memory_order_relaxed);
         m_valid.store(false, std::memory_order_relaxed);
@@ -183,22 +176,24 @@ void Tuner::analyzeWindow()
     //
     // Um lag inteiro sozinho tem resolução ruim: perto de 440 Hz, o passo
     // entre um lag e o vizinho já corresponde a dezenas de cents — grosseiro
-    // demais pra um afinador (que precisa distinguir uns poucos cents).
-    // A correlação em volta do pico verdadeiro tem formato aproximadamente
-    // parabólico; ajustando uma parábola pelos três pontos (bestLag-1,
-    // bestLag, bestLag+1) e achando o vértice dela, a estimativa do lag
-    // "verdadeiro" fica entre amostras inteiras, não presa a uma delas.
-    float refinedLag = static_cast<float>(bestLag);
+    // demais pra um afinador (que precisa distinguir uns poucos cents). O
+    // vale de d'(lag) em volta do mínimo verdadeiro tem formato
+    // aproximadamente parabólico; ajustando uma parábola pelos três pontos
+    // (candidateLag-1, candidateLag, candidateLag+1) e achando o vértice
+    // dela, a estimativa do lag "verdadeiro" fica entre amostras inteiras,
+    // não presa a uma delas.
+    float refinedLag = static_cast<float>(candidateLag);
 
-    if (bestLag > minLag && bestLag < maxLag)
+    if (candidateLag > 1 && candidateLag < maxLag)
     {
-        const float corrPrev = correlationAtLag(m_window, bestLag - 1);
-        const float corrNext = correlationAtLag(m_window, bestLag + 1);
-        const float denominator = corrPrev - 2.0f * bestCorrelation + corrNext;
+        const float dPrev = m_cumulativeMeanDifference[candidateLag - 1];
+        const float dCurr = m_cumulativeMeanDifference[candidateLag];
+        const float dNext = m_cumulativeMeanDifference[candidateLag + 1];
+        const float denominator = dPrev - 2.0f * dCurr + dNext;
 
         if (denominator != 0.0f)
         {
-            refinedLag += 0.5f * (corrPrev - corrNext) / denominator;
+            refinedLag += 0.5f * (dPrev - dNext) / denominator;
         }
     }
 

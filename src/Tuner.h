@@ -14,18 +14,50 @@
 // e guardar um resultado (frequencyHz(), noteName(), centsOff()) pra quem
 // estiver do lado de fora ler, como o terminal ou uma UI.
 //
-// COMO DETECTA A ALTURA: AUTOCORRELAÇÃO
-// A ideia: um sinal periódico se parece consigo mesmo quando deslocado
-// exatamente um período. Pra cada deslocamento (lag) candidato, soma o
-// produto amostra-a-amostra do sinal com sua cópia deslocada — um sinal
-// periódico produz uma soma grande exatamente no lag igual ao período (e em
-// múltiplos dele); ruído não produz pico nenhum. O lag com a maior soma
-// dessa "auto-comparação", dentro da faixa de frequências de um violão/
-// guitarra, dá o período — e frequência = sampleRate / período.
+// COMO DETECTA A ALTURA: YIN (De Cheveigné & Kawahara, 2002)
 //
-// Um lag inteiro sozinho é grosseiro demais (dezenas de cents de erro perto
-// de 440 Hz), então o lag vencedor é refinado por interpolação parabólica
-// entre ele e seus dois vizinhos — ver o comentário em analyzeWindow().
+// A PRIMEIRA VERSÃO USAVA AUTOCORRELAÇÃO SIMPLES, E FALHAVA EM SINAL REAL
+// Autocorrelação soma o produto do sinal com uma cópia deslocada de si
+// mesmo — um sinal periódico produz uma soma alta no lag igual ao período
+// verdadeiro, mas TAMBÉM em lags que correspondem a harmônicos fortes (o
+// dobro da frequência, o triplo...). Numa onda senoidal pura de teste isso
+// não aparece, porque não há harmônico nenhum. Numa corda de guitarra de
+// verdade, com sobretons — às vezes um harmônico mais forte que a própria
+// fundamental, dependendo da posição do captador —, a autocorrelação
+// simples confundia qual pico era o "de verdade": testado ao vivo, o mi
+// grave (~82 Hz) saía detectado ora como outro harmônico dele, pulando de
+// nota a cada janela de análise.
+//
+// A DIFERENÇA DO YIN: EM VEZ DE SEMELHANÇA, MEDE DIFERENÇA
+// Onde a autocorrelação pergunta "o quanto o sinal se PARECE com uma cópia
+// deslocada?", o YIN pergunta "o quanto o sinal DIFERE de uma cópia
+// deslocada?" — soma o quadrado da diferença, amostra a amostra, em vez do
+// produto:
+//
+//     d(lag) = Σ (x[i] - x[i+lag])²
+//
+// No período verdadeiro, x[i] e x[i+lag] são praticamente a MESMA forma de
+// onda inteira — harmônicos incluídos —, então a diferença cai perto de
+// zero ali, de um jeito mais nítido do que a autocorrelação simples
+// consegue separar fundamental de harmônico.
+//
+// NORMALIZAÇÃO PELA MÉDIA ACUMULADA
+// d(lag) sozinho ainda cresce artificialmente pra lags maiores (menos
+// amostras sobrepostas — o mesmo problema que a versão de autocorrelação
+// já tinha). O YIN normaliza cada d(lag) pela MÉDIA de todos os d(1..lag)
+// vistos até ali:
+//
+//     d'(lag) = d(lag) / ( (1/lag) · Σ_{j=1}^{lag} d(j) )
+//
+// O resultado, d'(lag), fica perto de 1 quando não há periodicidade
+// nenhuma e cai bem abaixo de 1 exatamente no período verdadeiro — a busca
+// então é achar o PRIMEIRO lag, da frequência mais aguda pra mais grave (na
+// prática, do lag mais curto pro mais longo), em que d'(lag) cruza um
+// limiar baixo (kYinThreshold) e depois desce até um mínimo local.
+//
+// Um lag inteiro sozinho ainda é grosseiro demais (dezenas de cents de erro
+// perto de 440 Hz); o lag escolhido é refinado por interpolação parabólica
+// com os dois vizinhos, igual antes — ver o comentário em analyzeWindow().
 //
 // JANELA DE ANÁLISE, NÃO BLOCO A BLOCO
 // Detectar a nota mais grave de uma guitarra (mi grave, ~82 Hz) exige ver
@@ -89,6 +121,12 @@ private:
     // nunca lido de fora, então não precisa ser atômico.
     std::vector<float> m_window;
     std::size_t m_writePosition = 0;
+
+    // d(lag) e d'(lag) do YIN — pré-alocados no construtor, do tamanho da
+    // janela (limite superior seguro pra qualquer lag que a busca use), pra
+    // analyzeWindow() nunca alocar dentro da thread de áudio.
+    std::vector<float> m_difference;
+    std::vector<float> m_cumulativeMeanDifference;
 
     // ATÔMICOS PELO MESMO MOTIVO DO Parameter
     // process() escreve aqui na thread de áudio; noteName(), frequencyHz(),
