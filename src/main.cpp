@@ -13,6 +13,7 @@
 #include "LiveEngine.h"
 #include "PedalboardUI.h"
 #include "AsymmetricClipper.h"
+#include "Cabinet.h"
 #include "Clipper.h"
 #include "Compressor.h"
 #include "Delay.h"
@@ -361,6 +362,7 @@ struct ChainSettings
     float preampDrive = 1.0f;
     float powerAmpDrive = 1.0f;
     float powerAmpSag = 0.3f;
+    float cabinetMix = 1.0f;
 
     bool useGate = true;
     bool useCompressor = true;
@@ -372,6 +374,10 @@ struct ChainSettings
     bool useDelay = true;
     bool useReverb = true;
     bool usePowerAmp = false;
+
+    // Vazio = sem cabinet. Diferente das outras flags "use...", esta
+    // precisa de um caminho de arquivo, não só de ligar/desligar.
+    std::string cabinetIRPath;
 };
 
 // Monta a cadeia — um pedal de drive seguido de eco.
@@ -498,6 +504,18 @@ void buildChain(ModuleChain& chain, const ChainSettings& settings)
         chain.add(std::move(powerAmp));
     }
 
+    // Cabinet vem depois do power amp: e o que aconteceria fisicamente
+    // DEPOIS do sinal eletrico sair do estagio de saida — o alto-falante,
+    // o ar da sala, o microfone. Carrega a IR aqui, no dominio de
+    // controle, nunca dentro de um process().
+    if (!settings.cabinetIRPath.empty())
+    {
+        auto cabinet = std::make_unique<Cabinet>();
+        cabinet->loadImpulseResponseFile(settings.cabinetIRPath);
+        cabinet->setMix(settings.cabinetMix);
+        chain.add(std::move(cabinet));
+    }
+
     // Sempre por último, e sem "use": não é uma cor de pedal que se liga ou
     // desliga, é a garantia de que nada que sair daqui passa de 1.0 — vale
     // tanto para a cadeia cheia quanto para qualquer subconjunto dela.
@@ -582,6 +600,20 @@ ChainSettings parseSettings(int argc, char** argv, int first)
             continue;
         }
 
+        // --cabinet recebe um CAMINHO DE ARQUIVO, nao um numero — precisa
+        // ser tratado antes do laco generico abaixo, que tenta ler todo
+        // valor seguinte como float.
+        if (option == "--cabinet")
+        {
+            if (i + 1 >= argc)
+            {
+                throw std::runtime_error("a opcao --cabinet precisa do caminho de um arquivo .wav");
+            }
+
+            settings.cabinetIRPath = argv[++i];
+            continue;
+        }
+
         if (i + 1 >= argc)
         {
             throw std::runtime_error("a opcao " + option + " precisa de um valor");
@@ -621,6 +653,7 @@ ChainSettings parseSettings(int argc, char** argv, int first)
         else if (option == "--reverb-mix")      settings.reverbMix = value;
         else if (option == "--poweramp-drive")  settings.powerAmpDrive = value;
         else if (option == "--poweramp-sag")    settings.powerAmpSag = value;
+        else if (option == "--cabinet-mix")     settings.cabinetMix = value;
         else throw std::runtime_error("opcao desconhecida: " + option);
     }
 
@@ -692,6 +725,8 @@ void printUsage(const char* program)
               << "  --poweramp      acrescenta o estagio de power amp (com sag) no fim\n"
               << "  --poweramp-drive N  (so com --poweramp)  (0.1 a 5, padrao 1.0)\n"
               << "  --poweramp-sag N    (so com --poweramp)  (0 a 1,   padrao 0.3)\n"
+              << "  --cabinet arquivo.wav  convolve com uma impulse response\n"
+              << "  --cabinet-mix N     (so com --cabinet)   (0 a 1,   padrao 1.0)\n"
               << "  --no-gate       tira o noise gate da cadeia\n"
               << "  --no-compressor tira o compressor da cadeia\n"
               << "  --no-highpass  tira o filtro da cadeia\n"

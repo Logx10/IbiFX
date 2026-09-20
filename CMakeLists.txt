@@ -122,6 +122,9 @@ add_library(ibifx_core STATIC
     src/Preamp.cpp
     src/PowerAmp.cpp
     src/Tuner.cpp
+    src/IRLoader.cpp
+    src/ConvolutionEngine.cpp
+    src/Cabinet.cpp
     src/ModuleChain.cpp
     src/AudioModule.cpp
     src/Parameter.cpp

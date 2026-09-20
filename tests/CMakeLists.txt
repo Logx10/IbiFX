@@ -183,6 +183,27 @@ add_executable(test_tuner
 target_compile_options(test_tuner PRIVATE ${IBIFX_WARNINGS})
 target_link_libraries(test_tuner PRIVATE ibifx_core)
 
+add_executable(test_convolution_engine
+    test_convolution_engine.cpp
+)
+
+target_compile_options(test_convolution_engine PRIVATE ${IBIFX_WARNINGS})
+target_link_libraries(test_convolution_engine PRIVATE ibifx_core)
+
+add_executable(test_ir_loader
+    test_ir_loader.cpp
+)
+
+target_compile_options(test_ir_loader PRIVATE ${IBIFX_WARNINGS})
+target_link_libraries(test_ir_loader PRIVATE ibifx_core)
+
+add_executable(test_cabinet
+    test_cabinet.cpp
+)
+
+target_compile_options(test_cabinet PRIVATE ${IBIFX_WARNINGS})
+target_link_libraries(test_cabinet PRIVATE ibifx_core)
+
 # Registra cada executável como um teste do CTest.
 #
 #   NAME     como o teste aparece nos relatórios
@@ -219,3 +240,6 @@ add_test(NAME tone_stack COMMAND test_tone_stack)
 add_test(NAME preamp COMMAND test_preamp)
 add_test(NAME power_amp COMMAND test_power_amp)
 add_test(NAME tuner COMMAND test_tuner)
+add_test(NAME convolution_engine COMMAND test_convolution_engine)
+add_test(NAME ir_loader COMMAND test_ir_loader)
+add_test(NAME cabinet COMMAND test_cabinet)
