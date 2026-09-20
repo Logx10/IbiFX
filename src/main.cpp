@@ -26,6 +26,7 @@
 #include "Reverb.h"
 #include "SoftClipper.h"
 #include "ToneStack.h"
+#include "Tuner.h"
 #include "WavFile.h"
 #include "offline.h"
 
@@ -659,6 +660,7 @@ void printUsage(const char* program)
               << "  " << program << " --live [segundos] [bloco]  toca ao vivo pela placa de som\n"
               << "                            bloco: tamanho do bloco em amostras (padrao 128)\n"
               << "                            --no-toggle: nao alterna o bypass do drive sozinho\n"
+              << "  " << program << " --tuner [segundos]       afinador (padrao 60s)\n"
               << "  " << program << " --devices                testa o dispositivo sem hardware\n"
               << "  " << program << " --ui                     pedaleira interativa no terminal\n"
               << "  " << program << " --ui-demo                a pedaleira sem placa de som\n"
@@ -802,6 +804,58 @@ int runLive(double seconds, int blockSize, bool toggleDrive)
     return 0;
 }
 
+// Afinador: escuta a entrada, sem alterar o som, e mostra a nota mais
+// proxima. Usa a mesma cadeia Duplex do --live, com um unico modulo
+// passthrough.
+int runTuner(double seconds)
+{
+    LiveEngine engine;
+    engine.chain().add(std::make_unique<Tuner>());
+
+    std::cout << "afinador: toque uma corda e segure\n"
+              << "(o som passa direto pros fones, sem efeito nenhum)\n\n";
+
+    if (!engine.start(AudioDevice::Mode::Duplex, 48000.0, 128))
+    {
+        std::cerr << "erro: " << engine.lastError() << "\n";
+        return 1;
+    }
+
+    std::cout << "entrada: " << engine.captureDeviceName() << "\n\n";
+
+    // moduleAt() devolve a base AudioModule&; sabemos que e um Tuner porque
+    // foi o unico modulo adicionado acima. static_cast e seguro aqui, mas
+    // seria um bug se a cadeia mudasse sem atualizar este cast junto.
+    const auto& tuner = static_cast<const Tuner&>(engine.chain().moduleAt(0));
+
+    const auto inicio = std::chrono::steady_clock::now();
+
+    while (std::chrono::duration<double>(std::chrono::steady_clock::now() - inicio).count() < seconds)
+    {
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+        if (tuner.isValid())
+        {
+            const float cents = tuner.centsOff();
+            const char indicador = cents > 5.0f ? '>' : (cents < -5.0f ? '<' : '=');
+
+            std::cout << "\r  " << std::setw(4) << std::left << tuner.noteName()
+                       << std::right << std::fixed << std::setprecision(1)
+                       << std::setw(8) << tuner.frequencyHz() << " Hz   "
+                       << indicador << "  " << std::showpos << cents << std::noshowpos
+                       << " cents     " << std::flush;
+        }
+        else
+        {
+            std::cout << "\r  ...escutando...                              " << std::flush;
+        }
+    }
+
+    engine.stop();
+    std::cout << "\n\nparado.\n";
+    return 0;
+}
+
 // Abre a pedaleira interativa.
 int runInteractive(bool withHardware)
 {
@@ -907,6 +961,12 @@ int main(int argc, char** argv)
             const int blockSize = (posicionais.size() >= 2) ? std::stoi(posicionais[1]) : 128;
 
             return runLive(seconds, blockSize, toggleDrive);
+        }
+
+        if (argc >= 2 && std::string(argv[1]) == "--tuner")
+        {
+            const double seconds = (argc >= 3) ? std::stod(argv[2]) : 60.0;
+            return runTuner(seconds);
         }
 
         if (argc == 2 && std::string(argv[1]) == "--devices")
