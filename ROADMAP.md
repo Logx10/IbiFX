@@ -3,11 +3,12 @@
 Fases de alto nível. Cada uma será iniciada apenas quando a anterior estiver
 compreendida e funcionando.
 
-**Fases 0 a 8 concluídas.** Tempo real tocando pela placa de som, com
-interface de terminal e pedalboard completo (gate, compressor, filtro,
-drive simétrico e assimétrico, delay, reverb, limiter). Fase 9 (Amp
-Simulation) concluída — Tone Stack, Preamp e Power Amp prontos. Fase 10
-(Cabinet/IR) é a próxima.
+**Fases 0 a 10 concluídas.** Tempo real tocando pela placa de som, com
+interface de terminal, pedalboard completo (gate, compressor, filtro,
+drive simétrico e assimétrico, delay, reverb, limiter), simulação de
+amplificador (tone stack, preamp, power amp) e cabinet via convolução com
+impulse response. Um afinador (Tuner, via YIN) também foi construído fora
+da ordem do roadmap, a pedido direto. Fase 11 (Presets) é a próxima.
 
 | # | Fase | Objetivo |
 |---|------|----------|
@@ -210,6 +211,40 @@ Simulation) concluída — Tone Stack, Preamp e Power Amp prontos. Fase 10
   `Limiter`.
   Com isso, `Preamp -> Tone Stack -> Power Amp` (§33) está completo. Fase 9
   encerrada.
+
+- **Fase 10 — Cabinet / IR.** Concluída.
+  Convolução com impulse response (IR) de verdade, em vez de aproximar o
+  timbre de um gabinete/microfone com um EQ ajustado à mão — matematicamente
+  reproduz o que aquele sistema específico faria com o sinal. Três peças
+  separadas, como o §34 sugere pelo nome: `IRLoader` (lê a IR de um `.wav`,
+  reduz a mono pela média dos canais se for estéreo, reaproveitando
+  `wav::read` já existente), `ConvolutionEngine` (a matemática pura,
+  `y[n] = Σ h[k]·x[n-k]`, com um buffer circular guardando as últimas M
+  amostras — mesma ideia do `Delay`, só que lendo TODAS as M posições a
+  cada amostra de saída) e `Cabinet` (o `AudioModule` que amarra os dois,
+  com `mix` padrão em 1.0 — diferente de `Delay`/`Reverb`, um cabinet sim
+  substitui o timbre inteiro).
+  Custo O(M) por amostra é um limite conhecido e documentado: convolução
+  direta, não FFT — o próprio §34 já antecipa isso como o próximo passo
+  quando o custo se mostrar um problema de verdade, não antes.
+  Testado ponta a ponta com uma IR sintética (ruído + decaimento): o sinal
+  ficou bem mais quente que o esperado, encostando no teto do `Limiter` boa
+  parte do arquivo — característica da IR de teste improvisada (ruído
+  aleatório não é fisicamente representativo de um gabinete real, que não
+  amplifica energia), não bug na convolução, já verificada com valores
+  exatos calculados à mão nos testes.
+  Não entra na cadeia padrão — `--cabinet arquivo.wav` liga, entre o power
+  amp e o limiter.
+
+- **Tuner — fora da ordem do roadmap, a pedido direto.**
+  Detecção de altura por YIN (De Cheveigné & Kawahara, 2002), não
+  autocorrelação simples: testado ao vivo, a autocorrelação confundia a
+  fundamental do mi grave (~82 Hz) com harmônicos mais fortes que ela
+  (situação comum em captadores de guitarra reais) — o mesmo sinal
+  sintético e puro dos primeiros testes não expunha esse problema, por não
+  ter harmônico nenhum. YIN mede DIFERENÇA em vez de semelhança, e resolve
+  isso de forma muito mais robusta. `--tuner` mostra nota/frequência/cents
+  em tempo real, sem alterar o som.
 
 ## Regra
 
