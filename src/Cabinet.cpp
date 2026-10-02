@@ -10,6 +10,12 @@ Cabinet::Cabinet()
 void Cabinet::loadImpulseResponseFile(const std::string& path)
 {
     m_engine.setImpulseResponse(loadImpulseResponse(path));
+    m_irPath = path;
+}
+
+const std::string& Cabinet::irPath() const
+{
+    return m_irPath;
 }
 
 void Cabinet::setMix(float amount)

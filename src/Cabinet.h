@@ -45,6 +45,11 @@ public:
     // process().
     void loadImpulseResponseFile(const std::string& path);
 
+    // Caminho da última IR carregada, ou vazio se nenhuma foi. Existe para
+    // que um preset consiga salvar de volta o arquivo em uso — é o único
+    // estado do Cabinet que não é um Parameter.
+    const std::string& irPath() const;
+
     // Quanto do sinal convolvido entra na saída.
     void setMix(float amount);
     float mix() const;
@@ -58,4 +63,5 @@ public:
 
 private:
     ConvolutionEngine m_engine;
+    std::string m_irPath;
 };

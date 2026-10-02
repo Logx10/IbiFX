@@ -3,12 +3,13 @@
 Fases de alto nível. Cada uma será iniciada apenas quando a anterior estiver
 compreendida e funcionando.
 
-**Fases 0 a 10 concluídas.** Tempo real tocando pela placa de som, com
+**Fases 0 a 11 concluídas.** Tempo real tocando pela placa de som, com
 interface de terminal, pedalboard completo (gate, compressor, filtro,
 drive simétrico e assimétrico, delay, reverb, limiter), simulação de
-amplificador (tone stack, preamp, power amp) e cabinet via convolução com
-impulse response. Um afinador (Tuner, via YIN) também foi construído fora
-da ordem do roadmap, a pedido direto. Fase 11 (Presets) é a próxima.
+amplificador (tone stack, preamp, power amp), cabinet via convolução com
+impulse response e presets (salvar/carregar o estado inteiro da cadeia em
+texto). Um afinador (Tuner, via YIN) também foi construído fora da ordem do
+roadmap, a pedido direto. Fase 12 (UI) é a próxima.
 
 | # | Fase | Objetivo |
 |---|------|----------|
@@ -235,6 +236,30 @@ da ordem do roadmap, a pedido direto. Fase 11 (Presets) é a próxima.
   exatos calculados à mão nos testes.
   Não entra na cadeia padrão — `--cabinet arquivo.wav` liga, entre o power
   amp e o limiter.
+
+- **Fase 11 — Presets.** Concluída.
+  Três peças separadas, como o §35 do AI_GUIDELINES sugere pelo nome:
+  `Preset` (só dado — mesmo desenho do `WavFile`: uma struct com o nome e a
+  lista ordenada de módulos, cada um com tipo, bypass e parâmetros; e as
+  funções livres `preset::capture`/`preset::apply` que vão e vêm de uma
+  `ModuleChain` de verdade), `Serialization` (texto humano e depurável, não
+  JSON — mesma decisão do WAV: zero dependência nova, parser escrito à mão,
+  orientado a linha, com uma palavra-chave abrindo cada uma: `preset`,
+  `module`, `param`, `ir`) e `PresetManager` (só a ida e volta ao disco,
+  gravando/lendo o texto de `Serialization`).
+  O preset é **plano e genérico de propósito**: não existe um campo especial
+  pra "ampli" ou "cabinet" — cada módulo na cadeia entra do mesmo jeito,
+  identificado pelo mesmo texto que `name()` já devolve. É quem monta a
+  cadeia (`buildChain()` em `main.cpp`) que decide o que cada um significa
+  musicalmente, não o preset. A única exceção é o caminho da IR do
+  `Cabinet`, que não é um `Parameter` — por isso ganhou um getter
+  (`Cabinet::irPath()`) e um campo à parte em `Preset::ModuleState`,
+  tratado com `dynamic_cast` em vez de um método virtual novo em
+  `AudioModule` só para um caso.
+  Testado ponta a ponta pelo CLI (`--save-preset` grava a cadeia que acabou
+  de montar, `--preset` reconstrói uma cadeia a partir do arquivo): o
+  arquivo de áudio processado a partir do preset salvo saiu byte a byte
+  idêntico ao processado com as flags originais.
 
 - **Tuner — fora da ordem do roadmap, a pedido direto.**
   Detecção de altura por YIN (De Cheveigné & Kawahara, 2002), não

@@ -1,6 +1,7 @@
 #include <chrono>
 #include <cstdint>
 #include <exception>
+#include <filesystem>
 #include <iomanip>
 #include <iostream>
 #include <memory>
@@ -24,6 +25,8 @@
 #include "NoiseGate.h"
 #include "PowerAmp.h"
 #include "Preamp.h"
+#include "Preset.h"
+#include "PresetManager.h"
 #include "Reverb.h"
 #include "SoftClipper.h"
 #include "ToneStack.h"
@@ -378,6 +381,12 @@ struct ChainSettings
     // Vazio = sem cabinet. Diferente das outras flags "use...", esta
     // precisa de um caminho de arquivo, não só de ligar/desligar.
     std::string cabinetIRPath;
+
+    // Vazio = nenhum dos dois. Carregar um preset substitui todas as flags
+    // acima na montagem da cadeia; salvar grava a cadeia já montada (vinda
+    // das flags ou do preset carregado) antes de processar o arquivo.
+    std::string loadPresetPath;
+    std::string savePresetPath;
 };
 
 // Monta a cadeia — um pedal de drive seguido de eco.
@@ -614,6 +623,31 @@ ChainSettings parseSettings(int argc, char** argv, int first)
             continue;
         }
 
+        // --preset e --save-preset recebem um CAMINHO DE ARQUIVO, pelo
+        // mesmo motivo do --cabinet acima: precisam ser tratados antes do
+        // laco generico, que tenta ler todo valor seguinte como float.
+        if (option == "--preset")
+        {
+            if (i + 1 >= argc)
+            {
+                throw std::runtime_error("a opcao --preset precisa do caminho de um arquivo de preset");
+            }
+
+            settings.loadPresetPath = argv[++i];
+            continue;
+        }
+
+        if (option == "--save-preset")
+        {
+            if (i + 1 >= argc)
+            {
+                throw std::runtime_error("a opcao --save-preset precisa do caminho de um arquivo de preset");
+            }
+
+            settings.savePresetPath = argv[++i];
+            continue;
+        }
+
         if (i + 1 >= argc)
         {
             throw std::runtime_error("a opcao " + option + " precisa de um valor");
@@ -727,6 +761,10 @@ void printUsage(const char* program)
               << "  --poweramp-sag N    (so com --poweramp)  (0 a 1,   padrao 0.3)\n"
               << "  --cabinet arquivo.wav  convolve com uma impulse response\n"
               << "  --cabinet-mix N     (so com --cabinet)   (0 a 1,   padrao 1.0)\n"
+              << "  --preset arquivo.ibifxpreset  monta a cadeia a partir de um preset,\n"
+              << "                          ignorando as demais opcoes acima\n"
+              << "  --save-preset arquivo.ibifxpreset  grava a cadeia montada neste\n"
+              << "                          comando (com --preset ou com as flags)\n"
               << "  --no-gate       tira o noise gate da cadeia\n"
               << "  --no-compressor tira o compressor da cadeia\n"
               << "  --no-highpass  tira o filtro da cadeia\n"
@@ -1034,7 +1072,23 @@ int main(int argc, char** argv)
                       << input.frameCount() << " frames\n\n";
 
             ModuleChain chain;
-            buildChain(chain, settings);
+
+            // --preset substitui as flags acima na montagem da cadeia: o
+            // preset já diz tipo, ordem, bypass e parâmetros de cada
+            // módulo, então as demais opções de settings não têm o que
+            // fazer aqui.
+            if (!settings.loadPresetPath.empty())
+            {
+                const Preset loaded = preset::load(settings.loadPresetPath);
+                preset::apply(loaded, chain);
+
+                std::cout << "preset carregado de " << settings.loadPresetPath
+                          << " (\"" << loaded.name << "\")\n\n";
+            }
+            else
+            {
+                buildChain(chain, settings);
+            }
 
             std::cout << "cadeia: ";
             for (std::size_t i = 0; i < chain.size(); ++i)
@@ -1046,6 +1100,18 @@ int main(int argc, char** argv)
             std::cout << "\n\n";
 
             printChainSettings(chain);
+
+            // --save-preset grava a cadeia JÁ MONTADA acima — vinda das
+            // flags ou de outro preset carregado — com os valores efetivos
+            // que cada parâmetro guardou, não os que foram pedidos na
+            // linha de comando.
+            if (!settings.savePresetPath.empty())
+            {
+                const std::string presetName = std::filesystem::path(argv[2]).stem().string();
+                preset::save(preset::capture(presetName, chain), settings.savePresetPath);
+
+                std::cout << "preset salvo em " << settings.savePresetPath << "\n\n";
+            }
 
             const WavFile output = offline::processFile(input, chain);
             wav::write(argv[2], output);
