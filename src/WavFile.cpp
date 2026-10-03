@@ -165,18 +165,16 @@ double WavFile::durationSeconds() const
 
 namespace wav
 {
-WavFile read(const std::string& path)
+WavFile readFromMemory(const std::vector<unsigned char>& bytes)
 {
-    const std::vector<unsigned char> bytes = readWholeFile(path);
-
     if (bytes.size() < 12)
     {
-        throw std::runtime_error("'" + path + "' e curto demais para ser um wav");
+        throw std::runtime_error("wav curto demais (menos de 12 bytes)");
     }
 
     if (!tagEquals(bytes, 0, "RIFF") || !tagEquals(bytes, 8, "WAVE"))
     {
-        throw std::runtime_error("'" + path + "' nao e um arquivo RIFF/WAVE");
+        throw std::runtime_error("nao e um arquivo RIFF/WAVE valido");
     }
 
     std::uint16_t audioFormat = 0;
@@ -203,7 +201,7 @@ WavFile read(const std::string& path)
         {
             if (contentOffset + 16 > bytes.size())
             {
-                throw std::runtime_error("chunk fmt truncado em '" + path + "'");
+                throw std::runtime_error("chunk fmt truncado");
             }
 
             audioFormat = readU16(bytes, contentOffset);
@@ -235,28 +233,28 @@ WavFile read(const std::string& path)
 
     if (!sawFormat)
     {
-        throw std::runtime_error("'" + path + "' nao tem chunk fmt");
+        throw std::runtime_error("wav sem chunk fmt");
     }
 
     if (!sawData)
     {
-        throw std::runtime_error("'" + path + "' nao tem chunk data");
+        throw std::runtime_error("wav sem chunk data");
     }
 
     if (audioFormat != kFormatPcm && audioFormat != kFormatFloat)
     {
-        throw std::runtime_error("'" + path + "' usa um formato comprimido ou desconhecido (codigo "
+        throw std::runtime_error("formato comprimido ou desconhecido (codigo "
                                  + std::to_string(audioFormat) + "); apenas PCM e float sao suportados");
     }
 
     if (channelCount == 0)
     {
-        throw std::runtime_error("'" + path + "' declara zero canais");
+        throw std::runtime_error("wav declara zero canais");
     }
 
     if (sampleRate == 0)
     {
-        throw std::runtime_error("'" + path + "' declara sample rate zero");
+        throw std::runtime_error("wav declara sample rate zero");
     }
 
     const bool isFloat = audioFormat == kFormatFloat;
@@ -298,16 +296,34 @@ WavFile read(const std::string& path)
     return file;
 }
 
-void write(const std::string& path, const WavFile& file)
+WavFile read(const std::string& path)
+{
+    const std::vector<unsigned char> bytes = readWholeFile(path);
+
+    // readWholeFile() já lança com o caminho na mensagem (abrir falhou,
+    // arquivo vazio); aqui só falta dar esse mesmo contexto para os erros
+    // de FORMATO, que readFromMemory() não tem como nomear sozinha — ela
+    // nunca viu um caminho, só bytes.
+    try
+    {
+        return readFromMemory(bytes);
+    }
+    catch (const std::runtime_error& error)
+    {
+        throw std::runtime_error("'" + path + "': " + error.what());
+    }
+}
+
+std::vector<unsigned char> writeToMemory(const WavFile& file)
 {
     if (file.channels.empty())
     {
-        throw std::runtime_error("nao ha canais para gravar em '" + path + "'");
+        throw std::runtime_error("nao ha canais para gravar");
     }
 
     if (file.sampleRate <= 0.0)
     {
-        throw std::runtime_error("sample rate invalido ao gravar '" + path + "'");
+        throw std::runtime_error("sample rate invalido");
     }
 
     const std::size_t frameCount = file.frameCount();
@@ -316,7 +332,7 @@ void write(const std::string& path, const WavFile& file)
     {
         if (channel.size() != frameCount)
         {
-            throw std::runtime_error("os canais tem tamanhos diferentes ao gravar '" + path + "'");
+            throw std::runtime_error("os canais tem tamanhos diferentes");
         }
     }
 
@@ -362,6 +378,18 @@ void write(const std::string& path, const WavFile& file)
         }
     }
 
+    return out;
+}
+
+void write(const std::string& path, const WavFile& file)
+{
+    // writeToMemory() pode lançar por causa dos DADOS (canais vazios, de
+    // tamanhos diferentes, sample rate inválido) — nada disso tem relação
+    // com o caminho, então a mensagem dela já basta sem precisar
+    // adicionar contexto aqui, diferente do que read() faz para os erros
+    // de formato de readFromMemory().
+    const std::vector<unsigned char> bytes = writeToMemory(file);
+
     std::ofstream stream(path, std::ios::binary | std::ios::trunc);
 
     if (!stream)
@@ -369,7 +397,7 @@ void write(const std::string& path, const WavFile& file)
         throw std::runtime_error("nao foi possivel abrir '" + path + "' para escrita");
     }
 
-    stream.write(reinterpret_cast<const char*>(out.data()), static_cast<std::streamsize>(out.size()));
+    stream.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
 
     if (!stream)
     {

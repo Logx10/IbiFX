@@ -323,6 +323,106 @@ void testHeaderBytesAreCanonical()
     removeIfExists(path);
 }
 
+// writeToMemory()/readFromMemory() fazem a mesma ida e volta que
+// write()/read() fazem pelo disco, sem tocar em arquivo nenhum — a Fase 20
+// (WebAssembly) depende disso existir, porque o navegador entrega um
+// upload como bytes, nunca como um caminho.
+void testMemoryRoundTripMatchesFileRoundTrip()
+{
+    std::cout << "ida e volta em memoria bate com a ida e volta por arquivo\n";
+
+    WavFile original;
+    original.sampleRate = 44100.0;
+    original.channels = {{0.0f, 0.5f, -0.5f, 0.25f, -1.0f, 1.0f}};
+
+    const std::vector<unsigned char> bytes = wav::writeToMemory(original);
+    const WavFile loaded = wav::readFromMemory(bytes);
+
+    check(loaded.channelCount() == 1, "voltou com 1 canal");
+    check(loaded.frameCount() == 6, "voltou com 6 frames");
+    checkClose(static_cast<float>(loaded.sampleRate), 44100.0f, "sample rate preservado");
+
+    checkCloseWav(loaded.channels[0][1], 0.5f, "0.5 preservado");
+    checkCloseWav(loaded.channels[0][4], -1.0f, "-1.0 preservado");
+}
+
+// writeToMemory() produz exatamente os mesmos bytes que write() grava em
+// disco — não é um formato "de memória" diferente, é o mesmo .wav.
+void testWriteToMemoryMatchesWriteToFile()
+{
+    std::cout << "writeToMemory produz os mesmos bytes que write() grava\n";
+
+    const std::filesystem::path path = tempPath("comparacao.wav");
+
+    WavFile file;
+    file.sampleRate = 48000.0;
+    file.channels = {{0.1f, -0.2f, 0.3f}};
+
+    wav::write(path.string(), file);
+    const std::vector<unsigned char> fromMemory = wav::writeToMemory(file);
+
+    std::ifstream stream(path, std::ios::binary | std::ios::ate);
+    const std::streamsize size = stream.tellg();
+    stream.seekg(0, std::ios::beg);
+
+    std::vector<unsigned char> fromDisk(static_cast<std::size_t>(size));
+    stream.read(reinterpret_cast<char*>(fromDisk.data()), size);
+
+    check(fromMemory == fromDisk, "bytes identicos, byte a byte");
+
+    removeIfExists(path);
+}
+
+// readFromMemory() rejeita bytes que não formam um RIFF/WAVE, igual a
+// read() rejeita um arquivo assim.
+void testReadFromMemoryRejectsNonRiffBytes()
+{
+    std::cout << "readFromMemory rejeita bytes que nao sao um wav\n";
+
+    const std::vector<unsigned char> lixo = {'n', 'a', 'o', ' ', 'e', ' ', 'w', 'a', 'v'};
+
+    bool lancou = false;
+    try
+    {
+        wav::readFromMemory(lixo);
+    }
+    catch (const std::runtime_error&)
+    {
+        lancou = true;
+    }
+
+    check(lancou, "bytes sem cabecalho RIFF lancam");
+}
+
+// read() por arquivo ainda nomeia o caminho na mensagem de erro de
+// formato — não regrediu ao passar a delegar para readFromMemory().
+void testReadStillNamesPathOnFormatError()
+{
+    std::cout << "read() ainda nomeia o caminho no erro de formato\n";
+
+    const std::filesystem::path path = tempPath("naowav2.bin");
+
+    {
+        std::ofstream stream(path, std::ios::binary);
+        stream << "isto nao e um wav";
+    }
+
+    std::string mensagem;
+    try
+    {
+        wav::read(path.string());
+    }
+    catch (const std::runtime_error& error)
+    {
+        mensagem = error.what();
+    }
+
+    check(mensagem.find(path.string()) != std::string::npos,
+          "a mensagem de erro inclui o caminho do arquivo");
+
+    removeIfExists(path);
+}
+
 int main()
 {
     std::cout << "\n=== testes do WavFile ===\n\n";
@@ -338,6 +438,10 @@ int main()
     testWriteWithMismatchedChannelsThrows();
     testWriteWithInvalidSampleRateThrows();
     testHeaderBytesAreCanonical();
+    testMemoryRoundTripMatchesFileRoundTrip();
+    testWriteToMemoryMatchesWriteToFile();
+    testReadFromMemoryRejectsNonRiffBytes();
+    testReadStillNamesPathOnFormatError();
 
     return reportResults();
 }

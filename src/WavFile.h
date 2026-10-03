@@ -70,18 +70,39 @@ struct WavFile
 
 namespace wav
 {
-// Lê um arquivo .wav do disco.
+// Interpreta um .wav que já está em memória — o parser de verdade.
 //
-// Lança std::runtime_error com mensagem descritiva se o arquivo não abrir,
-// estiver truncado, não for um RIFF/WAVE válido ou usar um formato de
-// amostra fora da lista suportada.
+// read() é só esta função mais a leitura do arquivo; existe separada
+// porque nem todo frontend tem um caminho de arquivo pra oferecer. Uma
+// página no navegador recebe um upload como bytes (um ArrayBuffer), nunca
+// como um caminho de disco — é o passo 2 do plano de portabilidade do
+// ADR 0001 (docs/adr/0001-portabilidade-desktop-e-web.md), que a Fase 20
+// (WebAssembly) depende dele para existir.
+//
+// Lança std::runtime_error com mensagem descritiva se os bytes não
+// formarem um RIFF/WAVE válido, estiverem truncados ou usarem um formato
+// de amostra fora da lista suportada.
+WavFile readFromMemory(const std::vector<unsigned char>& bytes);
+
+// Lê um arquivo .wav do disco. Atalho para readFromMemory() mais a
+// leitura do arquivo — lança com o caminho na mensagem tanto para a
+// leitura em si (arquivo não existe, sem permissão) quanto para um
+// formato inválido, para manter o diagnóstico completo de antes.
 WavFile read(const std::string& path);
 
-// Escreve um .wav PCM de 16 bits.
+// Codifica em PCM de 16 bits, devolvendo os bytes prontos em vez de
+// gravá-los em disco — mesmo motivo de readFromMemory(): um frontend sem
+// caminho de arquivo (o navegador) ainda precisa do .wav pronto, só que
+// como bytes para entregar a quem pediu (por exemplo, um link de
+// download).
 //
 // Amostras fora de [-1, +1] são limitadas na borda: o formato inteiro não
 // tem como representá-las, e deixar transbordar produziria estalo violento
-// em vez de saturação. Lança se os canais tiverem tamanhos diferentes ou se
-// o arquivo não puder ser criado.
+// em vez de saturação. Lança se os canais tiverem tamanhos diferentes ou
+// se o sample rate for inválido.
+std::vector<unsigned char> writeToMemory(const WavFile& file);
+
+// Escreve um .wav PCM de 16 bits no disco. Atalho para writeToMemory()
+// mais a escrita do arquivo.
 void write(const std::string& path, const WavFile& file);
 }
