@@ -1,6 +1,6 @@
 # ADR 0001 — Portabilidade: app desktop e WebAssembly
 
-- **Status:** proposta, com a escolha da biblioteca de UI ainda em aberto
+- **Status:** aceita — biblioteca de UI decidida em 2026-10-03 (ver abaixo)
 - **Data:** 2026-10-02
 
 ## Contexto
@@ -67,18 +67,26 @@ miniaudio. O objetivo é que o mesmo engine C++ vire:
 3. **Validar a portabilidade antes de qualquer UI:** compilar o core e os
    testes com Emscripten e rodá-los no Node pelo CTest.
 
-### Em aberto: biblioteca de interface
+### Decidido em 2026-10-03: biblioteca de interface
 
-**Recomendação: Dear ImGui + SDL3.** É a única opção em que o mesmo código C++
-de interface roda numa janela no desktop e também no navegador. É MIT,
-pequena e explícita, e mantém o miniaudio.
+**Dear ImGui + SDL3.** As duas perguntas em aberto foram respondidas
+diretamente: a interface é um app desktop com janela própria, sem
+pretensão de visual nativo do SO, e não haverá plugin VST3/AU por
+enquanto — o que descarta o JUCE. ImGui+SDL3 continua sendo a única opção
+em que o mesmo código C++ de interface roda numa janela no desktop e
+também no navegador, é MIT, pequena e explícita, e mantém o miniaudio.
 
-Duas perguntas definem a escolha:
+Trazido via **CMake FetchContent** (baixa o código-fonte no configure,
+compila junto), não vendorizado como o miniaudio: SDL3 é uma biblioteca
+grande, com backend por sistema operacional, e vendorizá-la infla o
+repositório em dezenas de MB. Ver `option(IBIFX_BUILD_DESKTOP)` no
+`CMakeLists.txt` raiz — desligada, o configure não toca em SDL3/ImGui.
 
-- "Interface nativa" significa **visual nativo do sistema** (botões e menus de
-  cada SO) ou basta **ser um app desktop com janela própria**? Se for visual
-  nativo, ImGui não serve.
-- Haverá **plugins VST3/AU** para usar em DAW? Se sim, o JUCE ganha peso.
+A primeira fatia (passo 4 do plano abaixo) está implementada: `src/gui/
+DesktopUI.{h,cpp}` e `apps/desktop/main.cpp`, uma janela com um knob de
+ganho e dois medidores (entrada/saída) ligados ao `LiveEngine`, seguindo o
+mesmo contrato da `PedalboardUI` (camada genérica sobre a cadeia, sem
+lógica de DSP, comandos só pela `CommandQueue`).
 
 ## Alternativas
 

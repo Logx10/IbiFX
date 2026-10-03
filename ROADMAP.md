@@ -9,7 +9,8 @@ drive simétrico e assimétrico, delay, reverb, limiter), simulação de
 amplificador (tone stack, preamp, power amp), cabinet via convolução com
 impulse response e presets (salvar/carregar o estado inteiro da cadeia em
 texto). Um afinador (Tuner, via YIN) também foi construído fora da ordem do
-roadmap, a pedido direto. Fase 12 (UI) é a próxima.
+roadmap, a pedido direto. **Fase 12 (UI) em andamento** — ver status
+abaixo.
 
 | # | Fase | Objetivo |
 |---|------|----------|
@@ -260,6 +261,34 @@ roadmap, a pedido direto. Fase 12 (UI) é a próxima.
   de montar, `--preset` reconstrói uma cadeia a partir do arquivo): o
   arquivo de áudio processado a partir do preset salvo saiu byte a byte
   idêntico ao processado com as flags originais.
+
+- **Fase 12 — UI. Em andamento.**
+  O ADR 0001 (docs/adr/0001-portabilidade-desktop-e-web.md) decidiu a
+  biblioteca: Dear ImGui + SDL3, trazidos via CMake FetchContent, atrás de
+  `option(IBIFX_BUILD_DESKTOP)` — desligada, o build de sempre (CLI +
+  testes) nem toca em SDL3/ImGui.
+  Primeira fatia pronta: `DesktopUI` (`src/gui/`) e o executável novo
+  `ibifx_desktop` (`apps/desktop/main.cpp`), uma janela com um knob de
+  ganho e dois medidores (entrada/saída) ligados ao `LiveEngine` de
+  verdade. Segue o mesmo contrato da `PedalboardUI` que já existia no
+  terminal — lê a cadeia genericamente por `AudioModule::parameterAt()`,
+  nunca por tipo de módulo, e só fala com o áudio pela `CommandQueue` —
+  mas o widget em si é novo, porque `PedalboardUI` é termios do início ao
+  fim. O padrão do "alvo local" (`m_targets`, documentado lá) foi
+  replicado aqui pelo mesmo motivo: o comando é assíncrono, e sem isso
+  arrastar um slider perderia passos.
+  A cadeia demonstrada por enquanto é mínima — `GainProcessor` + `Limiter`
+  — de propósito: o widget já é genérico e aguenta a cadeia inteira, só
+  falta montá-la. `src/main.cpp`/o executável `ibifx` (CLI/TUI) não foram
+  tocados.
+  Verificado que a janela abre de verdade (`MainWindowTitle` = "IbiFX") e
+  que o processo roda sem travar com `--null` (sem hardware); falta
+  confirmar o knob e os medidores reagindo a uma guitarra de verdade, que
+  só dá para fazer com fones, ao vivo.
+  Falta ainda: cobrir a cadeia completa (pedalboard/ampli/cabinet) na
+  janela, um seletor de preset (`preset::load`/`capture`/`save` já
+  prontos da Fase 11), e rodar esta mesma janela no navegador via
+  Emscripten — isso último é a Fase 20, não esta.
 
 - **Tuner — fora da ordem do roadmap, a pedido direto.**
   Detecção de altura por YIN (De Cheveigné & Kawahara, 2002), não

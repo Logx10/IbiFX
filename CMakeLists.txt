@@ -60,6 +60,14 @@ else()
     set(IBIFX_WARNINGS -Wall -Wextra -Wpedantic)
 endif()
 
+# Liga o frontend desktop (Dear ImGui + SDL3, ver docs/adr/0001).
+#
+# Desligado, o configure não baixa nada: nem SDL3 nem Dear ImGui são
+# tocados, e ibifx_core/ibifx_platform/ibifx/testes compilam exatamente
+# como antes. É a válvula de escape para quem quer só o CLI, ou para
+# configurar sem rede.
+option(IBIFX_BUILD_DESKTOP "Compilar o frontend desktop (Dear ImGui + SDL3, via FetchContent)" ON)
+
 # miniaudio — a camada de plataforma para falar com o dispositivo de áudio.
 #
 # Vendorizada como um único header em third_party/, versão 0.11.25, domínio
@@ -187,6 +195,84 @@ add_executable(ibifx
 target_compile_options(ibifx PRIVATE ${IBIFX_WARNINGS})
 # ibifx_platform ja arrasta ibifx_core como dependencia PUBLIC.
 target_link_libraries(ibifx PRIVATE ibifx_tui)
+
+# O frontend desktop (Fase 12, AI_GUIDELINES §36) — Dear ImGui + SDL3, a
+# escolha registrada em docs/adr/0001-portabilidade-desktop-e-web.md: é a
+# única dupla em que o mesmo código C++ de interface roda numa janela
+# desktop e, mais tarde, no navegador via Emscripten.
+#
+# POR QUE FetchContent, E NÃO VENDORIZAR COMO O MINIAUDIO
+# O miniaudio é um header único; SDL3 é uma biblioteca grande, com backend
+# por sistema operacional. Vendorizá-la infla o repositório em dezenas de
+# MB. FetchContent baixa o código-fonte na hora do configure (cacheado
+# depois em build/_deps) e compila junto — o repositório continua leve, e
+# o build continua em um comando só, ao custo de precisar de rede na
+# primeira configuração.
+if(IBIFX_BUILD_DESKTOP)
+    include(FetchContent)
+
+    # Builds estático, sem os exemplos/testes do próprio SDL3 — nada disso
+    # nos interessa, e ligar isso tudo deixaria o configure bem mais lento.
+    set(SDL_SHARED OFF CACHE BOOL "" FORCE)
+    set(SDL_STATIC ON CACHE BOOL "" FORCE)
+    set(SDL_TEST_LIBRARY OFF CACHE BOOL "" FORCE)
+    set(SDL_EXAMPLES OFF CACHE BOOL "" FORCE)
+
+    FetchContent_Declare(
+        SDL3
+        GIT_REPOSITORY https://github.com/libsdl-org/SDL.git
+        GIT_TAG release-3.4.16
+        GIT_SHALLOW TRUE
+    )
+    FetchContent_MakeAvailable(SDL3)
+
+    # Dear ImGui não publica CMakeLists.txt próprio — FetchContent só
+    # baixa o fonte, e a lib é montada à mão aqui, no mesmo espírito do
+    # ibifx_miniaudio: alvo próprio, sem os warnings do IbiFX aplicados a
+    # código de terceiros, includes marcadas SYSTEM para o compilador
+    # silenciar os avisos de dentro dele também.
+    FetchContent_Declare(
+        imgui
+        GIT_REPOSITORY https://github.com/ocornut/imgui.git
+        GIT_TAG v1.92.7
+        GIT_SHALLOW TRUE
+    )
+    FetchContent_MakeAvailable(imgui)
+
+    add_library(imgui STATIC
+        ${imgui_SOURCE_DIR}/imgui.cpp
+        ${imgui_SOURCE_DIR}/imgui_draw.cpp
+        ${imgui_SOURCE_DIR}/imgui_tables.cpp
+        ${imgui_SOURCE_DIR}/imgui_widgets.cpp
+        ${imgui_SOURCE_DIR}/backends/imgui_impl_sdl3.cpp
+        ${imgui_SOURCE_DIR}/backends/imgui_impl_sdlrenderer3.cpp
+    )
+
+    target_include_directories(imgui SYSTEM PUBLIC
+        ${imgui_SOURCE_DIR}
+        ${imgui_SOURCE_DIR}/backends
+    )
+
+    target_link_libraries(imgui PUBLIC SDL3::SDL3)
+
+    # A camada de UI desktop, espelhando como ibifx_tui embrulha a
+    # PedalboardUI: um alvo próprio, com o nosso rigor de warnings, que
+    # depende de ibifx_platform (LiveEngine/AudioDevice) e do imgui.
+    add_library(ibifx_gui STATIC
+        src/gui/DesktopUI.cpp
+    )
+
+    target_include_directories(ibifx_gui PUBLIC src/gui)
+    target_compile_options(ibifx_gui PRIVATE ${IBIFX_WARNINGS})
+    target_link_libraries(ibifx_gui PUBLIC ibifx_platform imgui)
+
+    add_executable(ibifx_desktop
+        apps/desktop/main.cpp
+    )
+
+    target_compile_options(ibifx_desktop PRIVATE ${IBIFX_WARNINGS})
+    target_link_libraries(ibifx_desktop PRIVATE ibifx_gui)
+endif()
 
 # Liga o CTest, o executor de testes que vem junto com o CMake.
 # Precisa vir ANTES do add_subdirectory abaixo, senão os add_test()
