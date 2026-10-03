@@ -15,7 +15,7 @@ pronta, dispositivo de hardware pendente** — ver status abaixo. **Fase 14
 (Master Transport) concluída.** **Fase 15 (Metronome) concluída.** **Fase
 16 (Backing Tracks) concluída.** **Fase 17 (Recorder) concluída.** **Fase
 18 (Multitrack / Reamping) concluída.** **Fase 19 (Practice Mode)
-concluída.** Fase 20 (WebAssembly) é a próxima.
+concluída.** **Fase 20 (WebAssembly) em andamento** — ver status abaixo.
 
 | # | Fase | Objetivo |
 |---|------|----------|
@@ -594,6 +594,36 @@ concluída.** Fase 20 (WebAssembly) é a próxima.
   sessão (preserva o excesso, como o `MasterTransport` já garantia),
   gravar captura o MIX e não só a guitarra, e BPM reflete o transport
   interno. 34 testes no total.
+
+- **Fase 20 — WebAssembly. Em andamento.**
+  O plano é o do ADR 0001 (`docs/adr/0001-portabilidade-desktop-e-web.md`),
+  em passos pequenos:
+  1. Reorganizar o CMake por frontend (`apps/cli`, `apps/desktop`,
+     `apps/web`) — parcial: `apps/desktop` já existe desde a Fase 12;
+     `src/main.cpp` ainda não foi movido para `apps/cli`, porque isso só
+     passa a importar de verdade quando o `apps/web` entrar em cena.
+  2. **Concluído nesta sessão**: `WavFile` ganhou `readFromMemory()`/
+     `writeToMemory()` — o parser/codificador de verdade, operando só
+     sobre `std::vector<unsigned char>`, sem tocar em disco. `read()`/
+     `write()` viraram atalhos finos por cima. O motivo é concreto, não
+     teórico: o navegador entrega um upload como bytes (um
+     `ArrayBuffer`), nunca como um caminho — sem isso, nenhuma linha do
+     `ibifx_core` que lê ou grava `.wav` funcionaria rodando dentro de uma
+     aba.
+  3. Instalar o emsdk e compilar `ibifx_core`/os testes em WASM,
+     rodando-os no Node — **bloqueado nesta máquina**: o disco tem só
+     ~11 GB livres (98% ocupado) no momento desta sessão, e o emsdk
+     (toolchain LLVM/Binaryen completo) não cabe com segurança nessa
+     folga. Node.js (v22) e Python já estão instalados, então a única
+     barreira real é espaço em disco — assim que houver folga, este passo
+     é o próximo.
+  4. Escolher a biblioteca de UI e montar uma janela mínima — **já
+     concluído**, fora de ordem: é a Fase 12 inteira (Dear ImGui + SDL3).
+  5. Rodar essa mesma janela no navegador — depende do passo 3.
+  Nada aqui tocou em `ibifx_core`/`ibifx_platform` além do `WavFile`: o
+  resto do plano é puramente sobre o AMBIENTE de build, não sobre o DSP.
+  34 testes continuam passando nativamente; a compilação em WASM é o que
+  falta verificar.
 
 - **Tuner — fora da ordem do roadmap, a pedido direto.**
   Detecção de altura por YIN (De Cheveigné & Kawahara, 2002), não
