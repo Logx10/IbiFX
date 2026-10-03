@@ -76,6 +76,11 @@ private:
 
     void drawPresetPanel();
 
+    // Título de seção no estilo da janela: cor de destaque, um pouco maior
+    // que o texto comum, com uma linha fina embaixo — separa visualmente
+    // "Presets", "Níveis" e "Pedalboard" sem precisar de uma caixa cheia.
+    void drawSectionHeader(const char* label) const;
+
     // Desenha um módulo como um pedal de verdade: corpo colorido, nome no
     // topo, knobs em grade e um footswitch redondo embaixo (bypass). Lado
     // a lado na mesma linha, como um pedalboard — drawFrame() decide a
@@ -119,4 +124,14 @@ private:
     // Resultado da última ação de preset (carregado/salvo/erro), mostrado
     // na própria janela até a próxima ação substituir.
     std::string m_presetMessage;
+
+    // Nome do preset carregado por último (Preset::name, não o nome do
+    // arquivo) — só para mostrar em destaque. Vazio antes de qualquer load.
+    std::string m_currentPresetName;
+
+    // Caminho exato do último preset carregado ou salvo — usado para
+    // realçar a linha certa na lista (comparar por CAMINHO, não por nome:
+    // o nome dentro do preset pode não ter nenhuma relação com o nome do
+    // arquivo, como "Slash (Marshall lead/rhythm, GNR)" vs "slash.ibifxpreset").
+    std::string m_currentPresetPath;
 };

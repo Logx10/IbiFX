@@ -574,6 +574,8 @@ void DesktopUI::loadPreset(const std::string& path)
         }
 
         captureTargets();
+        m_currentPresetName = loaded.name;
+        m_currentPresetPath = path;
         m_presetMessage = "preset carregado: " + loaded.name;
     }
     catch (const std::exception& error)
@@ -591,6 +593,8 @@ void DesktopUI::savePreset(const std::string& name)
         const std::string path = std::string(kPresetsDir) + "/" + name + ".ibifxpreset";
         preset::save(preset::capture(name, m_engine.chain()), path);
 
+        m_currentPresetName = name;
+        m_currentPresetPath = path;
         m_presetMessage = "preset salvo: " + path;
         refreshPresetList();
     }
@@ -600,12 +604,49 @@ void DesktopUI::savePreset(const std::string& name)
     }
 }
 
+void DesktopUI::drawSectionHeader(const char* label) const
+{
+    constexpr ImVec4 kAccent(0.90f, 0.55f, 0.15f, 1.0f);
+
+    ImGui::Spacing();
+    ImGui::PushStyleColor(ImGuiCol_Text, kAccent);
+    ImGui::SetWindowFontScale(1.08f);
+    ImGui::TextUnformatted(label);
+    ImGui::SetWindowFontScale(1.0f);
+    ImGui::PopStyleColor();
+
+    // Uma linha fina na cor de destaque, só embaixo do título — não a
+    // largura inteira da janela, pra marcar "isto é um cabeçalho", não
+    // "isto corta a janela em duas metades" (esse já é o papel do
+    // Separator() ao redor de cada cartão).
+    const ImVec2 textEnd = ImGui::GetItemRectMax();
+    const ImVec2 textStart = ImGui::GetItemRectMin();
+    ImGui::GetWindowDrawList()->AddLine(
+        ImVec2(textStart.x, textEnd.y + 2.0f), ImVec2(textStart.x + 120.0f, textEnd.y + 2.0f),
+        ImGui::GetColorU32(kAccent), 2.0f);
+
+    ImGui::Dummy(ImVec2(0.0f, 6.0f));
+}
+
 void DesktopUI::drawPresetPanel()
 {
-    ImGui::TextUnformatted("Presets");
+    drawSectionHeader("Presets");
 
-    ImGui::SetNextItemWidth(200.0f);
-    ImGui::InputTextWithHint("##presetName", "nome do preset", m_presetNameBuffer, sizeof(m_presetNameBuffer));
+    if (!m_currentPresetName.empty())
+    {
+        ImGui::TextDisabled("atual:");
+        ImGui::SameLine();
+        ImGui::TextUnformatted(m_currentPresetName.c_str());
+    }
+    else
+    {
+        ImGui::TextDisabled("nenhum preset carregado ainda");
+    }
+
+    ImGui::Spacing();
+
+    ImGui::SetNextItemWidth(220.0f);
+    ImGui::InputTextWithHint("##presetName", "nome para salvar...", m_presetNameBuffer, sizeof(m_presetNameBuffer));
 
     ImGui::SameLine();
 
@@ -623,6 +664,15 @@ void DesktopUI::drawPresetPanel()
     if (ImGui::Button("Atualizar lista"))
         refreshPresetList();
 
+    ImGui::Spacing();
+
+    // A lista fica dentro de uma child com fundo próprio e borda — um
+    // "cartão" de verdade, não só texto solto flutuando na janela. Altura
+    // fixa pequena: com muitos presets, ela ganha barra de rolagem
+    // própria em vez de empurrar o resto da janela pra baixo.
+    ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 6.0f);
+    ImGui::BeginChild("##presetList", ImVec2(0.0f, 92.0f), ImGuiChildFlags_Borders);
+
     if (m_presetFiles.empty())
     {
         ImGui::TextDisabled("(nenhum preset em presets/ ainda)");
@@ -632,14 +682,24 @@ void DesktopUI::drawPresetPanel()
         for (const std::string& path : m_presetFiles)
         {
             const std::string label = std::filesystem::path(path).stem().string();
+            const bool isCurrent = (path == m_currentPresetPath);
 
-            if (ImGui::Selectable(label.c_str()))
+            // O preset em uso fica marcado, não só mais uma linha igual
+            // às outras — Selected força o destaque mesmo sem estar sob o
+            // mouse.
+            if (ImGui::Selectable(label.c_str(), isCurrent))
                 loadPreset(path);
         }
     }
 
+    ImGui::EndChild();
+    ImGui::PopStyleVar();
+
     if (!m_presetMessage.empty())
+    {
+        ImGui::Spacing();
         ImGui::TextUnformatted(m_presetMessage.c_str());
+    }
 }
 
 void DesktopUI::drawFrame()
@@ -650,16 +710,53 @@ void DesktopUI::drawFrame()
     ImGui::Begin("IbiFX", nullptr,
                   ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove);
 
-    ImGui::TextUnformatted(m_engine.isRunning() ? "tocando" : "parado");
-    ImGui::Text("%s   %d Hz", m_engine.deviceName().c_str(), static_cast<int>(m_engine.sampleRate()));
+    // --- Título ---
+    // Fonte embutida do ImGui ampliada na hora, sem precisar carregar uma
+    // segunda fonte só pra ter um "H1" — SetWindowFontScale muda só o
+    // tamanho de desenho, não a nitidez (o glifo já é bitmap, não vetor).
+    ImGui::SetWindowFontScale(1.9f);
+    ImGui::TextUnformatted("IbiFX");
+    ImGui::SetWindowFontScale(1.0f);
+    ImGui::SameLine();
+    ImGui::SetCursorPosY(ImGui::GetCursorPosY() + 14.0f);
+    ImGui::TextDisabled("pedalboard digital");
 
+    // --- Status ---
+    // A palavra em si muda de cor (verde tocando, cinza parado) — mais
+    // simples e mais seguro de alinhar do que desenhar uma bolinha à mão
+    // misturada com o layout automático do ImGui.
+    const bool running = m_engine.isRunning();
+    const ImVec4 statusColor = running ? ImVec4(0.3f, 0.85f, 0.4f, 1.0f) : ImVec4(0.6f, 0.6f, 0.65f, 1.0f);
+
+    ImGui::TextColored(statusColor, "%s", running ? "tocando" : "parado");
+    ImGui::SameLine();
+    ImGui::Text("   %s   %d Hz", m_engine.deviceName().c_str(), static_cast<int>(m_engine.sampleRate()));
+
+    ImGui::Spacing();
     ImGui::Separator();
+
+    // --- Presets, dentro de um cartão com fundo e borda próprios ---
+    ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 8.0f);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(12.0f, 10.0f));
+    ImGui::BeginChild("##presetCard", ImVec2(0.0f, 210.0f), ImGuiChildFlags_Borders);
     drawPresetPanel();
-    ImGui::Separator();
+    ImGui::EndChild();
+    ImGui::PopStyleVar(2);
+
+    ImGui::Spacing();
+
+    // --- Níveis, no mesmo estilo de cartão ---
+    ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 8.0f);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(12.0f, 10.0f));
+    ImGui::BeginChild("##meterCard", ImVec2(0.0f, 98.0f), ImGuiChildFlags_Borders);
+    drawSectionHeader("Niveis");
     drawMeter("entrada", m_engine.inputPeak());
     drawMeter("saida", m_engine.outputPeak());
-    ImGui::Separator();
+    ImGui::EndChild();
+    ImGui::PopStyleVar(2);
+
     ImGui::Spacing();
+    drawSectionHeader("Pedalboard");
 
     // Os pedais, lado a lado, como um pedalboard de verdade — quebrando
     // pra próxima linha quando não cabe mais nenhum na largura da janela.
