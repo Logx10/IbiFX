@@ -64,9 +64,10 @@ struct Command
 {
     enum class Type
     {
-        SetParameter,   // ajusta um parâmetro de um módulo
-        SetBypass,      // liga ou desliga o bypass de uma posição
-        Reset           // descarta o estado acumulado
+        SetParameter,             // ajusta um parâmetro de um módulo, em sua faixa própria
+        SetParameterNormalized,   // ajusta um parâmetro por uma posição de 0 a 1
+        SetBypass,                // liga ou desliga o bypass de uma posição
+        Reset                     // descarta o estado acumulado
     };
 
     Type type = Type::Reset;
@@ -74,10 +75,16 @@ struct Command
     // Posição do módulo na cadeia.
     std::size_t moduleIndex = 0;
 
-    // Posição do parâmetro dentro do módulo, para SetParameter.
+    // Posição do parâmetro dentro do módulo, para SetParameter e
+    // SetParameterNormalized.
     std::size_t parameterIndex = 0;
 
-    // Valor a aplicar, ou 0/1 para SetBypass.
+    // SetParameter: valor na faixa própria do parâmetro.
+    // SetParameterNormalized: posição de 0 a 1 dentro dessa faixa — a
+    // "moeda comum" que Parameter.h já previa para controladores que não
+    // conhecem a faixa real (um CC de MIDI entrega 0 a 127, nunca "-8 a
+    // 8" do ganho; normalizar aqui é quem traduz).
+    // SetBypass: 0 ou 1.
     float value = 0.0f;
 };
 

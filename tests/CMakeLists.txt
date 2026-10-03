@@ -211,6 +211,13 @@ add_executable(test_preset
 target_compile_options(test_preset PRIVATE ${IBIFX_WARNINGS})
 target_link_libraries(test_preset PRIVATE ibifx_core)
 
+add_executable(test_midi_mapping
+    test_midi_mapping.cpp
+)
+
+target_compile_options(test_midi_mapping PRIVATE ${IBIFX_WARNINGS})
+target_link_libraries(test_midi_mapping PRIVATE ibifx_core)
+
 # Registra cada executável como um teste do CTest.
 #
 #   NAME     como o teste aparece nos relatórios
@@ -251,3 +258,4 @@ add_test(NAME convolution_engine COMMAND test_convolution_engine)
 add_test(NAME ir_loader COMMAND test_ir_loader)
 add_test(NAME cabinet COMMAND test_cabinet)
 add_test(NAME preset COMMAND test_preset)
+add_test(NAME midi_mapping COMMAND test_midi_mapping)

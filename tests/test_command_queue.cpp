@@ -383,6 +383,72 @@ void testCommandReachesTheRightModule()
     checkClose(chain.moduleAt(1).parameterAt(0).value(), 3.0f, "o modulo 1 recebeu o valor");
 }
 
+// SetParameterNormalized aplica pela faixa normalizada (0 a 1), não pelo
+// valor bruto — é o tipo que a Fase 13 (MIDI) usa, já que um CC entrega
+// 0..127 e não conhece a faixa real do parâmetro (ver MidiMapping.h).
+void testSetParameterNormalizedUsesNormalizedRange()
+{
+    std::cout << "SetParameterNormalized usa a faixa normalizada\n";
+
+    ModuleChain chain;
+    chain.add(std::make_unique<GainProcessor>());   // faixa -8..8
+    chain.prepare(48000.0, 8);
+
+    Command command;
+    command.type = Command::Type::SetParameterNormalized;
+    command.moduleIndex = 0;
+    command.parameterIndex = 0;
+    command.value = 1.0f;   // topo da faixa normalizada
+
+    chain.pushCommand(command);
+
+    std::vector<float> buffer(8, 0.0f);
+    chain.process(buffer);
+
+    checkClose(chain.moduleAt(0).parameterAt(0).value(), 8.0f, "1.0 normalizado vira o maximo da faixa (8)");
+}
+
+// pushMidiCommand() deposita numa fila PRÓPRIA, independente de
+// pushCommand() — e process() esvazia as duas no mesmo bloco.
+void testMidiCommandsUseASeparateQueue()
+{
+    std::cout << "comandos de MIDI usam fila propria\n";
+
+    ModuleChain chain;
+    chain.add(std::make_unique<GainProcessor>());
+    chain.prepare(48000.0, 8);
+
+    Command uiCommand;
+    uiCommand.type = Command::Type::SetParameter;
+    uiCommand.moduleIndex = 0;
+    uiCommand.parameterIndex = 0;
+    uiCommand.value = 2.0f;
+
+    Command midiCommand;
+    midiCommand.type = Command::Type::SetParameter;
+    midiCommand.moduleIndex = 0;
+    midiCommand.parameterIndex = 0;
+    midiCommand.value = 5.0f;
+
+    chain.pushCommand(uiCommand);
+    chain.pushMidiCommand(midiCommand);
+
+    check(chain.pendingCommandCount() == 1, "a fila da UI tem o comando dela");
+    check(chain.pendingMidiCommandCount() == 1, "a fila do MIDI tem o comando dela, contada à parte");
+
+    std::vector<float> buffer(8, 0.0f);
+    chain.process(buffer);
+
+    check(chain.pendingCommandCount() == 0, "fila da UI esvaziada");
+    check(chain.pendingMidiCommandCount() == 0, "fila do MIDI esvaziada no mesmo process()");
+
+    // A ORDEM DE APLICAÇÃO (UI antes do MIDI) é um detalhe de implementação
+    // de process(), não um contrato — este teste só confirma que o ÚLTIMO
+    // comando aplicado (o do MIDI, já que process() esvazia a fila da UI
+    // primeiro) venceu, provando que os dois chegaram ao módulo.
+    checkClose(chain.moduleAt(0).parameterAt(0).value(), 5.0f, "o comando do MIDI foi aplicado por ultimo e venceu");
+}
+
 int main()
 {
     std::cout << "\n=== testes da CommandQueue e de concorrencia ===\n\n";
@@ -399,6 +465,8 @@ int main()
     testChainAcceptsCommandsWhileProcessing();
     testCommandWithInvalidIndexIsIgnored();
     testCommandReachesTheRightModule();
+    testSetParameterNormalizedUsesNormalizedRange();
+    testMidiCommandsUseASeparateQueue();
 
     return reportResults();
 }

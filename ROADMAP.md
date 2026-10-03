@@ -10,7 +10,9 @@ reverb, limiter), simulação de amplificador (tone stack, preamp, power
 amp), cabinet via convolução com impulse response e presets (salvar/
 carregar o estado inteiro da cadeia em texto, pelo CLI ou pela própria
 janela). Um afinador (Tuner, via YIN) também foi construído fora da ordem
-do roadmap, a pedido direto. Fase 13 (MIDI) é a próxima.
+do roadmap, a pedido direto. **Fase 13 (MIDI): abstração de controle
+pronta, dispositivo de hardware pendente** — ver status abaixo. Fase 14
+(Master Transport) é a próxima.
 
 | # | Fase | Objetivo |
 |---|------|----------|
@@ -351,6 +353,53 @@ do roadmap, a pedido direto. Fase 13 (MIDI) é a próxima.
   `presets/` segue o mesmo padrão de `audio/`: pasta e README
   versionados, os arquivos em si não.
   Com isso a Fase 12 está completa. Fase 12 encerrada.
+
+- **Fase 13 — MIDI. Abstração de controle concluída; dispositivo de
+  hardware pendente.**
+  O §37 do AI_GUIDELINES pede o pipeline `Controller -> Mapping ->
+  Command -> IbiFX`, e é exatamente isso que existe agora: `MidiMessage`
+  (um evento já decodificado — tipo, canal, data1, data2 — sem byte de
+  protocolo nenhum, mesma separação que `AudioDevice` já faz pro áudio) e
+  `MidiMapping` (a camada "Mapping": liga um número de Control Change a um
+  parâmetro ou a um bypass, e traduz qualquer `MidiMessage` no `Command`
+  correspondente — o MESMO tipo que a `CommandQueue` já usa pra UI desde a
+  Fase 7, não um caminho novo até o áudio).
+  Um Control Change virou um `Command::SetParameterNormalized` NOVO, não o
+  `SetParameter` que já existia — porque CC entrega 0 a 127, e mapear
+  isso pra faixa de cada parâmetro (`Parameter::setNormalized()`) é
+  exatamente o que a Fase 5 já previa no comentário de `Parameter.h`:
+  "MIDI CC entrega 0 a 127... a forma normalizada é a moeda comum". O
+  mapeamento nem guarda min/max — só o id do parâmetro.
+  Mapear pra bypass segue a convenção comum de pedaleira MIDI: valor >= 64
+  liga, abaixo desliga (meio curso de um pedal de expressão ou switch).
+  **Duas filas, não uma.** `CommandQueue` é de mão única por desenho — um
+  produtor, um consumidor, e é essa restrição que permite os dois índices
+  atômicos não disputarem entre si. UI e MIDI são DUAS threads de controle
+  diferentes; dividir a mesma fila recriaria exatamente a corrida que
+  `CommandQueue` foi desenhada pra não ter. A solução, já prevista no ADR
+  0001 ("GUI e MIDI, cada um na sua thread, seriam dois produtores. Não é
+  urgente"): `ModuleChain` ganhou uma segunda `CommandQueue` própria
+  (`pushMidiCommand()`), e `process()` esvazia as duas no começo do
+  bloco — cada fila continua com um único escritor, só que agora são duas
+  filas, uma por produtor.
+  **Program Change fica pra depois**, de propósito: o próprio §37 já lista
+  isso em "suportar futuramente", separado do CC. Trocar de preset é
+  mudança ESTRUTURAL da cadeia (`ModuleChain::clear()`+`add()`), que não
+  cabe num `Command` atravessando a fila de tempo real — precisaria do
+  mesmo caminho de parar/trocar/religar que `DesktopUI::loadPreset()` já
+  usa, fora da thread de áudio.
+  **O que falta**: um `MidiDevice` de verdade (camada de plataforma,
+  análoga ao `AudioDevice`) que leia uma porta MIDI de hardware e alimente
+  `pushMidiCommand()` — hoje `MidiMapping::translate()` só foi exercitado
+  com `MidiMessage` escritas à mão em teste, nunca com um controlador
+  físico. Isso exigiria uma biblioteca nova (RtMidi é a candidata natural,
+  pelo mesmo motivo do miniaudio: pequena, focada, cross-platform) e fica
+  para quando houver hardware MIDI de verdade pra testar contra — mesma
+  régua que a Fase 7 aplicou ao áudio.
+  Testado: 28 testes no total (2 novos — `test_midi_mapping.cpp` cobre a
+  tradução CC->Command ponta a ponta; `test_command_queue.cpp` ganhou um
+  teste confirmando que as duas filas são independentes e que
+  `SetParameterNormalized` aplica pela faixa normalizada).
 
 - **Tuner — fora da ordem do roadmap, a pedido direto.**
   Detecção de altura por YIN (De Cheveigné & Kawahara, 2002), não

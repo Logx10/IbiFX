@@ -125,6 +125,16 @@ std::size_t ModuleChain::pendingCommandCount() const
     return m_commands.size();
 }
 
+bool ModuleChain::pushMidiCommand(const Command& command)
+{
+    return m_midiCommands.push(command);
+}
+
+std::size_t ModuleChain::pendingMidiCommandCount() const
+{
+    return m_midiCommands.size();
+}
+
 void ModuleChain::applyCommand(const Command& command)
 {
     // Índice inválido é descartado em silêncio, e aqui isso é intencional:
@@ -147,6 +157,13 @@ void ModuleChain::applyCommand(const Command& command)
             }
             break;
 
+        case Command::Type::SetParameterNormalized:
+            if (command.parameterIndex < slot.module->parameterCount())
+            {
+                slot.module->parameterAt(command.parameterIndex).setNormalized(command.value);
+            }
+            break;
+
         case Command::Type::SetBypass:
             slot.bypassed = command.value != 0.0f;
             break;
@@ -162,9 +179,17 @@ void ModuleChain::process(std::vector<float>& buffer)
     // Os comandos são aplicados ANTES de qualquer amostra ser tocada, para
     // que a estrutura não mude no meio do bloco. Retirar da fila é apenas
     // leitura de índice atômico: não bloqueia e não aloca.
+    //
+    // Duas filas, uma por produtor (UI e MIDI) — ver o comentário de
+    // pushMidiCommand() no header para o motivo de não ser uma só.
     Command command;
 
     while (m_commands.pop(command))
+    {
+        applyCommand(command);
+    }
+
+    while (m_midiCommands.pop(command))
     {
         applyCommand(command);
     }

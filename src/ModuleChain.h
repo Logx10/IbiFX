@@ -114,15 +114,40 @@ public:
 
     // Deposita um comando para ser aplicado no próximo bloco.
     //
-    // Chamada do domínio de controle. Devolve false se a fila estiver cheia,
-    // sem bloquear — bloquear aqui poderia travar quem chama, e a decisão do
-    // que fazer (tentar de novo, descartar, avisar) é de quem chama.
+    // Chamada do domínio de controle (UI). Devolve false se a fila estiver
+    // cheia, sem bloquear — bloquear aqui poderia travar quem chama, e a
+    // decisão do que fazer (tentar de novo, descartar, avisar) é de quem
+    // chama.
     bool pushCommand(const Command& command);
 
-    // Comandos pendentes, ainda não aplicados.
+    // Comandos pendentes da UI, ainda não aplicados.
     std::size_t pendingCommandCount() const;
 
-    // Aplica os comandos pendentes e passa o buffer pelos módulos ativos.
+    // Deposita um comando vindo do MIDI (Fase 13), numa fila PRÓPRIA,
+    // independente de pushCommand().
+    //
+    // POR QUE DUAS FILAS, E NÃO UMA SÓ
+    // CommandQueue é de mão única por desenho — ver o comentário lá: um
+    // produtor, um consumidor, e é essa restrição que permite o código
+    // dela ser tão simples (cada índice atômico tem um único escritor).
+    // A UI e o MIDI são DUAS threads de controle diferentes escrevendo ao
+    // mesmo tempo; se dividissem a mesma fila, os dois índices de escrita
+    // disputariam entre si — exatamente a corrida que CommandQueue foi
+    // desenhada para não ter.
+    //
+    // A solução não é reescrever CommandQueue para vários produtores: é
+    // dar a cada produtor a sua própria fila de um só escritor, e deixar o
+    // consumidor (process(), na thread de áudio) esvaziar todas no começo
+    // do bloco. Esta solução já estava prevista no ADR 0001, na tabela de
+    // bloqueios da Fase 12 ("GUI e MIDI, cada um na sua thread, seriam
+    // dois produtores").
+    bool pushMidiCommand(const Command& command);
+
+    // Comandos de MIDI pendentes, ainda não aplicados.
+    std::size_t pendingMidiCommandCount() const;
+
+    // Aplica os comandos pendentes (UI e MIDI) e passa o buffer pelos
+    // módulos ativos.
     void process(std::vector<float>& buffer);
 
 private:
@@ -138,4 +163,5 @@ private:
 
     std::vector<Slot> m_slots;
     CommandQueue m_commands;
+    CommandQueue m_midiCommands;
 };
