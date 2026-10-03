@@ -12,7 +12,8 @@ carregar o estado inteiro da cadeia em texto, pelo CLI ou pela própria
 janela). Um afinador (Tuner, via YIN) também foi construído fora da ordem
 do roadmap, a pedido direto. **Fase 13 (MIDI): abstração de controle
 pronta, dispositivo de hardware pendente** — ver status abaixo. **Fase 14
-(Master Transport) concluída.** Fase 15 (Metronome) é a próxima.
+(Master Transport) concluída.** **Fase 15 (Metronome) concluída.** Fase 16
+(Backing Tracks) é a próxima.
 
 | # | Fase | Objetivo |
 |---|------|----------|
@@ -430,6 +431,32 @@ pronta, dispositivo de hardware pendente** — ver status abaixo. **Fase 14
   partir do sample rate e do BPM, o loop preserva o excesso ao dar a
   volta, loop desligado ou invertido não interfere, e `setRecording()` é
   só um sinalizador independente do play. 29 testes no total.
+
+- **Fase 15 — Metronome. Concluída.**
+  `Metronome` não é um `AudioModule`: ele GERA um clique num instante
+  absoluto do relógio compartilhado, em vez de transformar um sinal que
+  chega — por isso `process()` recebe explicitamente a posição do
+  primeiro frame do bloco (o `AudioModule::process()` comum só recebe o
+  buffer, sem saber onde ele começa no tempo da música).
+  "Sample-accurate" (a palavra do próprio §15) significa isto: cada
+  amostra do bloco é conferida contra a posição exata da próxima batida
+  (derivada do BPM do `MasterTransport`), e o clique começa ali, não "em
+  algum momento perto" — a diferença entre as duas é de até um bloco
+  inteiro de incerteza (2,7 ms a 48 kHz/128 amostras), audível para um
+  ouvido treinado.
+  A posição da batida é sempre recalculada a partir do índice absoluto
+  (`beatIndex * samplesPerBeat`), nunca acumulada bloco a bloco — é o que
+  evita o clique derivar quando `samplesPerBeat` não é um número inteiro
+  de amostras (BPMs não redondos).
+  `process()` SOMA o clique ao buffer, não substitui: convive com a
+  guitarra ou a backing track (Fase 16), não as processa. Um clique que
+  não cabe inteiro no bloco em que nasceu continua no próximo `process()`
+  — mesmo espírito da cauda do `Delay` atravessando blocos.
+  Testado: 6 testes novos (`test_metronome.cpp`) — parado fica em
+  silêncio, o clique começa exatamente na amostra certa (nem uma antes),
+  atravessa a fronteira entre blocos sem redisparar, `reset()` descarta o
+  clique em andamento, o volume escala a amplitude proporcionalmente, e
+  longe de uma batida o sinal original passa intocado. 30 testes no total.
 
 - **Tuner — fora da ordem do roadmap, a pedido direto.**
   Detecção de altura por YIN (De Cheveigné & Kawahara, 2002), não

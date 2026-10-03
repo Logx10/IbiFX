@@ -225,6 +225,13 @@ add_executable(test_master_transport
 target_compile_options(test_master_transport PRIVATE ${IBIFX_WARNINGS})
 target_link_libraries(test_master_transport PRIVATE ibifx_core)
 
+add_executable(test_metronome
+    test_metronome.cpp
+)
+
+target_compile_options(test_metronome PRIVATE ${IBIFX_WARNINGS})
+target_link_libraries(test_metronome PRIVATE ibifx_core)
+
 # Registra cada executável como um teste do CTest.
 #
 #   NAME     como o teste aparece nos relatórios
@@ -267,3 +274,4 @@ add_test(NAME cabinet COMMAND test_cabinet)
 add_test(NAME preset COMMAND test_preset)
 add_test(NAME midi_mapping COMMAND test_midi_mapping)
 add_test(NAME master_transport COMMAND test_master_transport)
+add_test(NAME metronome COMMAND test_metronome)
