@@ -11,8 +11,8 @@ amp), cabinet via convolução com impulse response e presets (salvar/
 carregar o estado inteiro da cadeia em texto, pelo CLI ou pela própria
 janela). Um afinador (Tuner, via YIN) também foi construído fora da ordem
 do roadmap, a pedido direto. **Fase 13 (MIDI): abstração de controle
-pronta, dispositivo de hardware pendente** — ver status abaixo. Fase 14
-(Master Transport) é a próxima.
+pronta, dispositivo de hardware pendente** — ver status abaixo. **Fase 14
+(Master Transport) concluída.** Fase 15 (Metronome) é a próxima.
 
 | # | Fase | Objetivo |
 |---|------|----------|
@@ -400,6 +400,36 @@ pronta, dispositivo de hardware pendente** — ver status abaixo. Fase 14
   tradução CC->Command ponta a ponta; `test_command_queue.cpp` ganhou um
   teste confirmando que as duas filas são independentes e que
   `SetParameterNormalized` aplica pela faixa normalizada).
+
+- **Fase 14 — Master Transport. Concluída.**
+  `MasterTransport`: posição (em amostras), BPM, play/stop, um
+  sinalizador de recording e uma região de loop — exatamente a lista do
+  §14 do roadmap, e nada além dela. Não é um `AudioModule` e não processa
+  amostra nenhuma: só CONTA, e quem lê a contagem decide o que fazer com
+  ela — o metrônomo (Fase 15) decide quando soar, o player de backing
+  track (Fase 16) decide qual frame tocar. Mantém os consumidores
+  desacoplados uns dos outros.
+  `advance(frameCount)` roda na thread de áudio, uma vez por bloco — é o
+  que faz o tempo passar em AMOSTRAS, não num timer de parede que o
+  sistema operacional poderia atrasar ou adiantar.
+  O mesmo problema de concorrência do `CommandQueue` apareceu de novo,
+  numa forma menor: `advance()` faz um ler-somar-gravar na posição a cada
+  bloco, e se `seek()` (domínio de controle) gravasse ali direto, um
+  pedido chegando entre o ler e o gravar de `advance()` seria apagado sem
+  ninguém perceber. Resolvido com a mesma ideia da fila de comandos, só
+  que para um valor só: `seek()` deposita um alvo e ergue uma bandeira;
+  `advance()` confere a bandeira ANTES de somar o bloco. A posição
+  continua tendo um único escritor de verdade — a própria `advance()`.
+  O loop também tem seu detalhe: ultrapassar o fim não "pula pro início"
+  — isso perderia a fração do bloco que já tinha avançado depois da
+  borda, e o loop encolheria um pouco a cada volta. `advance()` preserva
+  esse excesso por módulo, então o comprimento do loop nunca deriva.
+  Testado: 9 testes novos (`test_master_transport.cpp`) — parado não
+  avança, tocando avança, `stop()` congela no lugar (não volta pro
+  início), `seek()` funciona mesmo parado, conversão segundos/batidas a
+  partir do sample rate e do BPM, o loop preserva o excesso ao dar a
+  volta, loop desligado ou invertido não interfere, e `setRecording()` é
+  só um sinalizador independente do play. 29 testes no total.
 
 - **Tuner — fora da ordem do roadmap, a pedido direto.**
   Detecção de altura por YIN (De Cheveigné & Kawahara, 2002), não
