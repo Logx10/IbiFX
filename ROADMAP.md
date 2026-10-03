@@ -3,14 +3,14 @@
 Fases de alto nível. Cada uma será iniciada apenas quando a anterior estiver
 compreendida e funcionando.
 
-**Fases 0 a 11 concluídas.** Tempo real tocando pela placa de som, com
-interface de terminal, pedalboard completo (gate, compressor, filtro,
-drive simétrico e assimétrico, delay, reverb, limiter), simulação de
-amplificador (tone stack, preamp, power amp), cabinet via convolução com
-impulse response e presets (salvar/carregar o estado inteiro da cadeia em
-texto). Um afinador (Tuner, via YIN) também foi construído fora da ordem do
-roadmap, a pedido direto. **Fase 12 (UI) em andamento** — ver status
-abaixo.
+**Fases 0 a 12 concluídas.** Tempo real tocando pela placa de som, com
+interface de terminal E uma janela gráfica (Dear ImGui + SDL3), pedalboard
+completo (gate, compressor, filtro, drive simétrico e assimétrico, delay,
+reverb, limiter), simulação de amplificador (tone stack, preamp, power
+amp), cabinet via convolução com impulse response e presets (salvar/
+carregar o estado inteiro da cadeia em texto, pelo CLI ou pela própria
+janela). Um afinador (Tuner, via YIN) também foi construído fora da ordem
+do roadmap, a pedido direto. Fase 13 (MIDI) é a próxima.
 
 | # | Fase | Objetivo |
 |---|------|----------|
@@ -262,7 +262,7 @@ abaixo.
   arquivo de áudio processado a partir do preset salvo saiu byte a byte
   idêntico ao processado com as flags originais.
 
-- **Fase 12 — UI. Em andamento.**
+- **Fase 12 — UI. Concluída.**
   O ADR 0001 (docs/adr/0001-portabilidade-desktop-e-web.md) decidiu a
   biblioteca: Dear ImGui + SDL3, trazidos via CMake FetchContent, atrás de
   `option(IBIFX_BUILD_DESKTOP)` — desligada, o build de sempre (CLI +
@@ -336,10 +336,21 @@ abaixo.
   inexistente imprime mensagem clara e sai com código 1 em vez de abrir
   janela nenhuma, carregar um preset de verdade funciona ponta a ponta, e
   os 27 testes continuam passando.
-  Falta ainda: um seletor de preset DENTRO da UI (hoje só dá pra carregar
-  via `--preset` na hora de abrir; salvar o que foi ajustado na janela
-  exige fechar e usar o CLI) e rodar esta mesma janela no navegador via
-  Emscripten — isso último é a Fase 20, não esta.
+  Por fim, um painel de presets dentro da própria janela: campo de nome +
+  "Salvar" grava a cadeia atual (`preset::capture`/`preset::save`) em
+  `presets/<nome>.ibifxpreset`; a lista abaixo mostra o que existe ali e
+  carrega qualquer um com um clique.
+  CARREGAR COM O MOTOR RODANDO exigiu parar o motor primeiro: `preset::
+  apply()` reconstrói a cadeia inteira via `ModuleChain::clear()`+`add()`,
+  e realocar esse vetor com a thread de áudio percorrendo ele é a mesma
+  corrida que `ModuleChain.h` já documentava como proibida desde a Fase 4.
+  `loadPreset()` usa o par `LiveEngine::stop()`/`start()` já existente —
+  mesmo caminho que a `PedalboardUI` já usava pra reabrir o dispositivo —
+  ao custo de um corte breve no som durante a troca, aceitável para uma
+  ação deliberada como trocar de preset (bem diferente de girar um knob).
+  `presets/` segue o mesmo padrão de `audio/`: pasta e README
+  versionados, os arquivos em si não.
+  Com isso a Fase 12 está completa. Fase 12 encerrada.
 
 - **Tuner — fora da ordem do roadmap, a pedido direto.**
   Detecção de altura por YIN (De Cheveigné & Kawahara, 2002), não
