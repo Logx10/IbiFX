@@ -1,18 +1,18 @@
 #include <iostream>
-#include <memory>
 #include <string>
 
 #include "DesktopUI.h"
-#include "GainProcessor.h"
-#include "Limiter.h"
 #include "LiveEngine.h"
+#include "PedalboardChain.h"
 
-// Primeira janela da Fase 12 (AI_GUIDELINES §36): um knob de ganho e um
-// medidor ligados ao LiveEngine, via Dear ImGui + SDL3 (ADR 0001). A cadeia
-// aqui é deliberadamente mínima — Limiter entra por ser convenção do
-// projeto em toda cadeia real (protege contra estouro), não por ser "mais
-// um pedal" demonstrado. DesktopUI já é genérica e escala pra qualquer
-// cadeia; montar o pedalboard inteiro fica para o próximo passo da Fase 12.
+// Janela da Fase 12 (AI_GUIDELINES §36): o pedalboard inteiro — gate,
+// compressor, filtro, drive, delay, reverb, limiter — ligado ao LiveEngine
+// de verdade, via Dear ImGui + SDL3 (ADR 0001).
+//
+// buildDefaultChain() é a mesma função que o CLI usa (`ibifx --ui` e
+// `ibifx --live`), em PedalboardChain.h — não uma cópia: os dois
+// frontends descrevem o mesmo pedalboard padrão, e duplicar a lista de
+// módulos arriscaria os dois divergirem sem ninguém notar.
 int main(int argc, char** argv)
 {
     bool useNullDevice = false;
@@ -24,8 +24,7 @@ int main(int argc, char** argv)
     }
 
     LiveEngine engine;
-    engine.chain().add(std::make_unique<GainProcessor>());
-    engine.chain().add(std::make_unique<Limiter>());
+    buildDefaultChain(engine.chain());
 
     if (!useNullDevice)
     {

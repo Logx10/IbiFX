@@ -13,23 +13,14 @@
 #include "AudioGraph.h"
 #include "LiveEngine.h"
 #include "PedalboardUI.h"
-#include "AsymmetricClipper.h"
-#include "Cabinet.h"
 #include "Clipper.h"
-#include "Compressor.h"
 #include "Delay.h"
 #include "GainProcessor.h"
-#include "HighPassFilter.h"
-#include "Limiter.h"
 #include "ModuleChain.h"
-#include "NoiseGate.h"
-#include "PowerAmp.h"
-#include "Preamp.h"
+#include "PedalboardChain.h"
 #include "Preset.h"
 #include "PresetManager.h"
-#include "Reverb.h"
 #include "SoftClipper.h"
-#include "ToneStack.h"
 #include "Tuner.h"
 #include "WavFile.h"
 #include "offline.h"
@@ -337,213 +328,37 @@ void runTerminalDemo()
     std::cout << "\n";
 }
 
-// Ajustes da cadeia, com os valores padrão.
+// ChainSettings, buildChain() e buildDefaultChain() moraram aqui até a
+// Fase 12: agora vivem em PedalboardChain.h/.cpp, no ibifx_core, porque o
+// frontend desktop (apps/desktop/main.cpp) precisa montar a MESMA cadeia
+// padrão, e duplicar essa lógica arriscaria os dois frontends divergirem
+// sem ninguém notar.
 //
-// Os padrões são deliberadamente agressivos: foram escolhidos para a
-// diferença entre entrada e saída ficar óbvia, não para soar bonito.
-struct ChainSettings
+// CliOptions embrulha um ChainSettings com as duas opções que sobraram de
+// fora dele: loadPresetPath/savePresetPath dizem qual ARQUIVO carregar ou
+// gravar, o que é concern deste CLI especificamente, não da configuração
+// do pedalboard em si — por isso não entraram em ChainSettings junto com
+// o resto.
+struct CliOptions
 {
-    float gateThreshold = 0.02f;
-    float gateRelease = 0.15f;
-    float compThreshold = -20.0f;
-    float compRatio = 4.0f;
-    float compAttack = 0.01f;
-    float compRelease = 0.15f;
-    float highPass = 100.0f;
-    float gain = 6.0f;
-    float drive = 4.0f;
-    float bias = 0.3f;
-    float delayTime = 0.28f;
-    float feedback = 0.45f;
-    float mix = 0.35f;
-    float reverbDecay = 0.5f;
-    float reverbDamping = 0.5f;
-    float reverbMix = 0.3f;
-    float toneBass = 0.5f;
-    float toneMid = 0.5f;
-    float toneTreble = 0.5f;
-    float preampDrive = 1.0f;
-    float powerAmpDrive = 1.0f;
-    float powerAmpSag = 0.3f;
-    float cabinetMix = 1.0f;
+    ChainSettings chain;
 
-    bool useGate = true;
-    bool useCompressor = true;
-    bool useHighPass = true;
-    bool useDrive = true;
-    bool useAsymmetric = false;
-    bool usePreamp = false;
-    bool useToneStack = false;
-    bool useDelay = true;
-    bool useReverb = true;
-    bool usePowerAmp = false;
-
-    // Vazio = sem cabinet. Diferente das outras flags "use...", esta
-    // precisa de um caminho de arquivo, não só de ligar/desligar.
-    std::string cabinetIRPath;
-
-    // Vazio = nenhum dos dois. Carregar um preset substitui todas as flags
-    // acima na montagem da cadeia; salvar grava a cadeia já montada (vinda
-    // das flags ou do preset carregado) antes de processar o arquivo.
+    // Vazio = nenhum dos dois. Carregar um preset substitui todas as
+    // flags de chain na montagem da cadeia; salvar grava a cadeia já
+    // montada (vinda das flags ou do preset carregado) antes de
+    // processar o arquivo.
     std::string loadPresetPath;
     std::string savePresetPath;
 };
-
-// Monta a cadeia — um pedal de drive seguido de eco.
-//
-// A ordem é a clássica de pedaleira: a distorção vem ANTES do delay, para que
-// os ecos repitam o som já distorcido. Invertida, o delay produziria ecos
-// limpos que depois seriam distorcidos juntos, e o resultado vira uma pasta.
-void buildChain(ModuleChain& chain, const ChainSettings& settings)
-{
-    // O gate vem ANTES de tudo, inclusive do filtro. Ruído de fundo entra
-    // junto com o sinal, e precisa ser cortado antes de qualquer estágio que
-    // amplifique (Gain, SoftClipper) — depois deles, o próprio ruído já
-    // amplificado pode passar do threshold e o gate deixa de enxergá-lo como
-    // ruído.
-    if (settings.useGate)
-    {
-        auto gate = std::make_unique<NoiseGate>();
-        gate->setThreshold(settings.gateThreshold);
-        gate->setRelease(settings.gateRelease);
-        chain.add(std::move(gate));
-    }
-
-    // O compressor vem logo depois do gate, e ANTES de qualquer distorção —
-    // é a ordem clássica de pedaleira: nivelar a dinâmica da corda primeiro,
-    // pra depois a distorção reagir de forma mais previsível a ela. Feito ao
-    // contrário, o compressor reagiria ao sinal já distorcido, que tem uma
-    // dinâmica bem mais achatada — e comprimir algo já achatado faz pouco.
-    if (settings.useCompressor)
-    {
-        auto compressor = std::make_unique<Compressor>();
-        compressor->setThreshold(settings.compThreshold);
-        compressor->setRatio(settings.compRatio);
-        compressor->setAttack(settings.compAttack);
-        compressor->setRelease(settings.compRelease);
-        chain.add(std::move(compressor));
-    }
-
-    // O filtro vem em seguida, antes de qualquer ganho ou distorção.
-    //
-    // Saturação mistura as frequências que entram, e grave forte ocupa a
-    // curva inteira do saturador, empastando tudo que vem junto. Cortar o
-    // grave depois não conserta: a mistura já aconteceu. É a mesma ordem que
-    // todo amplificador de guitarra usa.
-    if (settings.useHighPass)
-    {
-        auto filter = std::make_unique<HighPassFilter>();
-        filter->setFrequency(settings.highPass);
-        chain.add(std::move(filter));
-    }
-
-    auto gain = std::make_unique<GainProcessor>();
-    gain->setGain(settings.gain);
-    chain.add(std::move(gain));
-
-    if (settings.useDrive)
-    {
-        // --preamp e --asymmetric trocam a curva, não acrescentam uma
-        // segunda distorção: os três fazem o mesmo papel na cadeia (um
-        // estágio de saturação), e empilhar mais de um por padrão mudaria o
-        // tom sem ninguém ter pedido.
-        if (settings.usePreamp)
-        {
-            auto drive = std::make_unique<Preamp>();
-            drive->setDrive(settings.preampDrive);
-            chain.add(std::move(drive));
-        }
-        else if (settings.useAsymmetric)
-        {
-            auto drive = std::make_unique<AsymmetricClipper>();
-            drive->setDrive(settings.drive);
-            drive->setBias(settings.bias);
-            chain.add(std::move(drive));
-        }
-        else
-        {
-            auto drive = std::make_unique<SoftClipper>();
-            drive->setDrive(settings.drive);
-            chain.add(std::move(drive));
-        }
-    }
-
-    // Preamp -> Tone Stack -> Power Amp e a ordem classica de um ampli de
-    // guitarra (AI_GUIDELINES §33) — o tone stack vem DEPOIS da distorcao,
-    // porque no circuito real ele fica entre os estagios de preamplificacao
-    // e o phase splitter, nunca antes.
-    if (settings.useToneStack)
-    {
-        auto toneStack = std::make_unique<ToneStack>();
-        toneStack->setBass(settings.toneBass);
-        toneStack->setMid(settings.toneMid);
-        toneStack->setTreble(settings.toneTreble);
-        chain.add(std::move(toneStack));
-    }
-
-    if (settings.useDelay)
-    {
-        auto echo = std::make_unique<Delay>();
-        echo->setTime(settings.delayTime);
-        echo->setFeedback(settings.feedback);
-        echo->setMix(settings.mix);
-        chain.add(std::move(echo));
-    }
-
-    // O reverb vem por último entre os efeitos, depois do delay — molha o
-    // eco discreto do delay numa cauda contínua, em vez do contrário (o que
-    // faria o delay soar como repetições dentro de uma sala, menos definido).
-    if (settings.useReverb)
-    {
-        auto reverb = std::make_unique<Reverb>();
-        reverb->setDecay(settings.reverbDecay);
-        reverb->setDamping(settings.reverbDamping);
-        reverb->setMix(settings.reverbMix);
-        chain.add(std::move(reverb));
-    }
-
-    // Power amp vem por ultimo entre os estagios de amplificacao, depois de
-    // tudo o mais ja ter formado o sinal — e o ultimo estagio de verdade
-    // antes da saida, tanto na cadeia quanto num ampli real.
-    if (settings.usePowerAmp)
-    {
-        auto powerAmp = std::make_unique<PowerAmp>();
-        powerAmp->setDrive(settings.powerAmpDrive);
-        powerAmp->setSag(settings.powerAmpSag);
-        chain.add(std::move(powerAmp));
-    }
-
-    // Cabinet vem depois do power amp: e o que aconteceria fisicamente
-    // DEPOIS do sinal eletrico sair do estagio de saida — o alto-falante,
-    // o ar da sala, o microfone. Carrega a IR aqui, no dominio de
-    // controle, nunca dentro de um process().
-    if (!settings.cabinetIRPath.empty())
-    {
-        auto cabinet = std::make_unique<Cabinet>();
-        cabinet->loadImpulseResponseFile(settings.cabinetIRPath);
-        cabinet->setMix(settings.cabinetMix);
-        chain.add(std::move(cabinet));
-    }
-
-    // Sempre por último, e sem "use": não é uma cor de pedal que se liga ou
-    // desliga, é a garantia de que nada que sair daqui passa de 1.0 — vale
-    // tanto para a cadeia cheia quanto para qualquer subconjunto dela.
-    chain.add(std::make_unique<Limiter>());
-}
-
-void buildDefaultChain(ModuleChain& chain)
-{
-    buildChain(chain, ChainSettings{});
-}
 
 // Interpreta as opções de linha de comando a partir de `first`.
 //
 // Lança com mensagem clara em caso de opção desconhecida, valor faltando ou
 // número inválido. Falhar aqui é barato; falhar depois, com um parâmetro
 // silenciosamente errado, custaria uma sessão de depuração.
-ChainSettings parseSettings(int argc, char** argv, int first)
+CliOptions parseSettings(int argc, char** argv, int first)
 {
-    ChainSettings settings;
+    CliOptions settings;
 
     for (int i = first; i < argc; ++i)
     {
@@ -551,61 +366,61 @@ ChainSettings parseSettings(int argc, char** argv, int first)
 
         if (option == "--no-gate")
         {
-            settings.useGate = false;
+            settings.chain.useGate = false;
             continue;
         }
 
         if (option == "--no-compressor")
         {
-            settings.useCompressor = false;
+            settings.chain.useCompressor = false;
             continue;
         }
 
         if (option == "--no-highpass")
         {
-            settings.useHighPass = false;
+            settings.chain.useHighPass = false;
             continue;
         }
 
         if (option == "--no-drive")
         {
-            settings.useDrive = false;
+            settings.chain.useDrive = false;
             continue;
         }
 
         if (option == "--no-delay")
         {
-            settings.useDelay = false;
+            settings.chain.useDelay = false;
             continue;
         }
 
         if (option == "--no-reverb")
         {
-            settings.useReverb = false;
+            settings.chain.useReverb = false;
             continue;
         }
 
         if (option == "--asymmetric")
         {
-            settings.useAsymmetric = true;
+            settings.chain.useAsymmetric = true;
             continue;
         }
 
         if (option == "--preamp")
         {
-            settings.usePreamp = true;
+            settings.chain.usePreamp = true;
             continue;
         }
 
         if (option == "--tonestack")
         {
-            settings.useToneStack = true;
+            settings.chain.useToneStack = true;
             continue;
         }
 
         if (option == "--poweramp")
         {
-            settings.usePowerAmp = true;
+            settings.chain.usePowerAmp = true;
             continue;
         }
 
@@ -619,7 +434,7 @@ ChainSettings parseSettings(int argc, char** argv, int first)
                 throw std::runtime_error("a opcao --cabinet precisa do caminho de um arquivo .wav");
             }
 
-            settings.cabinetIRPath = argv[++i];
+            settings.chain.cabinetIRPath = argv[++i];
             continue;
         }
 
@@ -665,29 +480,31 @@ ChainSettings parseSettings(int argc, char** argv, int first)
             throw std::runtime_error("valor invalido para " + option + ": '" + raw + "'");
         }
 
-        if (option == "--bias")              settings.bias = value;
-        else if (option == "--preamp-drive")   settings.preampDrive = value;
-        else if (option == "--tone-bass")      settings.toneBass = value;
-        else if (option == "--tone-mid")       settings.toneMid = value;
-        else if (option == "--tone-treble")    settings.toneTreble = value;
-        else if (option == "--gate-threshold") settings.gateThreshold = value;
-        else if (option == "--gate-release") settings.gateRelease = value;
-        else if (option == "--comp-threshold") settings.compThreshold = value;
-        else if (option == "--comp-ratio")     settings.compRatio = value;
-        else if (option == "--comp-attack")    settings.compAttack = value;
-        else if (option == "--comp-release")   settings.compRelease = value;
-        else if (option == "--highpass")     settings.highPass = value;
-        else if (option == "--gain")         settings.gain = value;
-        else if (option == "--drive")        settings.drive = value;
-        else if (option == "--time")         settings.delayTime = value;
-        else if (option == "--feedback")     settings.feedback = value;
-        else if (option == "--mix")          settings.mix = value;
-        else if (option == "--reverb-decay")    settings.reverbDecay = value;
-        else if (option == "--reverb-damping")  settings.reverbDamping = value;
-        else if (option == "--reverb-mix")      settings.reverbMix = value;
-        else if (option == "--poweramp-drive")  settings.powerAmpDrive = value;
-        else if (option == "--poweramp-sag")    settings.powerAmpSag = value;
-        else if (option == "--cabinet-mix")     settings.cabinetMix = value;
+        ChainSettings& chain = settings.chain;
+
+        if (option == "--bias")              chain.bias = value;
+        else if (option == "--preamp-drive")   chain.preampDrive = value;
+        else if (option == "--tone-bass")      chain.toneBass = value;
+        else if (option == "--tone-mid")       chain.toneMid = value;
+        else if (option == "--tone-treble")    chain.toneTreble = value;
+        else if (option == "--gate-threshold") chain.gateThreshold = value;
+        else if (option == "--gate-release") chain.gateRelease = value;
+        else if (option == "--comp-threshold") chain.compThreshold = value;
+        else if (option == "--comp-ratio")     chain.compRatio = value;
+        else if (option == "--comp-attack")    chain.compAttack = value;
+        else if (option == "--comp-release")   chain.compRelease = value;
+        else if (option == "--highpass")     chain.highPass = value;
+        else if (option == "--gain")         chain.gain = value;
+        else if (option == "--drive")        chain.drive = value;
+        else if (option == "--time")         chain.delayTime = value;
+        else if (option == "--feedback")     chain.feedback = value;
+        else if (option == "--mix")          chain.mix = value;
+        else if (option == "--reverb-decay")    chain.reverbDecay = value;
+        else if (option == "--reverb-damping")  chain.reverbDamping = value;
+        else if (option == "--reverb-mix")      chain.reverbMix = value;
+        else if (option == "--poweramp-drive")  chain.powerAmpDrive = value;
+        else if (option == "--poweramp-sag")    chain.powerAmpSag = value;
+        else if (option == "--cabinet-mix")     chain.cabinetMix = value;
         else throw std::runtime_error("opcao desconhecida: " + option);
     }
 
@@ -1061,7 +878,7 @@ int main(int argc, char** argv)
 
         if (argc >= 3)
         {
-            const ChainSettings settings = parseSettings(argc, argv, 3);
+            const CliOptions settings = parseSettings(argc, argv, 3);
 
             const WavFile input = wav::read(argv[1]);
 
@@ -1087,7 +904,7 @@ int main(int argc, char** argv)
             }
             else
             {
-                buildChain(chain, settings);
+                buildChain(chain, settings.chain);
             }
 
             std::cout << "cadeia: ";

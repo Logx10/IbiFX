@@ -277,18 +277,28 @@ abaixo.
   fim. O padrão do "alvo local" (`m_targets`, documentado lá) foi
   replicado aqui pelo mesmo motivo: o comando é assíncrono, e sem isso
   arrastar um slider perderia passos.
-  A cadeia demonstrada por enquanto é mínima — `GainProcessor` + `Limiter`
-  — de propósito: o widget já é genérico e aguenta a cadeia inteira, só
-  falta montá-la. `src/main.cpp`/o executável `ibifx` (CLI/TUI) não foram
-  tocados.
-  Verificado que a janela abre de verdade (`MainWindowTitle` = "IbiFX") e
-  que o processo roda sem travar com `--null` (sem hardware); falta
-  confirmar o knob e os medidores reagindo a uma guitarra de verdade, que
-  só dá para fazer com fones, ao vivo.
-  Falta ainda: cobrir a cadeia completa (pedalboard/ampli/cabinet) na
-  janela, um seletor de preset (`preset::load`/`capture`/`save` já
-  prontos da Fase 11), e rodar esta mesma janela no navegador via
-  Emscripten — isso último é a Fase 20, não esta.
+  Em seguida, a cadeia completa: `ChainSettings`/`buildChain()`/
+  `buildDefaultChain()` saíram de `src/main.cpp` para `PedalboardChain.h/
+  .cpp`, no `ibifx_core` — o CLI e a janela desktop agora montam o mesmo
+  pedalboard padrão (`NoiseGate -> Compressor -> HighPass -> Gain ->
+  SoftClipper -> Delay -> Reverb -> Limiter`) chamando a MESMA função, em
+  vez de duas cópias que arriscariam divergir sem ninguém notar.
+  `apps/desktop/main.cpp` chama `buildDefaultChain()` como `--ui`/`--live`
+  já faziam. `src/main.cpp` continua funcionando como antes — confirmado
+  rodando `--devices` e o round-trip de preset (`--save-preset`/
+  `--preset`) de novo depois da extração, byte a byte idêntico ao de
+  antes.
+  Verificado que a janela abre de verdade (`MainWindowTitle` = "IbiFX"),
+  com os 8 módulos do pedalboard padrão visíveis, e que o processo roda
+  sem travar com `--null` (sem hardware); falta confirmar os controles
+  reagindo a uma guitarra de verdade, que só dá para fazer com fones, ao
+  vivo.
+  Falta ainda: ampli/cabinet na janela (hoje `ChainSettings{}` usa os
+  valores padrão, que não ligam tone stack/preamp/power amp/cabinet — dá
+  pra expor isso como opção na UI depois), um seletor de preset
+  (`preset::load`/`capture`/`save` já prontos da Fase 11), e rodar esta
+  mesma janela no navegador via Emscripten — isso último é a Fase 20, não
+  esta.
 
 - **Tuner — fora da ordem do roadmap, a pedido direto.**
   Detecção de altura por YIN (De Cheveigné & Kawahara, 2002), não
