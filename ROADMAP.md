@@ -293,9 +293,36 @@ abaixo.
   sem travar com `--null` (sem hardware); falta confirmar os controles
   reagindo a uma guitarra de verdade, que só dá para fazer com fones, ao
   vivo.
-  Falta ainda: ampli/cabinet na janela (hoje `ChainSettings{}` usa os
-  valores padrão, que não ligam tone stack/preamp/power amp/cabinet — dá
-  pra expor isso como opção na UI depois), um seletor de preset
+  Depois, os pedais viraram visuais — corpo colorido (cor derivada por
+  hash do nome do módulo, não do tipo concreto), knob giratório desenhado
+  à mão, footswitch redondo com LED no lugar do checkbox de bypass, lado a
+  lado como um pedalboard de verdade (quebra de linha automática). Tema
+  escuro com acento âmbar no lugar do cinza de fábrica do ImGui.
+  Também corrigido: a janela nascia com a barra de título fora da área
+  visível da tela (o tamanho pedido não descontava a decoração do SO), e
+  um assert do próprio ImGui causado por posicionar sub-widgets à mão
+  direto na janela principal — resolvido com uma child window por pedal
+  (`BeginChild`/`EndChild`), que isola o sistema de coordenadas de cada
+  um.
+  Por fim, `--live`, `--ui` e `--ui-demo` passaram a aceitar as mesmas
+  opções de cadeia do processamento de arquivo (`--cabinet`, `--tonestack`,
+  `--gain`...) — antes elas só funcionavam processando um arquivo, e tocar
+  ao vivo sempre caía na cadeia padrão fixa, sem IR nem ampli possível.
+  `parseSettings()` foi refeito para receber um `std::vector<std::string>`
+  em vez de `argc`/`argv` direto, o que permitiu reaproveitá-lo nos três
+  modos sem duplicar a lista de flags. De quebra, a alternância de bypass
+  de demonstração do `--live` (`--no-toggle`) deixou de depender de um
+  índice fixo (`1`) — ela agora procura o estágio de drive pelo nome
+  (`SoftClipper`/`AsymmetricClipper`/`Preamp`), porque um índice fixo
+  deixou de fazer sentido assim que a cadeia virou configurável também ao
+  vivo.
+  Verificado ponta a ponta: `--live` com `--cabinet` mostra `Cabinet` na
+  cadeia impressa e roda sem erro; processamento de arquivo com as mesmas
+  flags de antes continua produzindo o resultado esperado; 27 testes
+  continuam passando.
+  Falta ainda: ampli/cabinet na própria janela desktop (hoje só o CLI
+  aceita essas flags — a janela sempre usa `ChainSettings{}` default,
+  sem tone stack/preamp/power amp/cabinet), um seletor de preset na UI
   (`preset::load`/`capture`/`save` já prontos da Fase 11), e rodar esta
   mesma janela no navegador via Emscripten — isso último é a Fase 20, não
   esta.

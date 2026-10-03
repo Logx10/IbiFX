@@ -351,18 +351,24 @@ struct CliOptions
     std::string savePresetPath;
 };
 
-// Interpreta as opções de linha de comando a partir de `first`.
+// Interpreta as opções de linha de comando contidas em args.
+//
+// Recebe um std::vector, não argc/argv direto: isso permite reaproveitar
+// o mesmo parser em mais de um lugar (processamento de arquivo, --live,
+// --ui) mesmo quando cada um precisa filtrar ou reordenar os argumentos
+// originais antes — por exemplo, --live tem posicionais (segundos, bloco)
+// que não existem aqui.
 //
 // Lança com mensagem clara em caso de opção desconhecida, valor faltando ou
 // número inválido. Falhar aqui é barato; falhar depois, com um parâmetro
 // silenciosamente errado, custaria uma sessão de depuração.
-CliOptions parseSettings(int argc, char** argv, int first)
+CliOptions parseSettings(const std::vector<std::string>& args)
 {
     CliOptions settings;
 
-    for (int i = first; i < argc; ++i)
+    for (std::size_t i = 0; i < args.size(); ++i)
     {
-        const std::string option = argv[i];
+        const std::string& option = args[i];
 
         if (option == "--no-gate")
         {
@@ -429,12 +435,12 @@ CliOptions parseSettings(int argc, char** argv, int first)
         // valor seguinte como float.
         if (option == "--cabinet")
         {
-            if (i + 1 >= argc)
+            if (i + 1 >= args.size())
             {
                 throw std::runtime_error("a opcao --cabinet precisa do caminho de um arquivo .wav");
             }
 
-            settings.chain.cabinetIRPath = argv[++i];
+            settings.chain.cabinetIRPath = args[++i];
             continue;
         }
 
@@ -443,32 +449,32 @@ CliOptions parseSettings(int argc, char** argv, int first)
         // laco generico, que tenta ler todo valor seguinte como float.
         if (option == "--preset")
         {
-            if (i + 1 >= argc)
+            if (i + 1 >= args.size())
             {
                 throw std::runtime_error("a opcao --preset precisa do caminho de um arquivo de preset");
             }
 
-            settings.loadPresetPath = argv[++i];
+            settings.loadPresetPath = args[++i];
             continue;
         }
 
         if (option == "--save-preset")
         {
-            if (i + 1 >= argc)
+            if (i + 1 >= args.size())
             {
                 throw std::runtime_error("a opcao --save-preset precisa do caminho de um arquivo de preset");
             }
 
-            settings.savePresetPath = argv[++i];
+            settings.savePresetPath = args[++i];
             continue;
         }
 
-        if (i + 1 >= argc)
+        if (i + 1 >= args.size())
         {
             throw std::runtime_error("a opcao " + option + " precisa de um valor");
         }
 
-        const std::string raw = argv[++i];
+        const std::string raw = args[++i];
         float value = 0.0f;
 
         try
@@ -511,6 +517,18 @@ CliOptions parseSettings(int argc, char** argv, int first)
     return settings;
 }
 
+// Atalho para quando as opções já vêm do argv original, sem filtragem
+// prévia — o caso do processamento de arquivo.
+CliOptions parseSettings(int argc, char** argv, int first)
+{
+    std::vector<std::string> args;
+
+    for (int i = first; i < argc; ++i)
+        args.push_back(argv[i]);
+
+    return parseSettings(args);
+}
+
 // Mostra os valores que os módulos realmente guardaram.
 //
 // Não são necessariamente os pedidos: a faixa de cada parâmetro limita o que
@@ -541,15 +559,19 @@ void printUsage(const char* program)
               << "  " << program << "                          demonstracao no terminal\n"
               << "  " << program << " --generate saida.wav     gera um sinal de teste\n"
               << "  " << program << " entrada.wav saida.wav    processa um arquivo\n"
-              << "  " << program << " --live [segundos] [bloco]  toca ao vivo pela placa de som\n"
+              << "  " << program << " --live [segundos] [bloco] [opcoes]  toca ao vivo pela placa de som\n"
               << "                            bloco: tamanho do bloco em amostras (padrao 128)\n"
               << "                            --no-toggle: nao alterna o bypass do drive sozinho\n"
+              << "                            aceita as mesmas opcoes de cadeia do processamento\n"
+              << "                            de arquivo (--cabinet, --tonestack...), mas elas\n"
+              << "                            precisam vir DEPOIS de segundos/bloco\n"
               << "  " << program << " --tuner [segundos]       afinador (padrao 60s)\n"
               << "  " << program << " --devices                testa o dispositivo sem hardware\n"
-              << "  " << program << " --ui                     pedaleira interativa no terminal\n"
-              << "  " << program << " --ui-demo                a pedaleira sem placa de som\n"
+              << "  " << program << " --ui [opcoes]            pedaleira interativa no terminal\n"
+              << "  " << program << " --ui-demo [opcoes]       a pedaleira sem placa de som\n"
+              << "                            --ui e --ui-demo tambem aceitam as opcoes de cadeia\n"
               << "\n"
-              << "opcoes do processamento de arquivo:\n"
+              << "opcoes de cadeia (processamento de arquivo, --live, --ui e --ui-demo):\n"
               << "  --gate-threshold N  piso do noise gate      (0 a 0.3,  padrao 0.02)\n"
               << "  --gate-release N    tempo pra fechar (s)    (0.01 a 1, padrao 0.15)\n"
               << "  --comp-threshold N  piso do compressor (dB) (-60 a 0,  padrao -20)\n"
@@ -596,6 +618,7 @@ void printUsage(const char* program)
               << "  " << program << " audio/guitar.wav audio/suave.wav --gain 2 --drive 1.5 --mix 0.2\n"
               << "  " << program << " audio/guitar.wav audio/crunch.wav --highpass 250 --gain 2 --drive 2 --no-delay\n"
               << "  " << program << " audio/guitar.wav audio/fuzz.wav --gain 8 --drive 40\n"
+              << "  " << program << " --live 30 128 --cabinet audio/minha_ir.wav\n"
               << "\n"
               << "nota: --gain e --drive multiplicam antes da mesma curva, entao\n"
               << "so o PRODUTO deles importa. gain 2 drive 4 soa igual a gain 4 drive 2.\n";
@@ -606,10 +629,10 @@ void printUsage(const char* program)
 // CUIDADO COM MICROFONIA: se a entrada for o microfone embutido e a saida for
 // o alto-falante embutido, o som volta para a entrada e realimenta. Com ganho
 // e distorcao no caminho, isso vira um apito alto muito rapido. Use fones.
-int runLive(double seconds, int blockSize, bool toggleDrive)
+int runLive(double seconds, int blockSize, bool toggleDrive, const ChainSettings& settings)
 {
     LiveEngine engine;
-    buildDefaultChain(engine.chain());
+    buildChain(engine.chain(), settings);
 
     std::cout << "AVISO: se a entrada e a saida forem os dispositivos embutidos,\n"
               << "       o som realimenta e vira microfonia. Use fones de ouvido.\n\n";
@@ -643,6 +666,33 @@ int runLive(double seconds, int blockSize, bool toggleDrive)
     // volume e o timbre a cada 2 segundos de forma bem perceptivel, o que
     // atrapalha quem quer só ouvir a propria cadeia tocando — por isso
     // toggleDrive existe, para desligar essa parte da demonstracao.
+    //
+    // O ESTAGIO DE DRIVE E ACHADO PELO NOME, NAO POR UM INDICE FIXO
+    // Com a cadeia agora configuravel (--no-gate, --no-compressor etc
+    // tiram modulos da frente), um indice fixo como "1" apontaria pra
+    // coisas diferentes dependendo das flags — ou pra fora da cadeia, se
+    // ela ficar curta demais. SoftClipper, AsymmetricClipper e Preamp sao
+    // os tres nomes possiveis pro mesmo papel (ver buildChain() em
+    // PedalboardChain.cpp).
+    std::size_t driveIndex = engine.chain().size();
+
+    for (std::size_t i = 0; i < engine.chain().size(); ++i)
+    {
+        const std::string name = engine.chain().moduleAt(i).name();
+
+        if (name == "SoftClipper" || name == "AsymmetricClipper" || name == "Preamp")
+        {
+            driveIndex = i;
+            break;
+        }
+    }
+
+    if (toggleDrive && driveIndex == engine.chain().size())
+    {
+        std::cout << "(sem estagio de drive na cadeia — alternancia de demonstracao desligada)\n\n";
+        toggleDrive = false;
+    }
+
     const auto inicio = std::chrono::steady_clock::now();
     bool driveDesligado = false;
 
@@ -653,7 +703,7 @@ int runLive(double seconds, int blockSize, bool toggleDrive)
         if (toggleDrive)
         {
             driveDesligado = !driveDesligado;
-            engine.setBypassed(1, driveDesligado);
+            engine.setBypassed(driveIndex, driveDesligado);
 
             std::cout << "  drive " << (driveDesligado ? "em bypass" : "ligado") << "  ";
         }
@@ -747,10 +797,10 @@ int runTuner(double seconds)
 }
 
 // Abre a pedaleira interativa.
-int runInteractive(bool withHardware)
+int runInteractive(bool withHardware, const ChainSettings& settings)
 {
     LiveEngine engine;
-    buildDefaultChain(engine.chain());
+    buildChain(engine.chain(), settings);
 
     if (withHardware)
     {
@@ -816,22 +866,36 @@ int main(int argc, char** argv)
             return 0;
         }
 
-        if (argc == 2 && std::string(argv[1]) == "--ui")
+        if (argc >= 2 && std::string(argv[1]) == "--ui")
         {
-            return runInteractive(true);
+            std::vector<std::string> chainArgs;
+            for (int i = 2; i < argc; ++i)
+                chainArgs.push_back(argv[i]);
+
+            return runInteractive(true, parseSettings(chainArgs).chain);
         }
 
-        if (argc == 2 && std::string(argv[1]) == "--ui-demo")
+        if (argc >= 2 && std::string(argv[1]) == "--ui-demo")
         {
-            return runInteractive(false);
+            std::vector<std::string> chainArgs;
+            for (int i = 2; i < argc; ++i)
+                chainArgs.push_back(argv[i]);
+
+            return runInteractive(false, parseSettings(chainArgs).chain);
         }
 
         if (argc >= 2 && std::string(argv[1]) == "--live")
         {
-            // --no-toggle pode vir em qualquer posicao depois de --live; o
-            // resto dos argumentos, em ordem, e segundos e depois bloco.
+            // --no-toggle pode vir em qualquer posicao depois de --live.
+            // Os primeiros argumentos sem "--" na frente (ate 2) sao
+            // segundos e bloco; a partir do primeiro "--", o resto segue
+            // pro mesmo parser do processamento de arquivo (--cabinet,
+            // --tonestack, --gain...) — por isso precisam vir DEPOIS dos
+            // posicionais, nunca misturados.
             std::vector<std::string> posicionais;
+            std::vector<std::string> chainArgs;
             bool toggleDrive = true;
+            bool lendoPosicionais = true;
 
             for (int i = 2; i < argc; ++i)
             {
@@ -840,17 +904,23 @@ int main(int argc, char** argv)
                 if (arg == "--no-toggle")
                 {
                     toggleDrive = false;
+                    continue;
                 }
-                else
+
+                if (lendoPosicionais && arg.rfind("--", 0) != 0 && posicionais.size() < 2)
                 {
                     posicionais.push_back(arg);
+                    continue;
                 }
+
+                lendoPosicionais = false;
+                chainArgs.push_back(arg);
             }
 
             const double seconds = (!posicionais.empty()) ? std::stod(posicionais[0]) : 10.0;
             const int blockSize = (posicionais.size() >= 2) ? std::stoi(posicionais[1]) : 128;
 
-            return runLive(seconds, blockSize, toggleDrive);
+            return runLive(seconds, blockSize, toggleDrive, parseSettings(chainArgs).chain);
         }
 
         if (argc >= 2 && std::string(argv[1]) == "--tuner")
