@@ -12,8 +12,8 @@ carregar o estado inteiro da cadeia em texto, pelo CLI ou pela própria
 janela). Um afinador (Tuner, via YIN) também foi construído fora da ordem
 do roadmap, a pedido direto. **Fase 13 (MIDI): abstração de controle
 pronta, dispositivo de hardware pendente** — ver status abaixo. **Fase 14
-(Master Transport) concluída.** **Fase 15 (Metronome) concluída.** Fase 16
-(Backing Tracks) é a próxima.
+(Master Transport) concluída.** **Fase 15 (Metronome) concluída.** **Fase
+16 (Backing Tracks) concluída.** Fase 17 (Recorder) é a próxima.
 
 | # | Fase | Objetivo |
 |---|------|----------|
@@ -457,6 +457,32 @@ pronta, dispositivo de hardware pendente** — ver status abaixo. **Fase 14
   atravessa a fronteira entre blocos sem redisparar, `reset()` descarta o
   clique em andamento, o volume escala a amplitude proporcionalmente, e
   longe de uma batida o sinal original passa intocado. 30 testes no total.
+
+- **Fase 16 — Backing Tracks. Concluída.**
+  "Load, play, seek, loop A/B" — e play/seek/loop A/B já estavam prontos
+  desde a Fase 14, não por acaso: o `MasterTransport` foi construído antes
+  exatamente para que isto acontecesse. `BackingTrackPlayer` nem guarda
+  referência a um transport — ele só sabe fazer duas coisas que o
+  transport não pode fazer sozinho: carregar um arquivo e, dada uma
+  posição (que quem chama já leu de algum transport), dizer qual amostra
+  dele toca ali. Se esse transport estiver com loop ligado entre A e B, a
+  posição que ele relata já volta sozinha para A ao passar de B — o "loop
+  A/B" do título da fase não pediu nenhum código novo aqui, só composição.
+  Mono (a cadeia inteira do `LiveEngine` é mono) e sem reamostragem — o
+  arquivo precisa estar no mesmo sample rate do motor, e `load()` lança se
+  não estiver, em vez de tocar silenciosamente em pitch errado. Nenhuma
+  outra parte do projeto reamostra hoje (nem o processamento de arquivo,
+  nem o `Cabinet`); seria inconsistente a backing track ser a exceção.
+  A redução estéreo-para-mono repete o código de `IRLoader.cpp` em vez de
+  reaproveitá-lo por um nome emprestado — são só duas ocorrências até
+  agora, e a regra do projeto (AI_GUIDELINES §55) é esperar a terceira
+  antes de extrair um nome genérico para as duas.
+  Testado: 9 testes novos (`test_backing_track_player.cpp`) — sem arquivo
+  carregado fica em silêncio, tamanho relatado correto, `process()` soma
+  (não substitui) a amostra certa de cada posição, começa numa posição
+  arbitrária, fica em silêncio depois do fim do arquivo, estéreo vira mono
+  pela média, volume escala a amplitude, sample rate incompatível lança, e
+  arquivo inexistente lança. 31 testes no total.
 
 - **Tuner — fora da ordem do roadmap, a pedido direto.**
   Detecção de altura por YIN (De Cheveigné & Kawahara, 2002), não

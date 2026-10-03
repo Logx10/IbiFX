@@ -151,6 +151,7 @@ add_library(ibifx_core STATIC
     src/MidiMapping.cpp
     src/MasterTransport.cpp
     src/Metronome.cpp
+    src/BackingTrackPlayer.cpp
 )
 
 # A camada de plataforma, separada do core.
