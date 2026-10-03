@@ -14,8 +14,8 @@ do roadmap, a pedido direto. **Fase 13 (MIDI): abstração de controle
 pronta, dispositivo de hardware pendente** — ver status abaixo. **Fase 14
 (Master Transport) concluída.** **Fase 15 (Metronome) concluída.** **Fase
 16 (Backing Tracks) concluída.** **Fase 17 (Recorder) concluída.** **Fase
-18 (Multitrack / Reamping) concluída.** Fase 19 (Practice Mode) é a
-próxima.
+18 (Multitrack / Reamping) concluída.** **Fase 19 (Practice Mode)
+concluída.** Fase 20 (WebAssembly) é a próxima.
 
 | # | Fase | Objetivo |
 |---|------|----------|
@@ -566,6 +566,34 @@ próxima.
   o `ReampRecorder` com o `LiveEngine` de verdade (backend Nulo) — que foi
   exatamente quem pegou o bug de concorrência acima, rodando repetidas
   vezes até reproduzi-lo. 33 testes no total.
+
+- **Fase 19 — Practice Mode. Concluída.**
+  "Backing track + metrônomo + loop + gravação integrados" — e o ponto
+  desta fase é exatamente que ela não precisou inventar nenhum conceito
+  novo de DSP. `PracticeSession` só ORQUESTRA o que as Fases 14 a 17 já
+  construíram: um `MasterTransport` próprio (a sessão é autocontida),
+  somando `BackingTrackPlayer` e `Metronome` por cima do sinal da guitarra
+  já processado pelo pedalboard, e gravando o resultado com um `Recorder`.
+  Diferente do `ReampRecorder` (Fase 18), que grava o seco separado do
+  processado para reamplificar depois, aqui a gravação captura o MIX
+  final — guitarra, backing track e clique juntos —, porque o ponto do
+  modo prática é revisar a sessão depois, não reprocessar a guitarra.
+  `setMetronomeEnabled(false)` também descarta qualquer clique em
+  andamento (`Metronome::reset()`), para desligar no meio de uma batida
+  não deixar esse clique tocando sozinho até o fim por conta do estado
+  interno continuar ativo.
+  Ligada ao `LiveEngine`: `processBlock()` agora chama
+  `m_practiceSession.process()` DEPOIS do `ReampRecorder` ter capturado o
+  sinal processado puro — a ordem importa, porque senão a track
+  "processada" do reamp sairia contaminada com a faixa de apoio e o
+  clique, que não fazem parte do que alguém quer reamplificar depois.
+  Testado: 7 testes novos (`test_practice_session.cpp`) — estado inicial,
+  `process()` só avança a posição enquanto `play()` está ativo, a backing
+  track soma corretamente ao sinal, o metrônomo pode ser desligado (e
+  fica desligado mesmo numa batida exata), o loop funciona através da
+  sessão (preserva o excesso, como o `MasterTransport` já garantia),
+  gravar captura o MIX e não só a guitarra, e BPM reflete o transport
+  interno. 34 testes no total.
 
 - **Tuner — fora da ordem do roadmap, a pedido direto.**
   Detecção de altura por YIN (De Cheveigné & Kawahara, 2002), não

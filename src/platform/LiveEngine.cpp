@@ -41,6 +41,7 @@ bool LiveEngine::start(AudioDevice::Mode mode, double sampleRate, int blockSize)
     m_chain.prepare(m_device.sampleRate(), blockSize);
     m_chain.reset();
     m_reampRecorder.prepare(m_device.sampleRate());
+    m_practiceSession.prepare(m_device.sampleRate());
 
     return true;
 }
@@ -48,6 +49,11 @@ bool LiveEngine::start(AudioDevice::Mode mode, double sampleRate, int blockSize)
 ReampRecorder& LiveEngine::reampRecorder()
 {
     return m_reampRecorder;
+}
+
+PracticeSession& LiveEngine::practiceSession()
+{
+    return m_practiceSession;
 }
 
 void LiveEngine::stop()
@@ -225,6 +231,12 @@ void LiveEngine::processBlock(float* output,
     {
         m_reampRecorder.pushBlock(m_dryBuffer.data(), m_monoBuffer.data(), frames);
     }
+
+    // Fase 19: mistura a backing track e o clique do metrônomo por cima do
+    // sinal já processado, e grava a sessão se isRecording(). Roda DEPOIS
+    // do ReampRecorder de propósito — ver o comentário em
+    // LiveEngine::practiceSession().
+    m_practiceSession.process(m_monoBuffer);
 
     float saida = 0.0f;
     for (float sample : m_monoBuffer)

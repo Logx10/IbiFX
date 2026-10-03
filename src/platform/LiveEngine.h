@@ -7,6 +7,7 @@
 
 #include "AudioDevice.h"
 #include "ModuleChain.h"
+#include "PracticeSession.h"
 #include "ReampRecorder.h"
 
 // LiveEngine — liga o dispositivo de áudio à cadeia de módulos.
@@ -108,6 +109,18 @@ public:
     // por bloco.
     ReampRecorder& reampRecorder();
 
+    // Acesso à sessão de prática (Fase 19) — play()/loadBackingTrack()/
+    // etc são chamados do domínio de controle. Mesma política do
+    // reampRecorder(): sempre existe, e processar sem nada carregado nem
+    // nada gravando custa só algumas checagens baratas por bloco.
+    //
+    // A ORDEM EM processBlock() IMPORTA: a sessão de prática mistura
+    // backing track e clique DEPOIS do ReampRecorder já ter capturado o
+    // sinal processado — senão a track "processada" do reamp sairia
+    // contaminada com a faixa de apoio e o clique, que não fazem parte do
+    // que se quer reamplificar depois.
+    PracticeSession& practiceSession();
+
 private:
     // Chamado na thread de áudio.
     void processBlock(float* output, const float* input, std::size_t frameCount, std::size_t channelCount);
@@ -115,6 +128,7 @@ private:
     AudioDevice m_device;
     ModuleChain m_chain;
     ReampRecorder m_reampRecorder;
+    PracticeSession m_practiceSession;
 
     // Buffer mono de trabalho, alocado no start(). O callback só muda o
     // tamanho lógico dele, nunca a capacidade — então não aloca.
