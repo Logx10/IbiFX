@@ -12,6 +12,15 @@ namespace
 // caso de uso real pediu isso — abre-se um parâmetro quando houver um
 // problema concreto, não por antecipação.
 constexpr float kAttackSeconds = 0.002f;
+
+// 5 ms: curto o bastante para não atrasar perceptivelmente o
+// reconhecimento de uma nota nova, longo o bastante para filtrar o ripple
+// de retificação (|amostra|) até da corda mais grave da guitarra (Mi
+// grave, ~82 Hz — um ciclo inteiro dura 12 ms, e o sinal retificado tem
+// dois picos por ciclo, a cada 6 ms; 5 ms já atenua isso de forma
+// audível). Ver o comentário "A decisão é tomada em cima de um envelope"
+// em NoiseGate.h para o porquê deste estágio existir.
+constexpr float kEnvelopeSeconds = 0.005f;
 }
 
 NoiseGate::NoiseGate()
@@ -56,11 +65,13 @@ void NoiseGate::prepare(double sampleRate, int /*blockSize*/)
 {
     m_sampleRate = sampleRate > 0.0 ? sampleRate : 44100.0;
     m_attackCoeff = onePoleCoefficient(kAttackSeconds, m_sampleRate);
+    m_envelopeCoeff = onePoleCoefficient(kEnvelopeSeconds, m_sampleRate);
 }
 
 void NoiseGate::reset()
 {
     m_gain = 0.0f;
+    m_envelope = 0.0f;
 }
 
 void NoiseGate::process(std::vector<float>& buffer)
@@ -75,7 +86,12 @@ void NoiseGate::process(std::vector<float>& buffer)
 
     for (float& sample : buffer)
     {
-        const float target = std::fabs(sample) > thresholdValue ? 1.0f : 0.0f;
+        // Segue o NÍVEL do sinal, não a amostra instantânea — é isto que
+        // evita o gate abrir/fechar a cada cruzamento de zero da onda. Ver
+        // o comentário em NoiseGate.h.
+        m_envelope += m_envelopeCoeff * (std::fabs(sample) - m_envelope);
+
+        const float target = m_envelope > thresholdValue ? 1.0f : 0.0f;
         const float coeff = target > m_gain ? m_attackCoeff : releaseCoeff;
 
         m_gain += coeff * (target - m_gain);

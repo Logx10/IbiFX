@@ -60,6 +60,20 @@ else()
     set(IBIFX_WARNINGS -Wall -Wextra -Wpedantic)
 endif()
 
+# No MinGW, o runtime de C++ (libstdc++-6.dll, libgcc_s_seh-1.dll,
+# libwinpthread-1.dll) é resolvido em tempo de execução pelo PATH do
+# Windows. Numa máquina com mais de uma instalação de MinGW (Git, MSYS2,
+# WinLibs...), cada uma carrega sua PRÓPRIA versão dessas DLLs, incompatíveis
+# entre si — dependendo de qual aparece primeiro no PATH no momento de abrir
+# o executável (varia entre terminal, ctest e clique duplo no Explorer), o
+# Windows pode carregar a DLL de uma toolchain diferente da que compilou o
+# binário e travar com "ponto de entrada não encontrado". Link estático do
+# runtime elimina essa dependência: cada executável carrega seu runtime
+# embutido, e o resultado deixa de depender de qual PATH o lançou.
+if(MINGW)
+    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -static-libgcc -static-libstdc++ -static")
+endif()
+
 # Liga o frontend desktop (Dear ImGui + SDL3, ver docs/adr/0001).
 #
 # Desligado, o configure não baixa nada: nem SDL3 nem Dear ImGui são

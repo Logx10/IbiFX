@@ -46,6 +46,19 @@
 // módulos: eles não multiplicam a amostra diretamente, só decidem para onde
 // m_gain caminha e a que velocidade. Quem multiplica a amostra é m_gain, e
 // esse sim caminha suavemente, sempre.
+//
+// A DECISÃO É TOMADA EM CIMA DE UM ENVELOPE, NÃO DA AMOSTRA CRUA
+// Um sinal de guitarra oscila: mesmo numa nota bem acima do threshold, cada
+// CICLO da onda passa perto de zero algumas vezes. Comparar a amostra crua
+// contra o threshold faz o gate enxergar esses cruzamentos de zero como
+// silêncio, abrindo e fechando a cada ciclo em vez de uma vez por nota — o
+// resultado é a própria nota sendo picotada no meio dela, não só o silêncio
+// entre notas sendo cortado (fica mais audível ainda com o Delay logo
+// depois na cadeia, porque a cauda gravada herda os mesmos picotes).
+//
+// m_envelope segue o NÍVEL do sinal (como m_envelope em Compressor.cpp, que
+// já resolvia isso) — só ele é comparado contra o threshold. m_gain
+// continua sendo quem de fato multiplica a amostra, suavizado como sempre.
 class NoiseGate : public AudioModule
 {
 public:
@@ -79,4 +92,13 @@ private:
     // comentário em Ataque Rápido, Liberação Lenta acima sobre por que não é
     // um parâmetro ainda.
     float m_attackCoeff = 1.0f;
+
+    // Nível de sinal suavizado — é ELE que é comparado contra o threshold,
+    // nunca a amostra crua. Ver o comentário "A decisão é tomada em cima de
+    // um envelope" acima.
+    float m_envelope = 0.0f;
+
+    // Coeficiente do filtro de um polo do envelope. Fixo, assim como
+    // m_attackCoeff — ver kEnvelopeSeconds em NoiseGate.cpp.
+    float m_envelopeCoeff = 1.0f;
 };

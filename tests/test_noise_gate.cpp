@@ -73,10 +73,20 @@ void testSustainedLoudSignalFullyOpensGate()
 }
 
 // O gate fecha depois que o sinal cai abaixo do threshold, seguindo a curva
-// exponencial do release: gain(n) = exp(-n / (release * sampleRate)).
+// exponencial do release: gain(n) = gain0 * exp(-n / (release * sampleRate)).
+//
+// gain0 não é 1.0 aqui: desde que o envelope passou a decidir quando fechar
+// (não mais a amostra crua), a transição de alto para fraco não fecha o
+// gate no mesmo instante — o ENVELOPE ainda carrega o nível alto anterior e
+// precisa de algumas constantes de tempo própria para cair abaixo do
+// threshold antes do gate começar a liberar de verdade (ver o comentário
+// "A decisão é tomada em cima de um envelope" em NoiseGate.h — é
+// exatamente esse atraso que corrige o chiado/corte dentro da nota). Por
+// isso o teste deixa uma fase de "assentar" o envelope ANTES de medir a
+// curva, e mede o gain de partida em vez de assumir 1.0.
 void testGateClosesFollowingReleaseCurve()
 {
-    std::cout << "o gate fecha seguindo a curva de release\n";
+    std::cout << "o gate fecha seguindo a curva de release, uma vez que o envelope ja assentou\n";
 
     const double sampleRate = 1000.0;
     const float releaseSeconds = 0.01f;  // 10 ms = 10 amostras a 1000 Hz
@@ -91,20 +101,31 @@ void testGateClosesFollowingReleaseCurve()
     gate.process(abrindo);
     check(std::fabs(abrindo.back() - 0.5f) < 1e-4f, "gate abriu antes do teste de release");
 
-    // Agora sinal fraco, abaixo do threshold padrão (0.02): o gain decai
-    // como exp(-n / (release * sampleRate)). A entrada não pode ser 0 (a
-    // saída seria sempre 0 e não revelaria o gain), nem alta o bastante para
-    // o gate continuar interpretando como sinal — 0.001 fica bem abaixo do
-    // threshold e ainda deixa o gain visível na saída.
+    // Sinal fraco, abaixo do threshold padrão (0.02). A entrada não pode ser
+    // 0 (a saída seria sempre 0 e não revelaria o gain), nem alta o
+    // bastante para o gate continuar interpretando como sinal — 0.001 fica
+    // bem abaixo do threshold e ainda deixa o gain visível na saída.
     const float entradaFraca = 0.001f;
+
+    // 40 amostras é bastante folga (a constante de tempo do envelope é de
+    // ~5.5 amostras a 1000 Hz) para o envelope descer do nível alto
+    // anterior para bem abaixo do threshold, deixando só a curva de release
+    // do GAIN propriamente dita para medir a seguir.
+    std::vector<float> assentando(40, entradaFraca);
+    gate.process(assentando);
+    const float gainInicial = assentando.back() / entradaFraca;
+    check(gainInicial > 1e-3f && gainInicial < 1.0f,
+          "gain de partida da medicao esta num meio-termo mensuravel, nem 1.0 nem ja zerado");
+
     std::vector<float> fechando(20, entradaFraca);
     gate.process(fechando);
 
     const float n = static_cast<float>(fechando.size());
-    const float gainEsperado = std::exp(-n / (releaseSeconds * static_cast<float>(sampleRate)));
+    const float gainEsperado = gainInicial * std::exp(-n / (releaseSeconds * static_cast<float>(sampleRate)));
     const float gainObtido = fechando.back() / entradaFraca;
 
-    check(std::fabs(gainObtido - gainEsperado) < 1e-4f, "gain apos 20 amostras bate com a curva exponencial");
+    check(std::fabs(gainObtido - gainEsperado) < 1e-4f,
+          "gain apos 20 amostras bate com a curva exponencial a partir do gain de partida medido");
 }
 
 // No threshold exato, a amostra NÃO conta como "acima" — só > abre o gate,
