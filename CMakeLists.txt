@@ -147,6 +147,7 @@ add_library(ibifx_core STATIC
     src/Serialization.cpp
     src/PresetManager.cpp
     src/PedalboardChain.cpp
+    src/ChainArgs.cpp
 )
 
 # A camada de plataforma, separada do core.

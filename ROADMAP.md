@@ -290,9 +290,8 @@ abaixo.
   antes.
   Verificado que a janela abre de verdade (`MainWindowTitle` = "IbiFX"),
   com os 8 módulos do pedalboard padrão visíveis, e que o processo roda
-  sem travar com `--null` (sem hardware); falta confirmar os controles
-  reagindo a uma guitarra de verdade, que só dá para fazer com fones, ao
-  vivo.
+  sem travar com `--null` (sem hardware). Depois confirmado ao vivo, com
+  guitarra de verdade e fones: os knobs e os footswitches respondem bem.
   Depois, os pedais viraram visuais — corpo colorido (cor derivada por
   hash do nome do módulo, não do tipo concreto), knob giratório desenhado
   à mão, footswitch redondo com LED no lugar do checkbox de bypass, lado a
@@ -320,12 +319,27 @@ abaixo.
   cadeia impressa e roda sem erro; processamento de arquivo com as mesmas
   flags de antes continua produzindo o resultado esperado; 27 testes
   continuam passando.
-  Falta ainda: ampli/cabinet na própria janela desktop (hoje só o CLI
-  aceita essas flags — a janela sempre usa `ChainSettings{}` default,
-  sem tone stack/preamp/power amp/cabinet), um seletor de preset na UI
-  (`preset::load`/`capture`/`save` já prontos da Fase 11), e rodar esta
-  mesma janela no navegador via Emscripten — isso último é a Fase 20, não
-  esta.
+  Em seguida, ampli e cabinet chegaram na janela desktop também: `CliOptions`/
+  `parseSettings()` saíram de `src/main.cpp` para `ChainArgs.h/.cpp`, no
+  `ibifx_core` — o mesmo motivo de `PedalboardChain`, só que um andar
+  acima (a INTERPRETAÇÃO das flags, não a montagem da cadeia em si).
+  `apps/desktop/main.cpp` agora aceita `--cabinet`, `--tonestack`,
+  `--preamp`, `--poweramp` e todo o resto, chamando `buildChain()` em vez
+  de `buildDefaultChain()` — e `--preset CAMINHO` carrega um preset pronto
+  no lugar das flags. Nenhuma linha do `DesktopUI` mudou: como ele já
+  desenha qualquer módulo genericamente, ToneStack/Preamp/PowerAmp/Cabinet
+  viram pedais na janela assim que entram na cadeia, do mesmo jeito que
+  Gain ou Delay — a generalidade construída desde a primeira fatia pagou
+  o trabalho aqui.
+  Verificado: janela abre com `--tonestack --poweramp --cabinet arquivo`
+  (confirmado via `MainWindowTitle`), erro de flag desconhecida ou preset
+  inexistente imprime mensagem clara e sai com código 1 em vez de abrir
+  janela nenhuma, carregar um preset de verdade funciona ponta a ponta, e
+  os 27 testes continuam passando.
+  Falta ainda: um seletor de preset DENTRO da UI (hoje só dá pra carregar
+  via `--preset` na hora de abrir; salvar o que foi ajustado na janela
+  exige fechar e usar o CLI) e rodar esta mesma janela no navegador via
+  Emscripten — isso último é a Fase 20, não esta.
 
 - **Tuner — fora da ordem do roadmap, a pedido direto.**
   Detecção de altura por YIN (De Cheveigné & Kawahara, 2002), não
