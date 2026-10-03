@@ -79,12 +79,21 @@ void Recorder::stop()
         return;
     }
 
+    requestStop();
+    finishStop();
+}
+
+void Recorder::requestStop()
+{
     // A ORDEM IMPORTA: desliga a aceitação de amostras novas primeiro, só
     // depois pede pra thread de disco encerrar — assim ela sabe que o que
     // já está no buffer circular neste instante é tudo que vai chegar.
     m_recording.store(false, std::memory_order_relaxed);
     m_stopRequested.store(true, std::memory_order_release);
+}
 
+void Recorder::finishStop()
+{
     if (m_diskThread.joinable())
     {
         m_diskThread.join();

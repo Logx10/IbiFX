@@ -13,8 +13,9 @@ janela). Um afinador (Tuner, via YIN) também foi construído fora da ordem
 do roadmap, a pedido direto. **Fase 13 (MIDI): abstração de controle
 pronta, dispositivo de hardware pendente** — ver status abaixo. **Fase 14
 (Master Transport) concluída.** **Fase 15 (Metronome) concluída.** **Fase
-16 (Backing Tracks) concluída.** **Fase 17 (Recorder) concluída.** Fase 18
-(Multitrack / Reamping) é a próxima.
+16 (Backing Tracks) concluída.** **Fase 17 (Recorder) concluída.** **Fase
+18 (Multitrack / Reamping) concluída.** Fase 19 (Practice Mode) é a
+próxima.
 
 | # | Fase | Objetivo |
 |---|------|----------|
@@ -525,6 +526,46 @@ pronta, dispositivo de hardware pendente** — ver status abaixo. **Fase 14
   explícito, e um produtor numa THREAD DE VERDADE empurrando 20000
   amostras preserva ordem e contagem sob concorrência real — não só numa
   simulação de thread única. 32 testes no total.
+
+- **Fase 18 — Multitrack / Reamping. Concluída.**
+  "DI + sinal processado em tracks separadas": o sentido de gravar o sinal
+  SECO (DI, antes de qualquer efeito) é poder tocar essa gravação de volta
+  mais tarde por uma cadeia DIFERENTE (outro ampli, outro drive, outro
+  cabinet) sem precisar tocar a música de novo — "reamp". Isso só funciona
+  se o seco foi preservado; o processado sozinho já perdeu informação que
+  nenhum processamento reverte.
+  `ReampRecorder` é só uma composição de dois `Recorder` (Fase 17) — não
+  duplica buffer circular nem thread de disco, só os aciona em par. A
+  sincronia das duas tracks vem de `pushBlock()` receber os dois buffers
+  numa chamada só, nunca duas separadas.
+  `LiveEngine` precisou de um ajuste mínimo para alimentar isso: `m_chain.
+  process()` modifica o buffer mono NO LUGAR, então o sinal seco só existe
+  até o instante exato antes dessa chamada — `processBlock()` agora copia
+  pra um buffer próprio (`m_dryBuffer`, reservado no `start()`, nunca
+  realocado dentro do callback) só quando alguém está de fato gravando
+  (`m_reampRecorder.isRecording()`, uma checagem atômica barata o
+  bastante para não custar nada no caso comum de não estar gravando).
+  **Um bug de concorrência real, pego pelo próprio teste de integração do
+  `LiveEngine`, não por inspeção**: a primeira versão de `ReampRecorder::
+  stop()` chamava `m_dryRecorder.stop()` (que bloqueia num `join()`) e só
+  depois `m_processedRecorder.stop()`. Nesse intervalo — que pode durar o
+  tempo inteiro da thread de disco do primeiro escrever o arquivo —, um
+  `pushBlock()` em andamento podia ver o primeiro já parado e o segundo
+  ainda gravando, empurrando só pra um dos dois; as tracks saíam de
+  tamanhos diferentes, de forma intermitente. A correção: `Recorder::
+  stop()` virou duas fases (`requestStop()`, que só sinaliza sem
+  bloquear, e `finishStop()`, que junta a thread), e `ReampRecorder::
+  stop()` chama `requestStop()` nos dois ANTES de `finishStop()` em
+  qualquer um — encolhendo a janela de corrida de "o tempo de um join
+  inteiro" para "duas instruções atômicas consecutivas". Um sinalizador
+  único (`m_active`) também passou a ser a fonte de verdade que
+  `pushBlock()` consulta uma vez, em vez de perguntar a cada `Recorder`
+  interno.
+  Testado: 5 testes novos (`test_reamp_recorder.cpp`) cobrindo a API em
+  isolamento, mais 1 teste de integração em `test_live_engine.cpp` rodando
+  o `ReampRecorder` com o `LiveEngine` de verdade (backend Nulo) — que foi
+  exatamente quem pegou o bug de concorrência acima, rodando repetidas
+  vezes até reproduzi-lo. 33 testes no total.
 
 - **Tuner — fora da ordem do roadmap, a pedido direto.**
   Detecção de altura por YIN (De Cheveigné & Kawahara, 2002), não

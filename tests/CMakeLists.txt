@@ -248,6 +248,13 @@ add_executable(test_recorder
 target_compile_options(test_recorder PRIVATE ${IBIFX_WARNINGS})
 target_link_libraries(test_recorder PRIVATE ibifx_core Threads::Threads)
 
+add_executable(test_reamp_recorder
+    test_reamp_recorder.cpp
+)
+
+target_compile_options(test_reamp_recorder PRIVATE ${IBIFX_WARNINGS})
+target_link_libraries(test_reamp_recorder PRIVATE ibifx_core)
+
 # Registra cada executável como um teste do CTest.
 #
 #   NAME     como o teste aparece nos relatórios
@@ -293,3 +300,4 @@ add_test(NAME master_transport COMMAND test_master_transport)
 add_test(NAME metronome COMMAND test_metronome)
 add_test(NAME backing_track_player COMMAND test_backing_track_player)
 add_test(NAME recorder COMMAND test_recorder)
+add_test(NAME reamp_recorder COMMAND test_reamp_recorder)

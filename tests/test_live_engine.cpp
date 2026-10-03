@@ -14,6 +14,7 @@
 
 #include <chrono>
 #include <cstddef>
+#include <filesystem>
 #include <iostream>
 #include <memory>
 #include <string>
@@ -24,6 +25,7 @@
 #include "Delay.h"
 #include "GainProcessor.h"
 #include "LiveEngine.h"
+#include "WavFile.h"
 #include "test_helpers.h"
 
 namespace
@@ -365,6 +367,63 @@ void testRestartCycles()
     check(!engine.isRunning(), "terminou parado");
 }
 
+// O ReampRecorder (Fase 18) ligado ao engine grava as duas tracks enquanto
+// o áudio roda, sem travar nem perder blocos.
+//
+// O QUE ESTE TESTE NÃO PROVA
+// O backend Nulo não tem hardware nenhum — a entrada que chega em
+// processBlock() é sempre silêncio (ver o comentário no topo do arquivo).
+// Então este teste não consegue provar que a track seca e a processada
+// têm CONTEÚDOS diferentes (as duas seriam silêncio de qualquer forma,
+// mesmo com um Gain no meio — 0 vezes qualquer ganho continua 0). O que
+// ele prova é a FIAÇÃO: que reampRecorder() existe, que start()/stop()
+// funcionam com o motor rodando de verdade, e que as duas tracks terminam
+// com o MESMO tamanho — a sincronia que o reamp depende. Divergência de
+// conteúdo real só se prova com uma guitarra de verdade tocando, ou no
+// teste isolado de ReampRecorder (test_reamp_recorder.cpp), que não
+// depende do backend nulo.
+void testReampRecorderCapturesWhileEngineRuns()
+{
+    std::cout << "ReampRecorder grava as duas tracks com o engine rodando\n";
+
+    const auto dryPath = std::filesystem::temp_directory_path() / "ibifx_test_live_reamp_seco.wav";
+    const auto wetPath = std::filesystem::temp_directory_path() / "ibifx_test_live_reamp_processado.wav";
+
+    LiveEngine engine;
+
+    auto gain = std::make_unique<GainProcessor>();
+    gain->setGain(4.0f);
+    engine.chain().add(std::move(gain));
+
+    if (!engine.start(AudioDevice::Mode::Null, 48000.0, 128))
+    {
+        check(false, "o engine deveria ter iniciado");
+        return;
+    }
+
+    engine.reampRecorder().start(dryPath.string(), wetPath.string());
+    check(engine.reampRecorder().isRecording(), "comecou a gravar com o motor ja rodando");
+
+    check(waitForEngineBlocks(engine, 10), "processou blocos suficientes gravando");
+
+    engine.reampRecorder().stop();
+    engine.stop();
+
+    check(std::filesystem::exists(dryPath), "a track seca foi escrita");
+    check(std::filesystem::exists(wetPath), "a track processada foi escrita");
+
+    const WavFile dryFile = wav::read(dryPath.string());
+    const WavFile wetFile = wav::read(wetPath.string());
+
+    check(dryFile.frameCount() == wetFile.frameCount(),
+          "as duas tracks terminam com o mesmo tamanho (sincronizadas)");
+    check(dryFile.frameCount() > 0, "alguma coisa foi de fato gravada");
+
+    std::error_code ignored;
+    std::filesystem::remove(dryPath, ignored);
+    std::filesystem::remove(wetPath, ignored);
+}
+
 int main()
 {
     std::cout << "\n=== testes do dispositivo de audio e do LiveEngine ===\n\n";
@@ -381,6 +440,7 @@ int main()
     testChainSurvivesRunning();
     testEmptyChainRuns();
     testRestartCycles();
+    testReampRecorderCapturesWhileEngineRuns();
 
     return reportResults();
 }

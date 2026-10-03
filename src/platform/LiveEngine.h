@@ -7,6 +7,7 @@
 
 #include "AudioDevice.h"
 #include "ModuleChain.h"
+#include "ReampRecorder.h"
 
 // LiveEngine — liga o dispositivo de áudio à cadeia de módulos.
 //
@@ -98,16 +99,32 @@ public:
     std::size_t rerouteCount() const;
     std::size_t interruptionCount() const;
 
+    // Acesso ao gravador de reamp (Fase 18) — start()/stop() são chamados
+    // do domínio de controle. Sempre existe, mesmo sem gravar nada: é por
+    // isso que não há um setReampRecorder() trocando um ponteiro enquanto
+    // o áudio roda — isso teria a mesma corrida de trocar a cadeia (ver
+    // ModuleChain.h). pushBlock() já não faz nada quando não está
+    // gravando, então tê-lo sempre presente custa só uma checagem atômica
+    // por bloco.
+    ReampRecorder& reampRecorder();
+
 private:
     // Chamado na thread de áudio.
     void processBlock(float* output, const float* input, std::size_t frameCount, std::size_t channelCount);
 
     AudioDevice m_device;
     ModuleChain m_chain;
+    ReampRecorder m_reampRecorder;
 
     // Buffer mono de trabalho, alocado no start(). O callback só muda o
     // tamanho lógico dele, nunca a capacidade — então não aloca.
     std::vector<float> m_monoBuffer;
+
+    // Cópia do sinal ANTES da cadeia, para o ReampRecorder — só preenchida
+    // quando ele está gravando (ver processBlock()). Mesma política de
+    // alocação do m_monoBuffer: reservado no start(), nunca redimensionado
+    // além da capacidade dentro do callback.
+    std::vector<float> m_dryBuffer;
 
     std::atomic<float> m_inputPeak{0.0f};
     std::atomic<float> m_outputPeak{0.0f};

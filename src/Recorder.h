@@ -81,8 +81,29 @@ public:
     // Sinaliza a thread de disco para drenar o que resta e escrever o
     // arquivo, e espera (join) ela terminar. BLOQUEIA até o arquivo estar
     // gravado — chamada do domínio de controle, nunca da thread de áudio.
-    // Sem efeito se não estiver gravando.
+    // Sem efeito se não estiver gravando. Equivale a requestStop() seguido
+    // de finishStop(); existe separado dos dois só para o caso comum de
+    // uma track só, onde não há motivo para as duas fases.
     void stop();
+
+    // As duas metades de stop(), para quem precisa parar VÁRIOS Recorder
+    // em sincronia (ver ReampRecorder, Fase 18) — se cada um chamasse
+    // stop() (que já inclui o join) por conta própria, o primeiro Recorder
+    // ficaria parado enquanto o segundo ainda aceita amostras durante todo
+    // o tempo do join do primeiro, e as duas gravações sairiam de
+    // tamanhos diferentes.
+    //
+    // requestStop() só sinaliza (não bloqueia): chame em TODOS os
+    // Recorder envolvidos, um atrás do outro, antes de chamar
+    // finishStop() em qualquer um — assim a janela em que um já parou e o
+    // outro ainda não encolhe de "o tempo de um join inteiro" para "duas
+    // instruções atômicas consecutivas".
+    void requestStop();
+
+    // Junta a thread de disco e escreve o arquivo. Só faz sentido depois
+    // de requestStop() (chamar sem isso antes não tem efeito, pois a
+    // thread de disco não teria motivo para sair do laço).
+    void finishStop();
 
     bool isRecording() const;
 

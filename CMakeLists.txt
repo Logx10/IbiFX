@@ -153,6 +153,7 @@ add_library(ibifx_core STATIC
     src/Metronome.cpp
     src/BackingTrackPlayer.cpp
     src/Recorder.cpp
+    src/ReampRecorder.cpp
 )
 
 # A camada de plataforma, separada do core.

@@ -21,6 +21,8 @@ bool LiveEngine::start(AudioDevice::Mode mode, double sampleRate, int blockSize)
     const std::size_t reserve = static_cast<std::size_t>(blockSize) * 8;
     m_monoBuffer.reserve(reserve);
     m_monoBuffer.assign(reserve, 0.0f);
+    m_dryBuffer.reserve(reserve);
+    m_dryBuffer.assign(reserve, 0.0f);
 
     const bool started = m_device.start(
         [this](float* output, const float* input, std::size_t frames, std::size_t channels)
@@ -38,8 +40,14 @@ bool LiveEngine::start(AudioDevice::Mode mode, double sampleRate, int blockSize)
     // módulos precisam dele para converter segundos em amostras.
     m_chain.prepare(m_device.sampleRate(), blockSize);
     m_chain.reset();
+    m_reampRecorder.prepare(m_device.sampleRate());
 
     return true;
+}
+
+ReampRecorder& LiveEngine::reampRecorder()
+{
+    return m_reampRecorder;
 }
 
 void LiveEngine::stop()
@@ -164,6 +172,16 @@ void LiveEngine::processBlock(float* output,
 
     m_monoBuffer.resize(frames);
 
+    // Só copia o sinal seco se alguém for de fato gravá-lo — uma checagem
+    // atômica por bloco é mais barata que copiar `frames` amostras à toa
+    // sempre que nenhum reamp está em andamento (o caso comum).
+    const bool capturingDry = m_reampRecorder.isRecording();
+
+    if (capturingDry)
+    {
+        m_dryBuffer.resize(frames);
+    }
+
     // Desintercala: pega o primeiro canal de entrada. Uma guitarra entrega um
     // sinal só, e é dele que a cadeia mono precisa.
     float entrada = 0.0f;
@@ -174,6 +192,12 @@ void LiveEngine::processBlock(float* output,
         {
             const float sample = input[frame * channelCount];
             m_monoBuffer[frame] = sample;
+
+            if (capturingDry)
+            {
+                m_dryBuffer[frame] = sample;
+            }
+
             entrada = std::max(entrada, std::fabs(sample));
         }
     }
@@ -182,9 +206,25 @@ void LiveEngine::processBlock(float* output,
         // Sem entrada, alimentamos silêncio. Um delay com eco pendente ainda
         // devolve som, e é assim que se ouve a cauda de um efeito.
         std::fill(m_monoBuffer.begin(), m_monoBuffer.end(), 0.0f);
+
+        if (capturingDry)
+        {
+            std::fill(m_dryBuffer.begin(), m_dryBuffer.begin() + static_cast<std::ptrdiff_t>(frames), 0.0f);
+        }
     }
 
+    // A cadeia modifica m_monoBuffer NO LUGAR — é por isso que o sinal seco
+    // precisa ter sido copiado ANTES desta linha. Depois dela, m_monoBuffer
+    // já é o sinal processado, não existe mais uma cópia do original.
     m_chain.process(m_monoBuffer);
+
+    // Fase 18: alimenta as duas tracks (seca e processada) do reamp, se
+    // alguém estiver gravando. pushBlock() não faz nada e não bloqueia se
+    // não houver gravação em andamento.
+    if (capturingDry)
+    {
+        m_reampRecorder.pushBlock(m_dryBuffer.data(), m_monoBuffer.data(), frames);
+    }
 
     float saida = 0.0f;
     for (float sample : m_monoBuffer)
