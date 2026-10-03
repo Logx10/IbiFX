@@ -152,6 +152,7 @@ add_library(ibifx_core STATIC
     src/MasterTransport.cpp
     src/Metronome.cpp
     src/BackingTrackPlayer.cpp
+    src/Recorder.cpp
 )
 
 # A camada de plataforma, separada do core.
@@ -192,6 +193,11 @@ target_include_directories(ibifx_core PUBLIC src)
 # para quem depende dele. Warnings são assunto de quem escreve o código,
 # não de quem o consome.
 target_compile_options(ibifx_core PRIVATE ${IBIFX_WARNINGS})
+
+# O Recorder (Fase 17) sobe sua própria thread de disco — PUBLIC para que
+# quem ligar ibifx_core (inclusive os testes) herde o link, em vez de cada
+# um redescobrir que precisa de Threads::Threads por conta própria.
+target_link_libraries(ibifx_core PUBLIC Threads::Threads)
 
 # O executável: apenas o ponto de entrada, mais a biblioteca.
 add_executable(ibifx

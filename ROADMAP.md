@@ -13,7 +13,8 @@ janela). Um afinador (Tuner, via YIN) também foi construído fora da ordem
 do roadmap, a pedido direto. **Fase 13 (MIDI): abstração de controle
 pronta, dispositivo de hardware pendente** — ver status abaixo. **Fase 14
 (Master Transport) concluída.** **Fase 15 (Metronome) concluída.** **Fase
-16 (Backing Tracks) concluída.** Fase 17 (Recorder) é a próxima.
+16 (Backing Tracks) concluída.** **Fase 17 (Recorder) concluída.** Fase 18
+(Multitrack / Reamping) é a próxima.
 
 | # | Fase | Objetivo |
 |---|------|----------|
@@ -483,6 +484,47 @@ pronta, dispositivo de hardware pendente** — ver status abaixo. **Fase 14
   arbitrária, fica em silêncio depois do fim do arquivo, estéreo vira mono
   pela média, volume escala a amplitude, sample rate incompatível lança, e
   arquivo inexistente lança. 31 testes no total.
+
+- **Fase 17 — Recorder. Concluída (uma track; sessão fica para a Fase 18).**
+  "Gravação de uma track" — a parte de sessão (várias tracks juntas) é
+  naturalmente o território da Fase 18 (Multitrack), que vem a seguir.
+  O desenho já estava previsto no ADR 0001, na tabela de threads: disco
+  pode bloquear por milissegundos (antivírus examinando o arquivo, SO
+  ocupado com outra coisa), e a thread de áudio não tem esses milissegundos
+  de sobra. `Recorder` separa os dois lados com um buffer circular —
+  `thread de áudio → buffer → thread de disco própria → arquivo .wav` —
+  usando O MESMO algoritmo da `CommandQueue` (um produtor, um consumidor,
+  dois índices atômicos, uma posição sempre vazia), só carregando amostras
+  em vez de comandos. Não foi extraído num tipo compartilhado: é a segunda
+  vez que esse algoritmo aparece, e a regra do projeto (§55) é esperar a
+  terceira antes de abstrair.
+  `pushSamples()` (thread de áudio) nunca bloqueia e nunca aloca; se a
+  fila estiver cheia — a thread de disco caiu pra trás —, as amostras mais
+  novas são descartadas em vez de esperar, porque travar o áudio inteiro
+  seria pior que perder um trecho de gravação.
+  O arquivo só é escrito de verdade em `stop()`: `wav::write()` não foi
+  desenhado para escrita incremental (o cabeçalho RIFF precisa do tamanho
+  final), então a thread de disco só ACUMULA em memória enquanto grava, e
+  `stop()` — chamado do domínio de controle, nunca do de áudio — bloqueia
+  até o arquivo sair.
+  **Um bug pego pelo próprio teste de concorrência, não por inspeção**: a
+  primeira versão deixava a thread de disco dormir 5ms quando ociosa: um
+  teste empurrando 20000 amostras rapidamente contra um buffer pequeno de
+  propósito disparou o descarte por fila cheia (comportamento correto!), e
+  o PRÓPRIO TESTE, que não esperava perda nenhuma, indexou o arquivo
+  resultante além do que foi de fato gravado e crashou. A correção foi em
+  dois lugares: o sono ocioso caiu para 1ms (menos tempo cego entre
+  rajadas, sem custo de CPU relevante) e o teste passou a usar um buffer
+  maior que o total de amostras — o objetivo dele é provar concorrência
+  correta, não estressar o limite de overflow, que é outro comportamento,
+  já coberto pelo próprio desenho do algoritmo.
+  Testado: 6 testes novos (`test_recorder.cpp`) — `isRecording()` reflete
+  start/stop, o arquivo gravado bate exatamente com as amostras
+  empurradas, `start()` duas vezes seguidas lança, `pushSamples()` antes
+  de `start()` não faz nada, o destrutor grava mesmo sem `stop()`
+  explícito, e um produtor numa THREAD DE VERDADE empurrando 20000
+  amostras preserva ordem e contagem sob concorrência real — não só numa
+  simulação de thread única. 32 testes no total.
 
 - **Tuner — fora da ordem do roadmap, a pedido direto.**
   Detecção de altura por YIN (De Cheveigné & Kawahara, 2002), não
