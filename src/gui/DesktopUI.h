@@ -56,6 +56,12 @@ private:
 
     void drawFrame();
 
+    // Desenha um módulo como um pedal de verdade: corpo colorido, nome no
+    // topo, knobs em grade e um footswitch redondo embaixo (bypass). Lado
+    // a lado na mesma linha, como um pedalboard — drawFrame() decide a
+    // quebra de linha, este método só desenha UM pedal.
+    void drawPedal(std::size_t moduleIndex, std::size_t firstFlatIndex);
+
     // Barra de nível em dB, igual em espírito a PedalboardUI::meter(), só
     // desenhada com ImGui::ProgressBar em vez de caracteres.
     void drawMeter(const char* label, float peakLinear) const;
