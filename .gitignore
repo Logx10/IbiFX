@@ -93,3 +93,9 @@ desktop.ini
 # o áudio em si, não — ocupa muito espaço e não pertence ao histórico.
 audio/*
 !audio/README.md
+
+# Presets salvos pela janela desktop ou pelo CLI. A pasta e o README dela
+# ficam versionados; os presets em si são experimentação pessoal, não
+# pertencem ao histórico do código.
+presets/*
+!presets/README.md

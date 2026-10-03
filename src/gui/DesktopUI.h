@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstddef>
+#include <string>
 #include <vector>
 
 #include "LiveEngine.h"
@@ -56,6 +57,25 @@ private:
 
     void drawFrame();
 
+    // Lista de presets, em disco (presets/*.ibifxpreset), para a seção de
+    // presets da janela.
+    void refreshPresetList();
+
+    // Troca a cadeia INTEIRA pela do preset. Para o motor antes, porque
+    // preset::apply() chama ModuleChain::clear()+add() — realocar o vetor
+    // de módulos com a thread de áudio percorrendo ele é o tipo de corrida
+    // que ModuleChain.h documenta como proibido. Parar/trocar/religar é o
+    // caminho seguro já existente (LiveEngine::stop()/start()), ao custo de
+    // um corte breve no som durante a troca — aceitável para uma ação
+    // deliberada como esta, bem diferente de girar um knob.
+    void loadPreset(const std::string& path);
+
+    // Captura os valores ATUAIS da cadeia (não m_targets) num preset novo
+    // e grava em presets/<nome>.ibifxpreset.
+    void savePreset(const std::string& name);
+
+    void drawPresetPanel();
+
     // Desenha um módulo como um pedal de verdade: corpo colorido, nome no
     // topo, knobs em grade e um footswitch redondo embaixo (bypass). Lado
     // a lado na mesma linha, como um pedalboard — drawFrame() decide a
@@ -82,4 +102,21 @@ private:
     std::vector<float> m_targets;
 
     bool m_quit = false;
+
+    // Guardados para que loadPreset() consiga religar o motor com a mesma
+    // configuração depois de pará-lo — mesmo padrão de PedalboardUI.
+    AudioDevice::Mode m_mode = AudioDevice::Mode::Null;
+    double m_sampleRate = 48000.0;
+    int m_blockSize = 128;
+
+    // presets/*.ibifxpreset encontrados em disco, recarregado após salvar.
+    std::vector<std::string> m_presetFiles;
+
+    // Buffer de texto do campo "nome do preset" — ImGui::InputText precisa
+    // de um buffer de tamanho fixo, não de um std::string.
+    char m_presetNameBuffer[64] = "";
+
+    // Resultado da última ação de preset (carregado/salvo/erro), mostrado
+    // na própria janela até a próxima ação substituir.
+    std::string m_presetMessage;
 };

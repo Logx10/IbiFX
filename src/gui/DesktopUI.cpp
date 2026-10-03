@@ -9,11 +9,19 @@
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
+#include <filesystem>
 #include <iostream>
 #include <string>
 
+#include "Preset.h"
+#include "PresetManager.h"
+
 namespace
 {
+// Onde os presets salvos pela janela vivem, relativo ao diretório de
+// trabalho — mesma convenção de audio/ no CLI.
+constexpr const char* kPresetsDir = "presets";
+
 constexpr int kWindowWidth = 760;
 constexpr int kWindowHeight = 900;
 
@@ -529,6 +537,111 @@ void DesktopUI::drawPedal(std::size_t moduleIndex, std::size_t firstFlatIndex)
     ImGui::PopStyleVar(2);
 }
 
+void DesktopUI::refreshPresetList()
+{
+    m_presetFiles.clear();
+
+    std::error_code error;
+
+    if (!std::filesystem::exists(kPresetsDir, error))
+        return;
+
+    for (const auto& entry : std::filesystem::directory_iterator(kPresetsDir, error))
+    {
+        if (entry.is_regular_file() && entry.path().extension() == ".ibifxpreset")
+            m_presetFiles.push_back(entry.path().string());
+    }
+
+    std::sort(m_presetFiles.begin(), m_presetFiles.end());
+}
+
+void DesktopUI::loadPreset(const std::string& path)
+{
+    try
+    {
+        const Preset loaded = preset::load(path);
+
+        // Ver o comentário no header sobre por que parar o motor é
+        // necessário aqui: preset::apply() reconstrói a cadeia inteira.
+        m_engine.stop();
+        preset::apply(loaded, m_engine.chain());
+        const bool started = m_engine.start(m_mode, m_sampleRate, m_blockSize);
+
+        if (!started)
+        {
+            m_presetMessage = "erro ao religar o motor: " + m_engine.lastError();
+            return;
+        }
+
+        captureTargets();
+        m_presetMessage = "preset carregado: " + loaded.name;
+    }
+    catch (const std::exception& error)
+    {
+        m_presetMessage = std::string("erro: ") + error.what();
+    }
+}
+
+void DesktopUI::savePreset(const std::string& name)
+{
+    try
+    {
+        std::filesystem::create_directories(kPresetsDir);
+
+        const std::string path = std::string(kPresetsDir) + "/" + name + ".ibifxpreset";
+        preset::save(preset::capture(name, m_engine.chain()), path);
+
+        m_presetMessage = "preset salvo: " + path;
+        refreshPresetList();
+    }
+    catch (const std::exception& error)
+    {
+        m_presetMessage = std::string("erro: ") + error.what();
+    }
+}
+
+void DesktopUI::drawPresetPanel()
+{
+    ImGui::TextUnformatted("Presets");
+
+    ImGui::SetNextItemWidth(200.0f);
+    ImGui::InputTextWithHint("##presetName", "nome do preset", m_presetNameBuffer, sizeof(m_presetNameBuffer));
+
+    ImGui::SameLine();
+
+    // Nome vazio não vira arquivo "presets/.ibifxpreset" sem identidade
+    // nenhuma — o botão só funciona com algo digitado.
+    const bool canSave = m_presetNameBuffer[0] != '\0';
+
+    ImGui::BeginDisabled(!canSave);
+    if (ImGui::Button("Salvar"))
+        savePreset(m_presetNameBuffer);
+    ImGui::EndDisabled();
+
+    ImGui::SameLine();
+
+    if (ImGui::Button("Atualizar lista"))
+        refreshPresetList();
+
+    if (m_presetFiles.empty())
+    {
+        ImGui::TextDisabled("(nenhum preset em presets/ ainda)");
+    }
+    else
+    {
+        for (const std::string& path : m_presetFiles)
+        {
+            const std::string label = std::filesystem::path(path).stem().string();
+
+            if (ImGui::Selectable(label.c_str()))
+                loadPreset(path);
+        }
+    }
+
+    if (!m_presetMessage.empty())
+        ImGui::TextUnformatted(m_presetMessage.c_str());
+}
+
 void DesktopUI::drawFrame()
 {
     ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
@@ -540,6 +653,8 @@ void DesktopUI::drawFrame()
     ImGui::TextUnformatted(m_engine.isRunning() ? "tocando" : "parado");
     ImGui::Text("%s   %d Hz", m_engine.deviceName().c_str(), static_cast<int>(m_engine.sampleRate()));
 
+    ImGui::Separator();
+    drawPresetPanel();
     ImGui::Separator();
     drawMeter("entrada", m_engine.inputPeak());
     drawMeter("saida", m_engine.outputPeak());
@@ -581,6 +696,12 @@ void DesktopUI::drawFrame()
 
 int DesktopUI::run(AudioDevice::Mode mode, double sampleRate, int blockSize)
 {
+    // Guardados para que loadPreset() consiga religar o motor com a mesma
+    // configuração depois de pará-lo.
+    m_mode = mode;
+    m_sampleRate = sampleRate;
+    m_blockSize = blockSize;
+
     if (!initWindow())
     {
         shutdownWindow();
@@ -595,6 +716,7 @@ int DesktopUI::run(AudioDevice::Mode mode, double sampleRate, int blockSize)
     }
 
     captureTargets();
+    refreshPresetList();
 
     while (!m_quit)
     {
