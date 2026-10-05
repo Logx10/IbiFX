@@ -1,9 +1,11 @@
 #pragma once
 
 #include <cstddef>
+#include <set>
 #include <string>
 #include <vector>
 
+#include "GearLibrary.h"
 #include "LiveEngine.h"
 
 struct SDL_Window;
@@ -29,6 +31,15 @@ struct SDL_Renderer;
 // por parâmetro (ver m_targets abaixo) e nunca travar a thread de áudio.
 // Esta classe replica essas mesmas regras com Dear ImGui no lugar de
 // Terminal.
+//
+// O NAVEGADOR DE EQUIPAMENTOS (painel da direita)
+// Mostra a GearLibrary em abas Stomp / Amp / Cab / Rack, como o navegador
+// do AmpliTube. Clicar num item muda m_rig, e o rig inteiro vira um Preset
+// novo aplicado na cadeia (applyRig()). Uma troca de equipamento é
+// estrutural (módulos entram e saem da cadeia), então ela passa pelo mesmo
+// caminho de parar/aplicar/religar de loadPreset(), não pela fila de
+// comandos — e por isso os knobs mexidos à mão voltam aos valores da
+// receita a cada troca.
 class DesktopUI
 {
 public:
@@ -69,6 +80,37 @@ private:
     // um corte breve no som durante a troca — aceitável para uma ação
     // deliberada como esta, bem diferente de girar um knob.
     void loadPreset(const std::string& path);
+
+    // O caminho comum de loadPreset() e applyRig(): para o motor, aplica o
+    // preset, religa e recaptura os alvos dos knobs. Devolve false (com a
+    // mensagem em error) se algo falhar.
+    bool replaceChain(const Preset& preset, std::string& error);
+
+    // Monta next como preset e o aplica na cadeia, guardando em
+    // m_rigSegments qual faixa de módulos pertence a cada equipamento. Só
+    // vira m_rig se der certo — uma IR que não carrega deixa o rig antigo.
+    void applyRig(const Rig& next);
+
+    // Painel da direita: abas de categoria, filtro por character e a lista
+    // de equipamentos.
+    void drawGearBrowser();
+
+    // Faixa com o rig atual (stomps, amp, cab, rack), com botões para
+    // remover e reordenar stomps/rack.
+    void drawRigStrip();
+
+    // Os pedais da cadeia, agrupados por equipamento quando há um rig ativo.
+    void drawPedalboard();
+
+    // Desenha um equipamento com painel (GearModel::controls) como UMA
+    // peça só: um ampli com a faixa de knobs de 0 a 10, ou um pedal com
+    // um footswitch que liga/desliga todos os módulos da receita juntos.
+    void drawGearPanel(std::size_t segmentIndex, const GearModel& model);
+
+    // Índice, dentro de m_targets, de um parâmetro de um módulo da cadeia
+    // procurado pelo id. Devolve false se o módulo não tiver esse id.
+    bool flatIndexFor(std::size_t moduleIndex, const std::string& parameterId,
+                      std::size_t& parameterIndex, std::size_t& flatIndex) const;
 
     // Captura os valores ATUAIS da cadeia (não m_targets) num preset novo
     // e grava em presets/<nome>.ibifxpreset.
@@ -134,4 +176,37 @@ private:
     // o nome dentro do preset pode não ter nenhuma relação com o nome do
     // arquivo, como "Slash (Marshall lead/rhythm, GNR)" vs "slash.ibifxpreset").
     std::string m_currentPresetPath;
+
+    GearLibrary m_library;
+    Rig m_rig;
+
+    // false enquanto a cadeia veio de flags ou de um preset — aí ela não
+    // corresponde a m_rig, e o pedalboard não tem como agrupar por
+    // equipamento.
+    bool m_rigActive = false;
+
+    // Um equipamento do rig visto como faixa de módulos da cadeia:
+    // [firstModule, firstModule + moduleCount).
+    struct RigSegment
+    {
+        std::string label;
+
+        // Vazio para o grupo "Saida" (o Limiter), que não é um equipamento.
+        std::string gearId;
+
+        std::size_t firstModule = 0;
+        std::size_t moduleCount = 0;
+    };
+    std::vector<RigSegment> m_rigSegments;
+
+    // Segmentos que a pessoa abriu para ver "por dentro" — os módulos crus
+    // da receita em vez do painel. Zerado a cada applyRig().
+    std::set<std::size_t> m_expandedSegments;
+
+    GearCategory m_browserCategory = GearCategory::Amp;
+
+    // Vazio = todos os "character" da categoria aberta.
+    std::string m_browserCharacter;
+
+    std::string m_rigMessage;
 };

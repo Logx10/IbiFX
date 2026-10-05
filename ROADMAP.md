@@ -625,6 +625,51 @@ concluída.** **Fase 20 (WebAssembly) em andamento** — ver status abaixo.
   34 testes continuam passando nativamente; a compilação em WASM é o que
   falta verificar.
 
+- **Biblioteca de equipamentos (GearLibrary) — fora da ordem, a pedido
+  direto. Passo 1 de 3 concluído (núcleo).**
+  Um catálogo no espírito do navegador de gear do AmpliTube: Stomp, Amp,
+  Cabinet (+ microfone) e Rack, montados nessa ordem num rig. Nenhum
+  módulo de DSP novo: um equipamento é uma RECEITA de módulos que já
+  existem (o "Brit 800" é HighPass -> Gain -> Preamp -> ToneStack -> Gain
+  -> PowerAmp -> Gain com valores próprios), guardada como
+  `Preset::ModuleState`. A biblioteca só monta um `Preset`; quem aplica
+  é o `preset::apply()` de sempre. Cabinets vêm do disco (`irs/<gabinete>/
+  <microfone>.wav`), não do código: IR é gravação, não receita.
+  Os amplis foram calibrados para sair todos perto de -18 dB RMS com
+  `audio/guitar.wav`. Sem um volume de saída depois do PowerAmp, o limpo
+  saía a -45 dB (o ToneStack passivo atenua muito) e os saturados a -4 dB,
+  colados no Limiter.
+  Testado: 8 testes novos (`test_gear_library.cpp`). O principal confere
+  que todo parâmetro de toda receita existe no módulo e cabe na faixa,
+  porque `preset::apply()` ignora um id errado sem avisar. 35 testes no
+  total.
+  **Passo 2 concluído: navegador de equipamentos na janela desktop.**
+  Painel à direita com abas Stomp / Amp / Cab / Rack e filtro por
+  character. Clicar num item muda o rig, e o rig inteiro vira um Preset
+  novo, aplicado pelo mesmo caminho de parar/aplicar/religar do
+  carregamento de preset (`replaceChain()`). Uma troca de equipamento
+  tira e põe módulos na cadeia, e isso não cabe na fila de comandos.
+  Antes de parar o motor, o preset é ensaiado numa cadeia de rascunho:
+  uma IR que não carrega dá erro com a cadeia antiga ainda tocando
+  inteira, em vez de deixá-la pela metade. O pedalboard passa a agrupar os
+  pedais por equipamento, e para isso a `GearLibrary` ganhou `rigModels()`,
+  em vez de a UI repetir a ordem stomp -> amp -> cab -> rack.
+  Limitação conhecida: cada troca de equipamento devolve os knobs aos
+  valores da receita.
+  **Painel único por equipamento.** `GearModel` ganhou `controls`: cada
+  knob do painel diz qual parâmetro de qual módulo da receita ele gira, e
+  em que faixa. A faixa é a do knob, não a do Parameter: o Master gira o
+  ganho de 0 a um teto pequeno, nunca até -8, que inverteria a fase. Os
+  amplis têm o mesmo painel (Gain, Bass, Middle, Treble, Sag, Master), com
+  escala de 0 a 10 como num ampli de verdade. Quem tem um módulo só ganha
+  um knob por parâmetro automaticamente, lendo as faixas do próprio
+  módulo. O pedalboard fica em fileiras (Stomps / Amp + Cab / Rack). O "R"
+  de um painel volta aos valores da RECEITA, não ao padrão de cada módulo,
+  e o "+" abre o equipamento para ver os módulos de dentro.
+  Testado: 1 teste novo confere que todo knob aponta para um módulo e um
+  parâmetro reais, com faixa válida e o valor da receita dentro dela.
+  Próximo: (3) flags `--amp/--cab/--stomp/--rack` no CLI.
+
 - **Tuner — fora da ordem do roadmap, a pedido direto.**
   Detecção de altura por YIN (De Cheveigné & Kawahara, 2002), não
   autocorrelação simples: testado ao vivo, a autocorrelação confundia a
