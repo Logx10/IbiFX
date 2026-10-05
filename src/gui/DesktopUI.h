@@ -44,7 +44,14 @@ class DesktopUI
 {
 public:
     // O engine precisa ter a cadeia montada antes de entrar aqui.
-    explicit DesktopUI(LiveEngine& engine);
+    // irsDirectory: onde o navegador procura cabinets.
+    explicit DesktopUI(LiveEngine& engine, std::string irsDirectory = "irs");
+
+    // Avisa que a cadeia do engine JÁ foi montada a partir deste rig (por
+    // --amp/--stomp... na linha de comando), para a janela abrir com ele
+    // ativo no navegador e agrupado no pedalboard. Não reaplica nada. Os
+    // ids precisam estar na forma completa (ver resolveRig()).
+    void adoptRig(const Rig& rig);
 
     // Roda o laço da janela até ela ser fechada. Devolve o código de saída.
     int run(AudioDevice::Mode mode, double sampleRate, int blockSize);
@@ -134,6 +141,7 @@ private:
     void drawMeter(const char* label, float peakLinear) const;
 
     LiveEngine& m_engine;
+    std::string m_irsDirectory;
 
     SDL_Window* m_window = nullptr;
     SDL_Renderer* m_renderer = nullptr;

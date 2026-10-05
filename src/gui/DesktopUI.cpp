@@ -12,6 +12,7 @@
 #include <filesystem>
 #include <iostream>
 #include <string>
+#include <utility>
 
 #include "Preset.h"
 #include "PresetManager.h"
@@ -21,9 +22,6 @@ namespace
 // Onde os presets salvos pela janela vivem, relativo ao diretório de
 // trabalho — mesma convenção de audio/ no CLI.
 constexpr const char* kPresetsDir = "presets";
-
-// Onde a GearLibrary procura cabinets — ver irs/README.md.
-constexpr const char* kIrsDir = "irs";
 
 constexpr int kWindowWidth = 1200;
 constexpr int kWindowHeight = 900;
@@ -313,9 +311,36 @@ void applyTheme()
 }
 }
 
-DesktopUI::DesktopUI(LiveEngine& engine)
+DesktopUI::DesktopUI(LiveEngine& engine, std::string irsDirectory)
     : m_engine(engine)
+    , m_irsDirectory(std::move(irsDirectory))
 {
+    m_library.scanImpulseResponses(m_irsDirectory);
+}
+
+void DesktopUI::adoptRig(const Rig& rig)
+{
+    m_rig = rig;
+    m_rigActive = true;
+    m_rigSegments.clear();
+    m_expandedSegments.clear();
+
+    std::size_t firstModule = 0;
+    for (const GearModel* model : m_library.rigModels(rig))
+    {
+        std::string label = std::string(gearCategoryName(model->category)) + ": " + model->name;
+        if (!model->microphone.empty())
+            label += " / " + model->microphone;
+
+        m_rigSegments.push_back({label, model->id, firstModule, model->modules.size()});
+        firstModule += model->modules.size();
+    }
+
+    // A cadeia não é mais o preset carregado — deixar o nome dele em
+    // destaque seria mentir sobre o que está tocando.
+    m_currentPresetName.clear();
+    m_currentPresetPath.clear();
+    m_rigMessage.clear();
 }
 
 std::size_t DesktopUI::firstFlatIndexForModule(std::size_t moduleIndex) const
@@ -671,8 +696,8 @@ void DesktopUI::applyRig(const Rig& next)
 {
     try
     {
-        const std::vector<const GearModel*> models = m_library.rigModels(next);
-
+        // buildPreset() lança num id inválido ANTES de replaceChain() parar
+        // o motor.
         std::string error;
         if (!replaceChain(m_library.buildPreset(next, "Rig"), error))
         {
@@ -680,27 +705,7 @@ void DesktopUI::applyRig(const Rig& next)
             return;
         }
 
-        m_rig = next;
-        m_rigActive = true;
-        m_rigSegments.clear();
-        m_expandedSegments.clear();
-
-        std::size_t firstModule = 0;
-        for (const GearModel* model : models)
-        {
-            std::string label = std::string(gearCategoryName(model->category)) + ": " + model->name;
-            if (!model->microphone.empty())
-                label += " / " + model->microphone;
-
-            m_rigSegments.push_back({label, model->id, firstModule, model->modules.size()});
-            firstModule += model->modules.size();
-        }
-
-        // A cadeia não é mais o preset carregado — deixar o nome dele em
-        // destaque seria mentir sobre o que está tocando.
-        m_currentPresetName.clear();
-        m_currentPresetPath.clear();
-        m_rigMessage.clear();
+        adoptRig(next);
     }
     catch (const std::exception& e)
     {
@@ -856,8 +861,8 @@ void DesktopUI::drawGearBrowser()
 
     if (ImGui::Button("Reler irs/"))
     {
-        const std::size_t found = m_library.scanImpulseResponses(kIrsDir);
-        m_rigMessage = std::to_string(found) + " cabinet(s) em irs/";
+        const std::size_t found = m_library.scanImpulseResponses(m_irsDirectory);
+        m_rigMessage = std::to_string(found) + " cabinet(s) em " + m_irsDirectory;
     }
 
     if (ImGui::IsItemHovered())
@@ -1500,7 +1505,6 @@ int DesktopUI::run(AudioDevice::Mode mode, double sampleRate, int blockSize)
 
     captureTargets();
     refreshPresetList();
-    m_library.scanImpulseResponses(kIrsDir);
 
     while (!m_quit)
     {

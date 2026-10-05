@@ -269,6 +269,13 @@ add_executable(test_gear_library
 target_compile_options(test_gear_library PRIVATE ${IBIFX_WARNINGS})
 target_link_libraries(test_gear_library PRIVATE ibifx_core)
 
+add_executable(test_chain_args
+    test_chain_args.cpp
+)
+
+target_compile_options(test_chain_args PRIVATE ${IBIFX_WARNINGS})
+target_link_libraries(test_chain_args PRIVATE ibifx_core)
+
 # Registra cada executável como um teste do CTest.
 #
 #   NAME     como o teste aparece nos relatórios
@@ -317,3 +324,4 @@ add_test(NAME recorder COMMAND test_recorder)
 add_test(NAME reamp_recorder COMMAND test_reamp_recorder)
 add_test(NAME practice_session COMMAND test_practice_session)
 add_test(NAME gear_library COMMAND test_gear_library)
+add_test(NAME chain_args COMMAND test_chain_args)

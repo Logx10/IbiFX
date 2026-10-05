@@ -2,6 +2,37 @@
 
 #include <stdexcept>
 
+#include "PresetManager.h"
+
+namespace
+{
+// Lê o valor de uma opção que recebe texto (caminho ou id), não número.
+const std::string& textValue(const std::vector<std::string>& args, std::size_t& i, const char* what)
+{
+    if (i + 1 >= args.size())
+        throw std::runtime_error("a opcao " + args[i] + " precisa de " + what);
+    return args[++i];
+}
+
+// "brit-800" -> "amp.brit-800", se o curto não existir e o completo sim.
+std::string resolveId(const GearLibrary& library, const std::string& id, const char* prefix)
+{
+    if (library.find(id) != nullptr)
+        return id;
+
+    const std::string full = std::string(prefix) + "." + id;
+    if (library.find(full) != nullptr)
+        return full;
+
+    throw std::runtime_error("equipamento desconhecido: " + id + " (veja ibifx --list-gear)");
+}
+}
+
+bool CliOptions::usesRig() const
+{
+    return !rig.stomps.empty() || !rig.amp.empty() || !rig.cabinet.empty() || !rig.rack.empty();
+}
+
 CliOptions parseSettings(const std::vector<std::string>& args)
 {
     CliOptions settings;
@@ -109,6 +140,39 @@ CliOptions parseSettings(const std::vector<std::string>& args)
             continue;
         }
 
+        // As opções de rig (GearLibrary) recebem um id, não um número.
+        // --stomp e --rack podem se repetir: a ordem na linha de comando é
+        // a ordem na cadeia.
+        if (option == "--stomp")
+        {
+            settings.rig.stomps.push_back(textValue(args, i, "o id de um pedal"));
+            continue;
+        }
+
+        if (option == "--amp")
+        {
+            settings.rig.amp = textValue(args, i, "o id de um ampli");
+            continue;
+        }
+
+        if (option == "--cab")
+        {
+            settings.rig.cabinet = textValue(args, i, "o id de um cabinet");
+            continue;
+        }
+
+        if (option == "--rack")
+        {
+            settings.rig.rack.push_back(textValue(args, i, "o id de um efeito de rack"));
+            continue;
+        }
+
+        if (option == "--irs")
+        {
+            settings.irsDirectory = textValue(args, i, "o caminho de uma pasta");
+            continue;
+        }
+
         if (i + 1 >= args.size())
         {
             throw std::runtime_error("a opcao " + option + " precisa de um valor");
@@ -167,4 +231,45 @@ CliOptions parseSettings(int argc, char** argv, int first)
         args.push_back(argv[i]);
 
     return parseSettings(args);
+}
+
+Rig resolveRig(const CliOptions& options, const GearLibrary& library)
+{
+    Rig resolved;
+
+    for (const std::string& id : options.rig.stomps)
+        resolved.stomps.push_back(resolveId(library, id, "stomp"));
+
+    if (!options.rig.amp.empty())
+        resolved.amp = resolveId(library, options.rig.amp, "amp");
+
+    if (!options.rig.cabinet.empty())
+        resolved.cabinet = resolveId(library, options.rig.cabinet, "cab");
+
+    for (const std::string& id : options.rig.rack)
+        resolved.rack.push_back(resolveId(library, id, "rack"));
+
+    return resolved;
+}
+
+std::string buildChainFromOptions(const CliOptions& options, ModuleChain& chain)
+{
+    if (!options.loadPresetPath.empty())
+    {
+        const Preset loaded = preset::load(options.loadPresetPath);
+        preset::apply(loaded, chain);
+        return "preset carregado de " + options.loadPresetPath + " (\"" + loaded.name + "\")";
+    }
+
+    if (options.usesRig())
+    {
+        GearLibrary library;
+        library.scanImpulseResponses(options.irsDirectory);
+
+        preset::apply(library.buildPreset(resolveRig(options, library), "Rig"), chain);
+        return "rig montado com a GearLibrary";
+    }
+
+    buildChain(chain, options.chain);
+    return "cadeia montada pelas flags";
 }

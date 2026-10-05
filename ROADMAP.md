@@ -668,7 +668,21 @@ concluída.** **Fase 20 (WebAssembly) em andamento** — ver status abaixo.
   e o "+" abre o equipamento para ver os módulos de dentro.
   Testado: 1 teste novo confere que todo knob aponta para um módulo e um
   parâmetro reais, com faixa válida e o valor da receita dentro dela.
-  Próximo: (3) flags `--amp/--cab/--stomp/--rack` no CLI.
+  **Passo 3 concluído: o rig pela linha de comando.**
+  `--stomp ID` (repetível, na ordem dada), `--amp ID`, `--cab ID`,
+  `--rack ID` (repetível) e `--irs PASTA`, com ids curtos (`brit-800`) ou
+  completos (`amp.brit-800`). `ibifx --list-gear` lista o catálogo. As
+  flags valem no processamento de arquivo, no `--live`, no `--ui` e no
+  desktop. O desktop abre com o rig já ativo no navegador
+  (`DesktopUI::adoptRig()`).
+  A montagem da cadeia a partir das opções foi para um lugar só,
+  `buildChainFromOptions()`, com a precedência preset > rig > flags
+  clássicas. Antes, cada frontend repetia o "if preset... else
+  buildChain", e `--live`/`--ui` ignoravam o `--preset` sem avisar. Agora
+  ele vale ali também.
+  Testado: 7 testes novos (`test_chain_args.cpp`) cobrem ordem das flags,
+  valor faltando, ids curtos e completos, id desconhecido e as duas
+  precedências. 36 testes no total.
 
 - **Tuner — fora da ordem do roadmap, a pedido direto.**
   Detecção de altura por YIN (De Cheveigné & Kawahara, 2002), não

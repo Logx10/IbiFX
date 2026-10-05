@@ -21,6 +21,9 @@
 // genericamente, então ToneStack/Preamp/PowerAmp/Cabinet viram pedais na
 // janela assim que entram na cadeia, do mesmo jeito que Gain ou Delay.
 //
+// --stomp/--amp/--cab/--rack montam um rig da GearLibrary, e a janela abre
+// com ele já ativo no navegador de equipamentos.
+//
 // --preset CAMINHO carrega um preset pronto no lugar das flags acima,
 // igual ao processamento de arquivo. --save-preset não se aplica aqui —
 // salvar faz sentido depois de ajustar os knobs com a janela aberta, não
@@ -46,18 +49,8 @@ int main(int argc, char** argv)
         LiveEngine engine;
         const CliOptions options = parseSettings(chainArgs);
 
-        if (!options.loadPresetPath.empty())
-        {
-            const Preset loaded = preset::load(options.loadPresetPath);
-            preset::apply(loaded, engine.chain());
-
-            std::cout << "preset carregado de " << options.loadPresetPath
-                      << " (\"" << loaded.name << "\")\n";
-        }
-        else
-        {
-            buildChain(engine.chain(), options.chain);
-        }
+        // Preset, rig ou flags — ver a precedência em ChainArgs.h.
+        std::cout << buildChainFromOptions(options, engine.chain()) << "\n";
 
         if (!useNullDevice)
         {
@@ -65,7 +58,16 @@ int main(int argc, char** argv)
                       << "       o som realimenta e vira microfonia. Use fones de ouvido.\n";
         }
 
-        DesktopUI ui(engine);
+        DesktopUI ui(engine, options.irsDirectory);
+
+        // Com --amp/--stomp..., a janela abre com esse rig ativo no
+        // navegador. O --preset vence o rig (ver ChainArgs.h), então aí não.
+        if (options.usesRig() && options.loadPresetPath.empty())
+        {
+            GearLibrary library;
+            library.scanImpulseResponses(options.irsDirectory);
+            ui.adoptRig(resolveRig(options, library));
+        }
 
         return ui.run(useNullDevice ? AudioDevice::Mode::Null : AudioDevice::Mode::Duplex,
                       48000.0, 128);

@@ -1,5 +1,6 @@
 #include <chrono>
 #include <cstdint>
+#include <cstdio>
 #include <exception>
 #include <filesystem>
 #include <iomanip>
@@ -17,6 +18,7 @@
 #include "Clipper.h"
 #include "Delay.h"
 #include "GainProcessor.h"
+#include "GearLibrary.h"
 #include "ModuleChain.h"
 #include "PedalboardChain.h"
 #include "Preset.h"
@@ -367,6 +369,7 @@ void printUsage(const char* program)
               << "                            precisam vir DEPOIS de segundos/bloco\n"
               << "  " << program << " --tuner [segundos]       afinador (padrao 60s)\n"
               << "  " << program << " --devices                testa o dispositivo sem hardware\n"
+              << "  " << program << " --list-gear [pasta-irs]  lista pedais, amplis, cabinets e rack\n"
               << "  " << program << " --ui [opcoes]            pedaleira interativa no terminal\n"
               << "  " << program << " --ui-demo [opcoes]       a pedaleira sem placa de som\n"
               << "                            --ui e --ui-demo tambem aceitam as opcoes de cadeia\n"
@@ -404,6 +407,13 @@ void printUsage(const char* program)
               << "                          ignorando as demais opcoes acima\n"
               << "  --save-preset arquivo.ibifxpreset  grava a cadeia montada neste\n"
               << "                          comando (com --preset ou com as flags)\n"
+              << "  --stomp ID     poe um pedal da GearLibrary (repetivel, na ordem dada)\n"
+              << "  --amp ID       escolhe o ampli\n"
+              << "  --cab ID       escolhe o cabinet (gabinete + microfone, de irs/)\n"
+              << "  --rack ID      poe um efeito de rack (repetivel)\n"
+              << "  --irs PASTA    onde procurar cabinets (padrao irs)\n"
+              << "                 com qualquer uma dessas, a cadeia e o rig, e as\n"
+              << "                 flags classicas sao ignoradas (--preset vence o rig)\n"
               << "  --no-gate       tira o noise gate da cadeia\n"
               << "  --no-compressor tira o compressor da cadeia\n"
               << "  --no-highpass  tira o filtro da cadeia\n"
@@ -419,9 +429,41 @@ void printUsage(const char* program)
               << "  " << program << " audio/guitar.wav audio/crunch.wav --highpass 250 --gain 2 --drive 2 --no-delay\n"
               << "  " << program << " audio/guitar.wav audio/fuzz.wav --gain 8 --drive 40\n"
               << "  " << program << " --live 30 128 --cabinet audio/minha_ir.wav\n"
+              << "  " << program << " audio/guitar.wav audio/lead.wav --stomp gate --stomp green-screamer --amp brit-800 --rack hall\n"
               << "\n"
               << "nota: --gain e --drive multiplicam antes da mesma curva, entao\n"
               << "so o PRODUTO deles importa. gain 2 drive 4 soa igual a gain 4 drive 2.\n";
+}
+
+// Lista o catálogo da GearLibrary, por categoria, com os ids que as
+// opções --stomp/--amp/--cab/--rack aceitam.
+int runListGear(const std::string& irsDirectory)
+{
+    GearLibrary library;
+    const std::size_t cabinets = library.scanImpulseResponses(irsDirectory);
+
+    for (GearCategory category : {GearCategory::Stomp, GearCategory::Amp,
+                                  GearCategory::Cabinet, GearCategory::Rack})
+    {
+        std::cout << gearCategoryName(category) << ":\n";
+
+        for (const GearModel* model : library.modelsIn(category))
+        {
+            std::string name = model->name;
+            if (!model->microphone.empty())
+                name += " / " + model->microphone;
+
+            std::printf("  %-32s %-28s %s\n", model->id.c_str(), name.c_str(), model->character.c_str());
+        }
+
+        if (category == GearCategory::Cabinet && cabinets == 0)
+            std::cout << "  (nenhum - coloque IRs em " << irsDirectory << "/<gabinete>/<microfone>.wav)\n";
+
+        std::cout << "\n";
+    }
+
+    std::cout << "ids podem ser abreviados sem o prefixo: --amp brit-800\n";
+    return 0;
 }
 
 // Toca ao vivo: entrada da placa de som -> efeitos -> saida.
@@ -429,10 +471,10 @@ void printUsage(const char* program)
 // CUIDADO COM MICROFONIA: se a entrada for o microfone embutido e a saida for
 // o alto-falante embutido, o som volta para a entrada e realimenta. Com ganho
 // e distorcao no caminho, isso vira um apito alto muito rapido. Use fones.
-int runLive(double seconds, int blockSize, bool toggleDrive, const ChainSettings& settings)
+int runLive(double seconds, int blockSize, bool toggleDrive, const CliOptions& options)
 {
     LiveEngine engine;
-    buildChain(engine.chain(), settings);
+    std::cout << buildChainFromOptions(options, engine.chain()) << "\n";
 
     std::cout << "AVISO: se a entrada e a saida forem os dispositivos embutidos,\n"
               << "       o som realimenta e vira microfonia. Use fones de ouvido.\n\n";
@@ -597,10 +639,10 @@ int runTuner(double seconds)
 }
 
 // Abre a pedaleira interativa.
-int runInteractive(bool withHardware, const ChainSettings& settings)
+int runInteractive(bool withHardware, const CliOptions& options)
 {
     LiveEngine engine;
-    buildChain(engine.chain(), settings);
+    std::cout << buildChainFromOptions(options, engine.chain()) << "\n";
 
     if (withHardware)
     {
@@ -672,7 +714,7 @@ int main(int argc, char** argv)
             for (int i = 2; i < argc; ++i)
                 chainArgs.push_back(argv[i]);
 
-            return runInteractive(true, parseSettings(chainArgs).chain);
+            return runInteractive(true, parseSettings(chainArgs));
         }
 
         if (argc >= 2 && std::string(argv[1]) == "--ui-demo")
@@ -681,7 +723,7 @@ int main(int argc, char** argv)
             for (int i = 2; i < argc; ++i)
                 chainArgs.push_back(argv[i]);
 
-            return runInteractive(false, parseSettings(chainArgs).chain);
+            return runInteractive(false, parseSettings(chainArgs));
         }
 
         if (argc >= 2 && std::string(argv[1]) == "--live")
@@ -720,13 +762,19 @@ int main(int argc, char** argv)
             const double seconds = (!posicionais.empty()) ? std::stod(posicionais[0]) : 10.0;
             const int blockSize = (posicionais.size() >= 2) ? std::stoi(posicionais[1]) : 128;
 
-            return runLive(seconds, blockSize, toggleDrive, parseSettings(chainArgs).chain);
+            return runLive(seconds, blockSize, toggleDrive, parseSettings(chainArgs));
         }
 
         if (argc >= 2 && std::string(argv[1]) == "--tuner")
         {
             const double seconds = (argc >= 3) ? std::stod(argv[2]) : 60.0;
             return runTuner(seconds);
+        }
+
+        if (argc >= 2 && std::string(argv[1]) == "--list-gear")
+        {
+            const std::string irsDirectory = (argc >= 3) ? argv[2] : "irs";
+            return runListGear(irsDirectory);
         }
 
         if (argc == 2 && std::string(argv[1]) == "--devices")
@@ -760,22 +808,8 @@ int main(int argc, char** argv)
 
             ModuleChain chain;
 
-            // --preset substitui as flags acima na montagem da cadeia: o
-            // preset já diz tipo, ordem, bypass e parâmetros de cada
-            // módulo, então as demais opções de settings não têm o que
-            // fazer aqui.
-            if (!settings.loadPresetPath.empty())
-            {
-                const Preset loaded = preset::load(settings.loadPresetPath);
-                preset::apply(loaded, chain);
-
-                std::cout << "preset carregado de " << settings.loadPresetPath
-                          << " (\"" << loaded.name << "\")\n\n";
-            }
-            else
-            {
-                buildChain(chain, settings.chain);
-            }
+            // Preset, rig ou flags — ver a precedência em ChainArgs.h.
+            std::cout << buildChainFromOptions(settings, chain) << "\n\n";
 
             std::cout << "cadeia: ";
             for (std::size_t i = 0; i < chain.size(); ++i)
