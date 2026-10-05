@@ -155,6 +155,7 @@ add_library(ibifx_core STATIC
     src/Recorder.cpp
     src/ReampRecorder.cpp
     src/PracticeSession.cpp
+    src/GearLibrary.cpp
 )
 
 # A camada de plataforma, separada do core.

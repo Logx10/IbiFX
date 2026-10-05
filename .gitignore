@@ -99,3 +99,8 @@ audio/*
 # pertencem ao histórico do código.
 presets/*
 !presets/README.md
+
+# Impulse responses de cabinet (GearLibrary). A pasta e o README dela ficam
+# versionados; os .wav não — cada pacote de IR tem sua própria licença.
+irs/*
+!irs/README.md
