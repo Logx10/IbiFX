@@ -694,6 +694,77 @@ concluída.** **Fase 20 (WebAssembly) em andamento** — ver status abaixo.
   isso de forma muito mais robusta. `--tuner` mostra nota/frequência/cents
   em tempo real, sem alterar o som.
 
+- **Ferramentas na janela desktop — afinador, gravador e prática.**
+  As Fases 14 a 19 tinham deixado o motor pronto e testado, mas nenhuma
+  tela: a janela só mostrava pedais, presets e o navegador. Agora uma
+  fileira de três cartões entre "Níveis" e o rig. O **afinador** é do
+  `LiveEngine`, não da cadeia: escuta o sinal seco (como um afinador no
+  começo do pedalboard), só roda enquanto está ligado (o YIN custa CPU na
+  thread de áudio) e pode silenciar a saída enquanto afina. O **gravador**
+  é o `ReampRecorder` (DI + processado, em `recordings/`). A **prática**
+  é a `PracticeSession`: play/pausa, metrônomo com BPM e volume, backing
+  track escolhida em `audio/*.wav`, loop A/B e gravação da sessão.
+  Ligar/desligar o metrônomo e mexer nos volumes com o áudio rodando
+  passou a ser seguro: viraram atômicos, e o `reset()` do clique, que era
+  chamado da thread de controle, agora acontece na própria thread de
+  áudio, na borda do desligamento. Trocar a backing track para o motor
+  (como trocar de preset), porque o vetor de amostras é substituído.
+  **Corrigido junto**: `LiveEngine::start()` ligava o dispositivo ANTES
+  de preparar os módulos — a thread de áudio já processava enquanto o
+  `prepare()` alocava. Agora prepara primeiro e liga depois (e, se o
+  driver impuser outra taxa, desliga, prepara de novo e religa).
+
+- **IRs pela janela e presets que lembram o rig.**
+  "Importar IR..." (seletor de arquivos do sistema) ou arrastar um .wav
+  para a janela copia a IR para `irs/Importados/`, relê o catálogo e põe
+  o cabinet no rig. Copia em vez de apontar para o original porque um
+  preset guarda o caminho: apontar para Downloads quebraria o preset ao
+  mover o arquivo. Cada IR tem um "x" para excluir, com confirmação.
+  Um preset agora guarda o rig de onde veio (linhas `rig stomp/amp/cab/
+  rack`), só como rótulo — quem aplica continua sendo a lista de módulos,
+  com os knobs como foram salvos. Ao carregar, a janela reagrupa os
+  módulos em painéis de equipamento. Presets antigos, sem a linha, têm o
+  rig DEDUZIDO (`GearLibrary::inferRig()`): a cadeia é quebrada em
+  stomps -> amp -> cab -> rack -> Limiter comparando os tipos com as
+  receitas; quando duas receitas têm a mesma estrutura, vence a de
+  valores mais próximos. A primeira versão desempatava por "quantos
+  valores ficaram iguais à receita" e errava quando todos os knobs
+  tinham sido mexidos — o teste pegou.
+
+- **Cabinet converte a taxa da IR.**
+  Uma IR de 44,1 kHz num motor a 48 kHz era usada amostra a amostra, com
+  as ressonâncias do gabinete ~9% mais agudas. `resample()` (sinc com
+  janela de Blackman, filtrando o que não cabe quando a taxa desce)
+  converte a IR no `Cabinet::prepare()`, guardando a original para
+  reconverter se a taxa mudar; o ganho é compensado (uma IR com mais
+  amostras somaria mais). Medido: resposta em frequência igual a menos de
+  0,1 dB entre 500 Hz e 15 kHz, ~0,3 dB nas pontas — o pré-eco que a
+  conversão geraria antes da amostra 0 é cortado para não somar latência.
+
+- **Som: oversampling, filtro entre estágios e Presence.**
+  O som saturado era "abelhudo". Medido: nenhuma distorção tinha proteção
+  contra aliasing — um seno de 2,5 kHz saturado jogava -33 dB da energia
+  em frequências que não são harmônicos. O `Oversampler` (4×, FIR de 128
+  taps, polifásico, sem alocar) roda a curva de Preamp, PowerAmp,
+  AsymmetricClipper, SoftClipper e Clipper a 192 kHz: o aliasing cai para
+  -115 dB. Custa ~0,66 ms de atraso por saturação; em Release a cadeia
+  inteira de um rig usa ~17% do tempo real, 12% disso do Cabinet. (O
+  build `build/` é Debug, onde a mesma cadeia chega a ~59%.)
+  O Preamp ganhou um passa-baixa de um polo na saída de cada estágio
+  (`interstage`, em Hz, um valor por ampli — efeito Miller de uma válvula
+  de verdade). A primeira versão filtrava só ENTRE estágios e não mudou
+  nada (-0,3 dB): com ganho alto, o estágio seguinte recria os agudos.
+  Filtrando todos, a energia acima de 8 kHz cai 5 dB sem mexer na
+  fundamental. O PowerAmp ganhou `presence` (realce a partir de ~2,5 kHz
+  ANTES da tanh, como a realimentação negativa aliviada de um Marshall);
+  só os Brit têm o knob, os outros ficam em 0, neutro.
+  Os testes que conferem curvas amostra a amostra desligam oversampling e
+  filtro (`setOversampling(false)`, `setInterstageFilter(false)`); os
+  efeitos novos têm testes próprios, que medem no espectro.
+  39 testes no total. Conhecido e anterior a isto: o teste do reamp no
+  `live_engine` falha às vezes (a corrida que `ReampRecorder.h` já
+  documenta como "não zero matematicamente").
+
 ## Regra
 
 A ordem pode mudar, mas camadas não devem ser puladas: cada uma precisa ser
