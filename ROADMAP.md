@@ -761,7 +761,7 @@ concluída.** **Fase 20 (WebAssembly) em andamento** — ver status abaixo.
   Os testes que conferem curvas amostra a amostra desligam oversampling e
   filtro (`setOversampling(false)`, `setInterstageFilter(false)`); os
   efeitos novos têm testes próprios, que medem no espectro.
-  39 testes no total. Conhecido e anterior a isto: o teste do reamp no
+  38 testes no total. Conhecido e anterior a isto: o teste do reamp no
   `live_engine` falha às vezes (a corrida que `ReampRecorder.h` já
   documenta como "não zero matematicamente").
 
