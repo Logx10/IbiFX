@@ -99,6 +99,12 @@ void addStomps(std::vector<GearModel>& models)
          module("AsymmetricClipper", {{"drive", 20.0f}, {"bias", 0.5f}})}));
     models.back().controls = {control("Fuzz", 0, "gain", 1.0f, 8.0f),
                               control("Bias", 1, "bias", 0.0f, 0.9f)};
+
+    // Um módulo só: o painel (Rate, Depth, Mix) sai automático das faixas
+    // do próprio Chorus — ver o construtor de GearLibrary.
+    models.push_back(gear("stomp.blue-chorus", "Blue Chorus", GearCategory::Stomp, "Modulation",
+        "Chorus clássico dos anos 80: uma cópia levemente desafinada que ondula junto com o som.",
+        {module("Chorus", {{"rate", 0.8f}, {"depth", 0.5f}, {"mix", 0.5f}})}));
 }
 
 // Os amplis: a MESMA estrutura (filtro de entrada -> ganho -> Preamp ->

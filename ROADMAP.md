@@ -761,9 +761,20 @@ concluída.** **Fase 20 (WebAssembly) em andamento** — ver status abaixo.
   Os testes que conferem curvas amostra a amostra desligam oversampling e
   filtro (`setOversampling(false)`, `setInterstageFilter(false)`); os
   efeitos novos têm testes próprios, que medem no espectro.
-  38 testes no total. Conhecido e anterior a isto: o teste do reamp no
+  38 testes naquele momento. Conhecido e anterior a isto: o teste do reamp no
   `live_engine` falha às vezes (a corrida que `ReampRecorder.h` já
   documenta como "não zero matematicamente").
+
+- **Chorus — primeiro efeito de modulação.**
+  O navegador já deixava empilhar stomps, mas não havia pedal de
+  modulação nenhum, nem o efeito no DSP. `Chorus` soma ao sinal uma cópia
+  atrasada de 5 a 12 ms, com o atraso varrido por um LFO senoidal (rate,
+  depth, mix); o atraso fracionário é lido por interpolação de Hermite, que
+  preserva os agudos melhor que a linear. Sem realimentação (isso seria um
+  flanger). No catálogo, `stomp.blue-chorus`, filtro "Modulation".
+  Testado: 6 testes novos (`test_chorus.cpp`) medem o atraso pela posição
+  de impulsos — fixo em 5 ms com depth 0, varrendo de 5,1 a 12 ms com
+  depth 1. 39 testes no total.
 
 ## Regra
 

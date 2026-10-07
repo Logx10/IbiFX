@@ -235,6 +235,8 @@ std::string formatValue(const Parameter& parameter, float value)
 
     if (parameter.id() == "frequency")
         std::snprintf(buffer, sizeof(buffer), "%.0f Hz", static_cast<double>(value));
+    else if (parameter.id() == "rate")
+        std::snprintf(buffer, sizeof(buffer), "%.2f Hz", static_cast<double>(value));
     else if (parameter.id() == "time")
         std::snprintf(buffer, sizeof(buffer), "%.0f ms", static_cast<double>(value) * 1000.0);
     else

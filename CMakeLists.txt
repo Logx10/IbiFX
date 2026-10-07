@@ -153,6 +153,7 @@ add_library(ibifx_core STATIC
     src/AudioModule.cpp
     src/Parameter.cpp
     src/Delay.cpp
+    src/Chorus.cpp
     src/SmoothedValue.cpp
     src/WavFile.cpp
     src/offline.cpp

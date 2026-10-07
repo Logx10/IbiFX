@@ -197,6 +197,13 @@ add_executable(test_ir_loader
 target_compile_options(test_ir_loader PRIVATE ${IBIFX_WARNINGS})
 target_link_libraries(test_ir_loader PRIVATE ibifx_core)
 
+add_executable(test_chorus
+    test_chorus.cpp
+)
+
+target_compile_options(test_chorus PRIVATE ${IBIFX_WARNINGS})
+target_link_libraries(test_chorus PRIVATE ibifx_core)
+
 add_executable(test_oversampler
     test_oversampler.cpp
 )
@@ -328,6 +335,7 @@ add_test(NAME power_amp COMMAND test_power_amp)
 add_test(NAME tuner COMMAND test_tuner)
 add_test(NAME convolution_engine COMMAND test_convolution_engine)
 add_test(NAME ir_loader COMMAND test_ir_loader)
+add_test(NAME chorus COMMAND test_chorus)
 add_test(NAME oversampler COMMAND test_oversampler)
 add_test(NAME resampler COMMAND test_resampler)
 add_test(NAME cabinet COMMAND test_cabinet)
