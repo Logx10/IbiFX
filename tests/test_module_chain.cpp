@@ -30,6 +30,7 @@ std::unique_ptr<Clipper> makeClipper(float threshold)
 {
     auto clipper = std::make_unique<Clipper>();
     clipper->setThreshold(threshold);
+    clipper->setOversampling(false);  // curva pura, sem o atraso do filtro
     return clipper;
 }
 

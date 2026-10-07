@@ -3,6 +3,7 @@
 #include <vector>
 
 #include "AudioModule.h"
+#include "Oversampler.h"
 #include "SmoothedValue.h"
 
 // SoftClipper — saturação suave via tanh.
@@ -67,6 +68,15 @@ public:
     // Aplica tanh(drive * amostra) a todas as amostras do buffer.
     void process(std::vector<float>& buffer) override;
 
+    // Liga/desliga o oversampling 4× (ver Oversampler.h) — ligado por
+    // padrão. Desligar serve aos testes que conferem a curva amostra a
+    // amostra: ligado, a saída sai filtrada e ~32 amostras atrasada.
+    void setOversampling(bool enabled);
+    bool oversampling() const;
+
 private:
     SmoothedValue m_smoothedDrive;
+
+    Oversampler m_oversampler;
+    bool m_oversampling = true;
 };

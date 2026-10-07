@@ -26,3 +26,14 @@
 // wav::read (WavFile.h): um carregamento que falha não deve virar silêncio
 // sem explicação.
 std::vector<float> loadImpulseResponse(const std::string& path);
+
+// A IR junto com a taxa em que foi gravada — loadImpulseResponse() joga
+// essa informação fora, e o Cabinet precisa dela para converter a IR para
+// a taxa do motor (ver Cabinet::prepare()).
+struct ImpulseResponse
+{
+    std::vector<float> samples;
+    double sampleRate = 0.0;
+};
+
+ImpulseResponse readImpulseResponse(const std::string& path);

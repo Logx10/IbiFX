@@ -1,10 +1,11 @@
 #include "IRLoader.h"
 
 #include <stdexcept>
+#include <utility>
 
 #include "WavFile.h"
 
-std::vector<float> loadImpulseResponse(const std::string& path)
+ImpulseResponse readImpulseResponse(const std::string& path)
 {
     // wav::read já lança com mensagem clara se o arquivo não existir, não
     // for um .wav válido, ou usar um formato de amostra fora do suportado —
@@ -33,5 +34,10 @@ std::vector<float> loadImpulseResponse(const std::string& path)
         sample *= channelCountInverse;
     }
 
-    return mono;
+    return {std::move(mono), file.sampleRate};
+}
+
+std::vector<float> loadImpulseResponse(const std::string& path)
+{
+    return readImpulseResponse(path).samples;
 }

@@ -22,6 +22,7 @@ void testSignalInsideRangeIsUntouched()
     std::vector<float> buffer = {0.0f, 0.5f, -0.5f, 0.999f};
 
     Clipper clipper;
+    clipper.setOversampling(false);  // curva pura, sem o atraso do filtro
     clipper.setThreshold(1.0f);
     clipper.process(buffer);
 
@@ -43,6 +44,7 @@ void testClipsAboveThreshold()
     std::vector<float> buffer = {1.5f, 2.0f, 10.0f};
 
     Clipper clipper;
+    clipper.setOversampling(false);  // curva pura, sem o atraso do filtro
     clipper.setThreshold(1.0f);
     clipper.process(buffer);
 
@@ -62,6 +64,7 @@ void testClipsBelowNegativeThreshold()
     std::vector<float> buffer = {-1.5f, -3.0f, -10.0f};
 
     Clipper clipper;
+    clipper.setOversampling(false);  // curva pura, sem o atraso do filtro
     clipper.setThreshold(1.0f);
     clipper.process(buffer);
 
@@ -82,6 +85,7 @@ void testValueExactlyAtThresholdIsKept()
     std::vector<float> buffer = {1.0f, -1.0f};
 
     Clipper clipper;
+    clipper.setOversampling(false);  // curva pura, sem o atraso do filtro
     clipper.setThreshold(1.0f);
     clipper.process(buffer);
 
@@ -100,6 +104,7 @@ void testCustomThreshold()
     std::vector<float> buffer = {0.8f, 0.3f, -0.8f, -0.3f};
 
     Clipper clipper;
+    clipper.setOversampling(false);  // curva pura, sem o atraso do filtro
     clipper.setThreshold(0.5f);
     clipper.process(buffer);
 
@@ -115,6 +120,7 @@ void testThresholdRoundTrip()
     std::cout << "setter e getter\n";
 
     Clipper clipper;
+    clipper.setOversampling(false);  // curva pura, sem o atraso do filtro
 
     checkClose(clipper.threshold(), 1.0f, "threshold padrao e 1.0");
 
@@ -130,6 +136,7 @@ void testEmptyBufferDoesNotCrash()
     std::vector<float> buffer;
 
     Clipper clipper;
+    clipper.setOversampling(false);  // curva pura, sem o atraso do filtro
     clipper.process(buffer);
 
     check(buffer.empty(), "buffer vazio continua vazio");

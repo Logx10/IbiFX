@@ -145,6 +145,8 @@ add_library(ibifx_core STATIC
     src/PowerAmp.cpp
     src/Tuner.cpp
     src/IRLoader.cpp
+    src/Resampler.cpp
+    src/Oversampler.cpp
     src/ConvolutionEngine.cpp
     src/Cabinet.cpp
     src/ModuleChain.cpp

@@ -28,6 +28,7 @@ void Clipper::prepare(double sampleRate, int /*blockSize*/)
 void Clipper::reset()
 {
     m_smoothedThreshold.snapTo(m_parameters[0].value());
+    m_oversampler.reset();
 }
 
 void Clipper::process(std::vector<float>& buffer)
@@ -39,13 +40,28 @@ void Clipper::process(std::vector<float>& buffer)
         const float thresholdValue = m_smoothedThreshold.nextValue();
 
         // > e não >=: uma amostra exatamente no teto já está dentro da faixa.
-        if (sample > thresholdValue)
+        const auto curve = [thresholdValue](float x)
         {
-            sample = thresholdValue;
-        }
-        else if (sample < -thresholdValue)
-        {
-            sample = -thresholdValue;
-        }
+            if (x > thresholdValue)
+                return thresholdValue;
+            if (x < -thresholdValue)
+                return -thresholdValue;
+            return x;
+        };
+
+        // O corte seco é o pior caso de aliasing (a quina gera harmônicos
+        // sem fim); sobreamostrar não o elimina, mas o reduz muito.
+        sample = m_oversampling ? m_oversampler.process(sample, curve) : curve(sample);
     }
+}
+
+void Clipper::setOversampling(bool enabled)
+{
+    m_oversampling = enabled;
+    m_oversampler.reset();
+}
+
+bool Clipper::oversampling() const
+{
+    return m_oversampling;
 }

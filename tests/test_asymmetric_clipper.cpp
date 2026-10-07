@@ -22,6 +22,7 @@ void testSilenceStaysSilentEvenWithBias()
     std::vector<float> buffer = {0.0f, 0.0f, 0.0f};
 
     AsymmetricClipper clipper;
+    clipper.setOversampling(false);  // curva pura, sem o atraso do filtro
     clipper.setDrive(5.0f);
     clipper.setBias(0.7f);
     clipper.process(buffer);
@@ -41,6 +42,7 @@ void testZeroBiasMatchesPlainTanh()
     std::vector<float> buffer = {0.5f, 1.0f, -0.7f};
 
     AsymmetricClipper clipper;
+    clipper.setOversampling(false);  // curva pura, sem o atraso do filtro
     clipper.setDrive(2.0f);
     clipper.setBias(0.0f);
     clipper.process(buffer);
@@ -70,6 +72,7 @@ void testCurveValuesWithBias()
     std::vector<float> buffer = {0.5f, -0.5f};
 
     AsymmetricClipper clipper;
+    clipper.setOversampling(false);  // curva pura, sem o atraso do filtro
     clipper.setDrive(drive);
     clipper.setBias(bias);
     clipper.process(buffer);
@@ -89,6 +92,7 @@ void testCurveIsAsymmetricWithNonZeroBias()
     std::vector<float> negativo = {-0.5f};
 
     AsymmetricClipper clipper;
+    clipper.setOversampling(false);  // curva pura, sem o atraso do filtro
     clipper.setDrive(1.0f);
     clipper.setBias(0.3f);
 
@@ -108,6 +112,7 @@ void testOutputNeverLeavesRange()
     std::vector<float> buffer = {50.0f, -50.0f, 1000.0f, -1000.0f};
 
     AsymmetricClipper clipper;
+    clipper.setOversampling(false);  // curva pura, sem o atraso do filtro
     clipper.setDrive(10.0f);
     clipper.setBias(0.5f);
     clipper.process(buffer);
@@ -136,11 +141,13 @@ void testHigherDriveSaturatesMore()
     std::vector<float> forte = {0.5f};
 
     AsymmetricClipper clipperSuave;
+    clipperSuave.setOversampling(false);  // curva pura, sem o atraso do filtro
     clipperSuave.setDrive(1.0f);
     clipperSuave.setBias(0.0f);  // o construtor parte de 0.3, precisa zerar
     clipperSuave.process(suave);
 
     AsymmetricClipper clipperForte;
+    clipperForte.setOversampling(false);  // curva pura, sem o atraso do filtro
     clipperForte.setDrive(5.0f);
     clipperForte.setBias(0.0f);
     clipperForte.process(forte);
@@ -158,11 +165,13 @@ void testHigherDriveSaturatesMoreOnOppositeSideOfBias()
     std::vector<float> forte = {-0.5f};
 
     AsymmetricClipper clipperSuave;
+    clipperSuave.setOversampling(false);  // curva pura, sem o atraso do filtro
     clipperSuave.setDrive(1.0f);
     clipperSuave.setBias(0.2f);  // bias positivo, amostra negativa: lado oposto
     clipperSuave.process(suave);
 
     AsymmetricClipper clipperForte;
+    clipperForte.setOversampling(false);  // curva pura, sem o atraso do filtro
     clipperForte.setDrive(5.0f);
     clipperForte.setBias(0.2f);
     clipperForte.process(forte);
@@ -177,6 +186,7 @@ void testParameterRoundTrip()
     std::cout << "setters e getters\n";
 
     AsymmetricClipper clipper;
+    clipper.setOversampling(false);  // curva pura, sem o atraso do filtro
 
     checkClose(clipper.drive(), 1.0f, "drive padrao e 1.0");
     checkClose(clipper.bias(), 0.3f, "bias padrao e 0.3");
@@ -196,6 +206,7 @@ void testEmptyBufferDoesNotCrash()
     std::vector<float> buffer;
 
     AsymmetricClipper clipper;
+    clipper.setOversampling(false);  // curva pura, sem o atraso do filtro
     clipper.process(buffer);
 
     check(buffer.empty(), "buffer vazio continua vazio");

@@ -4,6 +4,7 @@
 // test_helpers.h, compartilhada com os outros testes.
 
 #include <cmath>
+#include <cstddef>
 #include <iostream>
 #include <vector>
 
@@ -21,6 +22,7 @@ void testSilenceStaysSilent()
     std::vector<float> buffer = {0.0f, 0.0f, 0.0f};
 
     PowerAmp powerAmp;
+    powerAmp.setOversampling(false);  // curva pura, sem o atraso do filtro
     powerAmp.setSag(1.0f);
     powerAmp.process(buffer);
 
@@ -39,6 +41,7 @@ void testOutputNeverLeavesRange()
     std::vector<float> buffer = {50.0f, -50.0f, 1000.0f, -1000.0f};
 
     PowerAmp powerAmp;
+    powerAmp.setOversampling(false);  // curva pura, sem o atraso do filtro
     powerAmp.setDrive(5.0f);
     powerAmp.setSag(1.0f);
     powerAmp.process(buffer);
@@ -59,6 +62,7 @@ void testZeroSagIsPlainTanh()
     std::vector<float> buffer = {0.6f, -0.3f, 0.9f};
 
     PowerAmp powerAmp;
+    powerAmp.setOversampling(false);  // curva pura, sem o atraso do filtro
     powerAmp.setDrive(drive);
     powerAmp.setSag(0.0f);
     powerAmp.process(buffer);
@@ -79,6 +83,7 @@ void testLoudPassageLeavesMemoryOnQuietNote()
     auto testarDepoisDoHistorico = [](bool historicoAlto) -> float
     {
         PowerAmp powerAmp;
+        powerAmp.setOversampling(false);  // curva pura, sem o atraso do filtro
         powerAmp.setDrive(1.0f);
         powerAmp.setSag(1.0f);
         powerAmp.prepare(1000.0, 64);
@@ -112,6 +117,7 @@ void testHigherSagAmplifiesTheMemoryEffect()
         auto testarDepoisDoHistorico = [sagValue](bool historicoAlto) -> float
         {
             PowerAmp powerAmp;
+            powerAmp.setOversampling(false);  // curva pura, sem o atraso do filtro
             powerAmp.setDrive(1.0f);
             powerAmp.setSag(sagValue);
             powerAmp.prepare(1000.0, 64);
@@ -151,6 +157,7 @@ void testResetClearsTheSagMemory()
     std::cout << "reset apaga a memoria do sag\n";
 
     PowerAmp aquecido;
+    aquecido.setOversampling(false);  // curva pura, sem o atraso do filtro
     aquecido.setDrive(1.0f);
     aquecido.setSag(1.0f);
     aquecido.prepare(1000.0, 64);
@@ -164,6 +171,7 @@ void testResetClearsTheSagMemory()
     aquecido.process(notaFracaDepoisDoReset);
 
     PowerAmp semHistorico;
+    semHistorico.setOversampling(false);  // curva pura, sem o atraso do filtro
     semHistorico.setDrive(1.0f);
     semHistorico.setSag(1.0f);
     semHistorico.prepare(1000.0, 64);
@@ -181,6 +189,7 @@ void testParameterRoundTrip()
     std::cout << "setters e getters\n";
 
     PowerAmp powerAmp;
+    powerAmp.setOversampling(false);  // curva pura, sem o atraso do filtro
 
     checkClose(powerAmp.drive(), 1.0f, "drive padrao e 1.0");
     checkClose(powerAmp.sag(), 0.3f, "sag padrao e 0.3");
@@ -200,9 +209,62 @@ void testEmptyBufferDoesNotCrash()
     std::vector<float> buffer;
 
     PowerAmp powerAmp;
+    powerAmp.setOversampling(false);  // curva pura, sem o atraso do filtro
     powerAmp.process(buffer);
 
     check(buffer.empty(), "buffer vazio continua vazio");
+}
+
+// ---------------------------------------------------------------------
+// Presence
+
+namespace
+{
+// RMS da saída de um seno pequeno (região quase linear da tanh) por um
+// PowerAmp com o presence dado. Sem sag, para medir só o filtro.
+double outputRms(float presence, double frequency)
+{
+    std::vector<float> buffer(4800 + 960);
+    for (std::size_t n = 0; n < buffer.size(); ++n)
+        buffer[n] = 0.01f * static_cast<float>(std::sin(2.0 * 3.14159265358979323846 * frequency * static_cast<double>(n) / 48000.0));
+
+    PowerAmp powerAmp;
+    powerAmp.prepare(48000.0, 128);
+    powerAmp.setDrive(0.5f);
+    powerAmp.setSag(0.0f);
+    powerAmp.setPresence(presence);
+    powerAmp.reset();
+    powerAmp.process(buffer);
+
+    double sum = 0.0;
+    for (std::size_t n = 960; n < buffer.size(); ++n)
+        sum += static_cast<double>(buffer[n]) * buffer[n];
+    return std::sqrt(sum / static_cast<double>(buffer.size() - 960));
+}
+}
+
+// Presence realça os agudos e deixa o grave em paz — e em 0 não faz nada.
+void testPresenceBoostsHighsOnly()
+{
+    std::cout << "presence realca os agudos sem mexer no grave\n";
+
+    const double highBoostDb = 20.0 * std::log10(outputRms(1.0f, 8000.0) / outputRms(0.0f, 8000.0));
+    const double lowChangeDb = 20.0 * std::log10(outputRms(1.0f, 100.0) / outputRms(0.0f, 100.0));
+
+    std::cout << "    presence no maximo: +" << highBoostDb << " dB em 8 kHz, " << lowChangeDb << " dB em 100 Hz\n";
+
+    check(highBoostDb > 6.0, "mais de 6 dB a mais em 8 kHz");
+    check(std::fabs(lowChangeDb) < 0.5, "100 Hz praticamente igual (+-0.5 dB)");
+}
+
+void testPresenceDefaultsToNeutral()
+{
+    std::cout << "presence padrao e 0 (neutro)\n";
+
+    PowerAmp powerAmp;
+    checkClose(powerAmp.presence(), 0.0f, "padrao 0");
+    powerAmp.setPresence(0.7f);
+    checkClose(powerAmp.presence(), 0.7f, "vira 0.7");
 }
 
 int main()
@@ -217,6 +279,9 @@ int main()
     testResetClearsTheSagMemory();
     testParameterRoundTrip();
     testEmptyBufferDoesNotCrash();
+
+    testPresenceBoostsHighsOnly();
+    testPresenceDefaultsToNeutral();
 
     return reportResults();
 }

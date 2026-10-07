@@ -33,6 +33,7 @@ void testSilenceStaysSilent()
     std::vector<float> buffer = {0.0f, 0.0f, 0.0f};
 
     SoftClipper softClipper;
+    softClipper.setOversampling(false);  // curva pura, sem o atraso do filtro
     softClipper.setDrive(5.0f);
     softClipper.process(buffer);
 
@@ -53,6 +54,7 @@ void testTanhCurveValues()
     std::vector<float> buffer = {0.5f, 1.0f, 2.0f};
 
     SoftClipper softClipper;
+    softClipper.setOversampling(false);  // curva pura, sem o atraso do filtro
     softClipper.setDrive(1.0f);
     softClipper.process(buffer);
 
@@ -73,6 +75,7 @@ void testSmallSignalsPassNearlyUnchanged()
     std::vector<float> buffer = {0.01f, 0.1f};
 
     SoftClipper softClipper;
+    softClipper.setOversampling(false);  // curva pura, sem o atraso do filtro
     softClipper.setDrive(1.0f);
     softClipper.process(buffer);
 
@@ -95,6 +98,7 @@ void testOutputNeverLeavesRange()
     std::vector<float> buffer = {50.0f, -50.0f, 1000.0f, -1000.0f};
 
     SoftClipper softClipper;
+    softClipper.setOversampling(false);  // curva pura, sem o atraso do filtro
     softClipper.setDrive(10.0f);
     softClipper.process(buffer);
 
@@ -121,6 +125,7 @@ void testCurveIsSymmetric()
     std::vector<float> buffer = {0.3f, -0.3f, 0.8f, -0.8f};
 
     SoftClipper softClipper;
+    softClipper.setOversampling(false);  // curva pura, sem o atraso do filtro
     softClipper.setDrive(3.0f);
     softClipper.process(buffer);
 
@@ -140,6 +145,7 @@ void testHigherDriveSaturatesMore()
     std::vector<float> forte = {0.5f};
 
     SoftClipper softClipper;
+    softClipper.setOversampling(false);  // curva pura, sem o atraso do filtro
 
     softClipper.setDrive(1.0f);
     softClipper.process(suave);
@@ -170,6 +176,7 @@ void testExtremeDriveApproachesHardClipping()
     std::vector<float> buffer = {0.5f, -0.5f, 0.05f, -0.05f};
 
     SoftClipper softClipper;
+    softClipper.setOversampling(false);  // curva pura, sem o atraso do filtro
     softClipper.setDrive(100.0f);
     softClipper.process(buffer);
 
@@ -192,6 +199,7 @@ void testZeroDriveSilences()
     std::vector<float> buffer = {0.5f, -0.9f, 1.0f};
 
     SoftClipper softClipper;
+    softClipper.setOversampling(false);  // curva pura, sem o atraso do filtro
     softClipper.setDrive(0.0f);
     softClipper.process(buffer);
 
@@ -206,6 +214,7 @@ void testDriveRoundTrip()
     std::cout << "setter e getter\n";
 
     SoftClipper softClipper;
+    softClipper.setOversampling(false);  // curva pura, sem o atraso do filtro
 
     checkClose(softClipper.drive(), 1.0f, "drive padrao e 1.0");
 
@@ -221,6 +230,7 @@ void testEmptyBufferDoesNotCrash()
     std::vector<float> buffer;
 
     SoftClipper softClipper;
+    softClipper.setOversampling(false);  // curva pura, sem o atraso do filtro
     softClipper.process(buffer);
 
     check(buffer.empty(), "buffer vazio continua vazio");

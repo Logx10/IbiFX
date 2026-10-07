@@ -3,6 +3,7 @@
 #include <vector>
 
 #include "AudioModule.h"
+#include "Oversampler.h"
 #include "SmoothedValue.h"
 
 // AsymmetricClipper — a mesma curva do SoftClipper, deslocada do centro.
@@ -83,7 +84,16 @@ public:
 
     void process(std::vector<float>& buffer) override;
 
+    // Liga/desliga o oversampling 4× (ver Oversampler.h) — ligado por
+    // padrão. Desligar serve aos testes que conferem a curva amostra a
+    // amostra: ligado, a saída sai filtrada e ~32 amostras atrasada.
+    void setOversampling(bool enabled);
+    bool oversampling() const;
+
 private:
     SmoothedValue m_smoothedDrive;
     SmoothedValue m_smoothedBias;
+
+    Oversampler m_oversampler;
+    bool m_oversampling = true;
 };

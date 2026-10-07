@@ -9,6 +9,7 @@
 
 #include <iostream>
 #include <memory>
+#include <utility>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -55,6 +56,7 @@ void testHeterogeneousChain()
     gain.setGain(4.0f);
 
     Clipper clipper;
+    clipper.setOversampling(false);  // curva pura, sem o atraso do filtro
     clipper.setThreshold(1.0f);
 
     std::vector<AudioModule*> chain = {&gain, &clipper};
@@ -83,6 +85,7 @@ void testChainOrderMatters()
     gain.setGain(4.0f);
 
     Clipper clipper;
+    clipper.setOversampling(false);  // curva pura, sem o atraso do filtro
     clipper.setThreshold(1.0f);
 
     std::vector<AudioModule*> driveOrder = {&gain, &clipper};
@@ -114,7 +117,9 @@ void testEachModuleReportsItsName()
 
     GainProcessor gain;
     Clipper clipper;
+    clipper.setOversampling(false);  // curva pura, sem o atraso do filtro
     SoftClipper softClipper;
+    softClipper.setOversampling(false);  // curva pura, sem o atraso do filtro
 
     std::vector<AudioModule*> chain = {&gain, &clipper, &softClipper};
 
@@ -132,7 +137,9 @@ void testDeletingThroughBasePointerIsSafe()
 {
     std::cout << "destruicao por ponteiro para a base\n";
 
-    std::unique_ptr<AudioModule> module = std::make_unique<SoftClipper>();
+    auto softClipper = std::make_unique<SoftClipper>();
+    softClipper->setOversampling(false);  // curva pura, sem o atraso do filtro
+    std::unique_ptr<AudioModule> module = std::move(softClipper);
 
     std::vector<float> buffer = {0.5f};
     module->process(buffer);
@@ -151,7 +158,9 @@ void testModulesExposeParameters()
 
     GainProcessor gain;
     Clipper clipper;
+    clipper.setOversampling(false);  // curva pura, sem o atraso do filtro
     SoftClipper softClipper;
+    softClipper.setOversampling(false);  // curva pura, sem o atraso do filtro
 
     check(gain.parameterCount() == 1, "Gain tem 1 parametro");
     check(clipper.parameterCount() == 1, "Clipper tem 1 parametro");
@@ -213,6 +222,7 @@ void testFindParameterReturnsNullWhenMissing()
     std::cout << "id inexistente devolve nullptr\n";
 
     Clipper clipper;
+    clipper.setOversampling(false);  // curva pura, sem o atraso do filtro
 
     check(clipper.findParameter("drive") == nullptr, "Clipper nao tem drive");
     check(clipper.findParameter("threshold") != nullptr, "mas tem threshold");
@@ -244,6 +254,7 @@ void testResetParameters()
     std::cout << "reset de parametros\n";
 
     SoftClipper softClipper;
+    softClipper.setOversampling(false);  // curva pura, sem o atraso do filtro
     softClipper.setDrive(50.0f);
 
     softClipper.resetParameters();
@@ -260,6 +271,7 @@ void testParameterRangeProtectsTheModule()
     std::cout << "a faixa protege o modulo\n";
 
     Clipper clipper;
+    clipper.setOversampling(false);  // curva pura, sem o atraso do filtro
     clipper.setThreshold(-1.0f);
 
     checkClose(clipper.threshold(), 0.0f, "teto negativo vira 0.0");

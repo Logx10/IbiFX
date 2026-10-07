@@ -1,8 +1,10 @@
 #pragma once
 
+#include <array>
 #include <vector>
 
 #include "AudioModule.h"
+#include "Oversampler.h"
 #include "SmoothedValue.h"
 
 // Preamp — vários estágios de saturação em cascata, não um só.
@@ -38,7 +40,12 @@
 // podem ultrapassar ±1 internamente (não tem problema, é sinal
 // intermediário, ninguém ouve ele diretamente), mas o que sai do módulo é
 // sempre o resultado de uma tanh — nunca escapa da faixa, pela mesma razão
-// matemática do SoftClipper.
+// matemática do SoftClipper. O filtro do estágio (ver abaixo) não muda
+// isso: um passa-baixa de um polo é uma média ponderada do que já passou,
+// e uma média de valores em [-1, +1] fica em [-1, +1]. A exceção é o
+// oversampling: o filtro de volta para 48 kHz pode passar um pouco de ±1
+// numa transição brusca (o "ringing" de todo filtro passa-baixa íngreme) —
+// o Limiter no fim da cadeia existe para isso.
 //
 // O QUE ISSO FAZ COM A DINÂMICA DO TOQUE
 // Um sinal fraco (tocando leve) ainda ganha volume real através da
@@ -55,6 +62,22 @@
 // preamplificação num amplificador de guitarra real, e abrir isso como
 // parâmetro é fácil de fazer depois, quando houver um motivo concreto pra
 // precisar de mais ou menos.
+//
+// O FILTRO ENTRE ESTÁGIOS (parâmetro "interstage", em Hz)
+// Num ampli de verdade, o sinal não passa de uma válvula para a outra com
+// a banda inteira: a capacitância entre os terminais da válvula, multiplicada
+// pelo ganho dela (efeito Miller), forma com a resistência de placa um
+// passa-baixa — tipicamente entre 5 e 10 kHz. Cada estágio, então, satura
+// um sinal que já chegou com os agudos extremos arredondados pelo anterior.
+// Sem isso, a cascata de tanh empilha harmônico agudo em cima de harmônico
+// agudo, e o resultado é o "abelhudo" de simulador: um chiado áspero por
+// cima das notas que não existe num ampli valvulado.
+//
+// Aqui é um passa-baixa de um polo na saída de cada estágio — o último
+// também. Filtrar só ENTRE eles não basta: com ganho alto, o estágio
+// seguinte satura de novo e recria os agudos na hora; foi medido (ver
+// test_preamp.cpp). Roda dentro do oversampling, junto da cascata. O corte é por ampli (ver GearLibrary):
+// um Brit mais aberto, um Tweed mais escuro.
 class Preamp : public AudioModule
 {
 public:
@@ -65,6 +88,17 @@ public:
     void setDrive(float newDrive);
     float drive() const;
 
+    // Corte do passa-baixa entre estágios, em Hz (ver o comentário da
+    // classe).
+    void setInterstageCutoff(float hertz);
+    float interstageCutoff() const;
+
+    // Liga/desliga o filtro entre estágios — ligado por padrão. Desligar
+    // serve aos testes que conferem a curva da cascata com uma amostra só
+    // (um passa-baixa, por definição, não deixa a primeira amostra passar
+    // inteira).
+    void setInterstageFilter(bool enabled);
+
     const char* name() const override;
 
     void prepare(double sampleRate, int blockSize) override;
@@ -72,6 +106,22 @@ public:
 
     void process(std::vector<float>& buffer) override;
 
+    // Liga/desliga o oversampling 4× (ver Oversampler.h) — ligado por
+    // padrão. Desligar serve aos testes que conferem a curva amostra a
+    // amostra: ligado, a saída sai filtrada e ~32 amostras atrasada.
+    void setOversampling(bool enabled);
+    bool oversampling() const;
+
 private:
     SmoothedValue m_smoothedDrive;
+
+    Oversampler m_oversampler;
+    bool m_oversampling = true;
+
+    double m_sampleRate = 44100.0;
+    bool m_interstageFilter = true;
+
+    // Estado do passa-baixa na saída de cada estágio. Só a thread de áudio
+    // mexe, dentro do process().
+    std::array<float, 3> m_interstageState{};
 };

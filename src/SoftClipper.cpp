@@ -30,6 +30,7 @@ void SoftClipper::prepare(double sampleRate, int /*blockSize*/)
 void SoftClipper::reset()
 {
     m_smoothedDrive.snapTo(m_parameters[0].value());
+    m_oversampler.reset();
 }
 
 void SoftClipper::process(std::vector<float>& buffer)
@@ -39,6 +40,20 @@ void SoftClipper::process(std::vector<float>& buffer)
     for (float& sample : buffer)
     {
         // O teto em ±1 não é imposto por código: é propriedade da tanh.
-        sample = std::tanh(m_smoothedDrive.nextValue() * sample);
+        const float driveValue = m_smoothedDrive.nextValue();
+        const auto curve = [driveValue](float x) { return std::tanh(driveValue * x); };
+
+        sample = m_oversampling ? m_oversampler.process(sample, curve) : curve(sample);
     }
+}
+
+void SoftClipper::setOversampling(bool enabled)
+{
+    m_oversampling = enabled;
+    m_oversampler.reset();
+}
+
+bool SoftClipper::oversampling() const
+{
+    return m_oversampling;
 }

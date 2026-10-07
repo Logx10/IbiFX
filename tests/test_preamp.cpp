@@ -4,6 +4,7 @@
 // test_helpers.h, compartilhada com os outros testes.
 
 #include <cmath>
+#include <cstddef>
 #include <iostream>
 #include <vector>
 
@@ -21,6 +22,8 @@ void testSilenceStaysSilent()
     std::vector<float> buffer = {0.0f, 0.0f, 0.0f};
 
     Preamp preamp;
+    preamp.setOversampling(false);  // curva pura, sem o atraso do filtro
+    preamp.setInterstageFilter(false);
     preamp.setDrive(3.0f);
     preamp.process(buffer);
 
@@ -38,6 +41,8 @@ void testOutputNeverLeavesRange()
     std::vector<float> buffer = {50.0f, -50.0f, 1000.0f, -1000.0f};
 
     Preamp preamp;
+    preamp.setOversampling(false);  // curva pura, sem o atraso do filtro
+    preamp.setInterstageFilter(false);
     preamp.setDrive(5.0f);
     preamp.process(buffer);
 
@@ -60,6 +65,8 @@ void testCascadeDiffersFromSingleStage()
     std::vector<float> buffer = {entrada};
 
     Preamp preamp;
+    preamp.setOversampling(false);  // curva pura, sem o atraso do filtro
+    preamp.setInterstageFilter(false);
     preamp.setDrive(drive);
     preamp.process(buffer);
 
@@ -85,11 +92,15 @@ void testLouderSignalIsRelativelyMoreCompressed()
     std::vector<float> forte = {0.5f};
 
     Preamp preamp;
+    preamp.setOversampling(false);  // curva pura, sem o atraso do filtro
+    preamp.setInterstageFilter(false);
     preamp.setDrive(1.0f);
 
     preamp.process(fraco);
 
     Preamp outroPreamp;  // instancia nova: nenhum estado de rampa compartilhado
+    outroPreamp.setOversampling(false);  // curva pura, sem o atraso do filtro
+    outroPreamp.setInterstageFilter(false);
     outroPreamp.setDrive(1.0f);
     outroPreamp.process(forte);
 
@@ -110,10 +121,14 @@ void testHigherDriveSaturatesMore()
     std::vector<float> forte = {0.3f};
 
     Preamp preampSuave;
+    preampSuave.setOversampling(false);  // curva pura, sem o atraso do filtro
+    preampSuave.setInterstageFilter(false);
     preampSuave.setDrive(0.5f);
     preampSuave.process(suave);
 
     Preamp preampForte;
+    preampForte.setOversampling(false);  // curva pura, sem o atraso do filtro
+    preampForte.setInterstageFilter(false);
     preampForte.setDrive(3.0f);
     preampForte.process(forte);
 
@@ -126,6 +141,8 @@ void testParameterRoundTrip()
     std::cout << "setter e getter\n";
 
     Preamp preamp;
+    preamp.setOversampling(false);  // curva pura, sem o atraso do filtro
+    preamp.setInterstageFilter(false);
 
     checkClose(preamp.drive(), 1.0f, "drive padrao e 1.0");
 
@@ -141,9 +158,98 @@ void testEmptyBufferDoesNotCrash()
     std::vector<float> buffer;
 
     Preamp preamp;
+    preamp.setOversampling(false);  // curva pura, sem o atraso do filtro
+    preamp.setInterstageFilter(false);
     preamp.process(buffer);
 
     check(buffer.empty(), "buffer vazio continua vazio");
+}
+
+// ---------------------------------------------------------------------
+// Filtro entre estágios
+
+namespace
+{
+// Energia de um sinal na frequência f, por DFT num ponto só, a partir de
+// `skip` amostras (o filtro do oversampling enchendo fica de fora).
+double energyAt(const std::vector<float>& signal, double frequency, std::size_t skip)
+{
+    double real = 0.0;
+    double imaginary = 0.0;
+    for (std::size_t n = skip; n < signal.size(); ++n)
+    {
+        const double phase = 2.0 * 3.14159265358979323846 * frequency * static_cast<double>(n) / 48000.0;
+        real += signal[n] * std::cos(phase);
+        imaginary -= signal[n] * std::sin(phase);
+    }
+    return real * real + imaginary * imaginary;
+}
+
+// Quanto dos harmônicos de f0 está acima de `above` Hz, em dB da energia
+// harmônica total.
+double highHarmonicsDb(const std::vector<float>& signal, double f0, double above)
+{
+    double total = 0.0;
+    double high = 0.0;
+    for (double f = f0; f < 24000.0; f += f0)
+    {
+        const double e = energyAt(signal, f, 960);
+        total += e;
+        if (f > above)
+            high += e;
+    }
+    return 10.0 * std::log10(high / total);
+}
+
+std::vector<float> saturatedSine(bool interstageFilter)
+{
+    // 1010 Hz: 4800 amostras analisadas cabem um número inteiro de
+    // períodos (sem vazamento), e 48000 não é múltiplo dele.
+    std::vector<float> buffer(4800 + 960);
+    for (std::size_t n = 0; n < buffer.size(); ++n)
+        buffer[n] = 0.5f * static_cast<float>(std::sin(2.0 * 3.14159265358979323846 * 1010.0 * static_cast<double>(n) / 48000.0));
+
+    Preamp preamp;
+    preamp.prepare(48000.0, 128);
+    preamp.setDrive(3.0f);
+    preamp.setInterstageFilter(interstageFilter);
+    preamp.reset();
+    preamp.process(buffer);
+    return buffer;
+}
+}
+
+// O motivo do filtro: com os três estágios saturando um mi agudo com
+// força, a parte dos harmônicos acima de 8 kHz — o chiado áspero — cai
+// bastante; o corpo da nota (os harmônicos de baixo) não muda.
+void testInterstageFilterTamesHighHarmonics()
+{
+    std::cout << "filtro entre estagios tira o chiado dos harmonicos agudos\n";
+
+    const std::vector<float> filtered = saturatedSine(true);
+    const std::vector<float> unfiltered = saturatedSine(false);
+
+    const double withFilter = highHarmonicsDb(filtered, 1010.0, 8000.0);
+    const double withoutFilter = highHarmonicsDb(unfiltered, 1010.0, 8000.0);
+
+    std::cout << "    harmonicos acima de 8 kHz: sem filtro " << withoutFilter
+              << " dB, com filtro " << withFilter << " dB\n";
+
+    check(withFilter < withoutFilter - 4.0, "pelo menos 4 dB a menos de energia acima de 8 kHz");
+
+    const double fundamentalChangeDb =
+        10.0 * std::log10(energyAt(filtered, 1010.0, 960) / energyAt(unfiltered, 1010.0, 960));
+    check(std::fabs(fundamentalChangeDb) < 1.5, "a fundamental continua praticamente igual (+-1.5 dB)");
+}
+
+void testInterstageCutoffRoundTrip()
+{
+    std::cout << "corte entre estagios: padrao e setter\n";
+
+    Preamp preamp;
+    checkClose(preamp.interstageCutoff(), 8000.0f, "padrao em 8 kHz");
+    preamp.setInterstageCutoff(6000.0f);
+    checkClose(preamp.interstageCutoff(), 6000.0f, "vira 6 kHz");
 }
 
 int main()
@@ -157,6 +263,9 @@ int main()
     testHigherDriveSaturatesMore();
     testParameterRoundTrip();
     testEmptyBufferDoesNotCrash();
+
+    testInterstageFilterTamesHighHarmonics();
+    testInterstageCutoffRoundTrip();
 
     return reportResults();
 }

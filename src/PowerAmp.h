@@ -3,6 +3,7 @@
 #include <vector>
 
 #include "AudioModule.h"
+#include "Oversampler.h"
 
 // PowerAmp — o estágio final, que "respira" com a intensidade de quem toca.
 //
@@ -49,6 +50,16 @@
 // SoftClipper e do Preamp. O envelope só pode aumentar driveEfetivo, nunca
 // diminuir abaixo de drive, então o pior caso ainda é uma curva tanh comum,
 // só que mais "apertada".
+//
+// PRESENCE (parâmetro "presence", 0 a 1)
+// O knob que dá a "mordida" de um Marshall. No circuito real ele não é um
+// EQ comum: ele alivia a realimentação negativa do estágio de potência nos
+// agudos. Com menos realimentação, os agudos ganham mais ganho DENTRO do
+// power amp — saem mais altos e saturam mais. Por isso aqui o realce de
+// agudos (a partir de ~2,5 kHz, até ~+9,5 dB) acontece ANTES da tanh, e
+// não depois: um presence aplicado depois da saturação seria só um treble
+// a mais; antes, ele muda o caráter da distorção. Em 0 (o padrão) não faz
+// nada, e o PowerAmp soa como sempre soou.
 class PowerAmp : public AudioModule
 {
 public:
@@ -64,12 +75,22 @@ public:
     void setSag(float amount);
     float sag() const;
 
+    // Realce de agudos no estágio de potência — ver o comentário da classe.
+    void setPresence(float amount);
+    float presence() const;
+
     const char* name() const override;
 
     void prepare(double sampleRate, int blockSize) override;
     void reset() override;
 
     void process(std::vector<float>& buffer) override;
+
+    // Liga/desliga o oversampling 4× (ver Oversampler.h) — ligado por
+    // padrão. Desligar serve aos testes que conferem a curva amostra a
+    // amostra: ligado, a saída sai filtrada e ~32 amostras atrasada.
+    void setOversampling(bool enabled);
+    bool oversampling() const;
 
 private:
     double m_sampleRate = 44100.0;
@@ -78,4 +99,11 @@ private:
     // lido só dentro do process(), caminha suavemente pelo mesmo motivo do
     // gain do NoiseGate.
     float m_envelope = 0.0f;
+
+    // O grave do sinal (passa-baixa de um polo); sinal - isto = o agudo que
+    // o presence realça.
+    float m_presenceLow = 0.0f;
+
+    Oversampler m_oversampler;
+    bool m_oversampling = true;
 };
