@@ -26,6 +26,23 @@ class ModuleChain;
 // Parameter — não tem faixa numérica nem faz sentido suavizar. ModuleState
 // guarda esse caso à parte (irPath), em vez de forçar Parameter a
 // representar texto.
+
+// A escolha de equipamentos de um rig da GearLibrary, por id. Vazio = sem
+// amp / sem cabinet. Mora aqui, e não em GearLibrary.h, porque o Preset
+// também guarda um (ver Preset::rig) e GearLibrary.h já inclui este arquivo.
+struct Rig
+{
+    std::vector<std::string> stomps;
+    std::string amp;
+    std::string cabinet;
+    std::vector<std::string> rack;
+
+    bool empty() const
+    {
+        return stomps.empty() && amp.empty() && cabinet.empty() && rack.empty();
+    }
+};
+
 struct Preset
 {
     // Um módulo salvo: o tipo (o mesmo texto que AudioModule::name()
@@ -44,6 +61,14 @@ struct Preset
 
     // Na ordem em que os módulos aparecem na cadeia.
     std::vector<ModuleState> modules;
+
+    // De qual rig da GearLibrary os módulos vieram, se vieram de um. É só
+    // um rótulo: preset::apply() ignora, quem aplica continua sendo a
+    // lista de módulos acima (com os knobs como a pessoa deixou, não como
+    // a receita manda). Serve para a janela desktop reagrupar os módulos
+    // em painéis de equipamento ao carregar. Vazio em presets montados por
+    // flags ou salvos antes de existir.
+    Rig rig;
 };
 
 namespace preset

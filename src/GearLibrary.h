@@ -96,14 +96,7 @@ struct GearModel
     std::vector<GearControl> controls;
 };
 
-// A escolha de equipamentos de um rig, por id. Vazio = sem amp / sem cabinet.
-struct Rig
-{
-    std::vector<std::string> stomps;
-    std::string amp;
-    std::string cabinet;
-    std::vector<std::string> rack;
-};
+// Rig (a escolha de equipamentos por id) é declarado em Preset.h.
 
 class GearLibrary
 {
@@ -135,6 +128,22 @@ public:
     // terminando no Limiter (mesma garantia de buildChain()). Lança nos
     // mesmos casos de rigModels().
     Preset buildPreset(const Rig& rig, const std::string& name) const;
+
+    // Verdadeiro se a cadeia do preset tem exatamente a ESTRUTURA do rig —
+    // os mesmos tipos de módulo, na mesma ordem, terminando no Limiter.
+    // Os valores podem ser outros (knobs mexidos); a estrutura não. Falso
+    // também se algum id do rig não existir no catálogo.
+    bool matchesRig(const Preset& preset, const Rig& rig) const;
+
+    // Tenta descobrir de qual rig os módulos de um preset vieram, para
+    // presets salvos sem a linha "rig" (os de antes dela existir). Quebra a
+    // lista em stomps -> amp -> cabinet -> rack -> Limiter comparando a
+    // sequência de tipos com as receitas do catálogo; cabinets são
+    // reconhecidos pelo caminho da IR. Quando duas receitas têm a mesma
+    // estrutura (dois reverbs, por exemplo), escolhe a de valores mais
+    // próximos dos salvos — um palpite: knobs girados para muito longe da
+    // receita podem cair mais perto de outra de mesma estrutura. Devolve false se a cadeia não se encaixar.
+    bool inferRig(const Preset& preset, Rig& rig) const;
 
 private:
     const GearModel& require(const std::string& id, GearCategory expected) const;

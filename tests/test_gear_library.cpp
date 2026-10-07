@@ -305,6 +305,92 @@ void testScanFindsCabinetsAndMicrophones()
     std::filesystem::remove_all(root);
 }
 
+bool sameRig(const Rig& a, const Rig& b)
+{
+    return a.stomps == b.stomps && a.amp == b.amp && a.cabinet == b.cabinet && a.rack == b.rack;
+}
+
+void testInferRigRecoversTheRigOfASavedChain()
+{
+    std::cout << "inferRig reconhece o rig de uma cadeia salva, mesmo com knobs mexidos\n";
+
+    const std::filesystem::path root = tempDir();
+    std::filesystem::remove_all(root);
+    std::filesystem::create_directories(root / "4x12 Brit");
+    writeIr(root / "4x12 Brit" / "SM57.wav");
+
+    GearLibrary library;
+    library.scanImpulseResponses(root.string());
+
+    Rig original;
+    original.stomps = {"stomp.orange-squeeze", "stomp.yellow-drive"};
+    original.amp = "amp.brit-plexi";
+    original.cabinet = "cab.4x12-brit.sm57";
+    original.rack = {"rack.room"};
+
+    // Como a janela salvaria depois de girar knobs: mesma estrutura,
+    // valores e bypass diferentes da receita.
+    Preset saved = library.buildPreset(original, "Interstate");
+    for (Preset::ModuleState& state : saved.modules)
+    {
+        for (auto& [id, value] : state.parameters)
+            value *= 0.9f;
+    }
+    saved.modules.back().bypassed = true;
+
+    Rig inferred;
+    check(library.inferRig(saved, inferred), "deduz um rig");
+    check(sameRig(inferred, original), "o mesmo rig que montou a cadeia");
+    check(library.matchesRig(saved, inferred), "e a estrutura bate com ele");
+
+    std::filesystem::remove_all(root);
+}
+
+void testInferRigPicksTheClosestOfTwoLookalikes()
+{
+    std::cout << "inferRig desempata receitas de mesma estrutura pelos valores\n";
+
+    GearLibrary library;
+
+    // Room e Hall são os dois um Reverb só — a estrutura não separa os
+    // dois, os valores sim.
+    for (const char* rackId : {"rack.room", "rack.hall"})
+    {
+        Rig original;
+        original.amp = "amp.american-clean";
+        original.rack = {rackId};
+
+        Rig inferred;
+        check(library.inferRig(library.buildPreset(original, "x"), inferred), "deduz um rig");
+        check(inferred.rack.size() == 1 && inferred.rack[0] == rackId,
+              std::string("reconhece ") + rackId);
+    }
+}
+
+void testInferRigRejectsAChainThatIsNotARig()
+{
+    std::cout << "inferRig recusa cadeia que nao veio de um rig\n";
+
+    GearLibrary library;
+    Rig rig;
+
+    Preset noLimiter;
+    noLimiter.modules.push_back({"Delay", false, {}, ""});
+    check(!library.inferRig(noLimiter, rig), "sem o Limiter no fim");
+
+    Preset onlyLimiter;
+    onlyLimiter.modules.push_back({"Limiter", false, {}, ""});
+    check(!library.inferRig(onlyLimiter, rig), "so o Limiter nao e um rig");
+
+    Rig stomp;
+    stomp.stomps = {"stomp.gate"};
+    check(!library.matchesRig(onlyLimiter, stomp), "estrutura diferente nao bate");
+
+    Rig unknown;
+    unknown.amp = "amp.nao-existe";
+    check(!library.matchesRig(library.buildPreset(Rig{}, "x"), unknown), "id desconhecido nao bate");
+}
+
 void testScanOfMissingDirectoryFindsNothing()
 {
     std::cout << "scan de pasta inexistente nao e erro\n";
@@ -314,6 +400,21 @@ void testScanOfMissingDirectoryFindsNothing()
           "nenhum cabinet");
 }
 
+void testOnlyBritAmpsHavePresence()
+{
+    std::cout << "so os Brit tem o knob de Presence\n";
+
+    GearLibrary library;
+    for (const GearModel* amp : library.modelsIn(GearCategory::Amp))
+    {
+        bool hasPresence = false;
+        for (const GearControl& control : amp->controls)
+            hasPresence = hasPresence || control.parameterId == "presence";
+
+        const bool isBrit = (amp->id == "amp.brit-plexi" || amp->id == "amp.brit-800");
+        check(hasPresence == isBrit, amp->id + (isBrit ? " tem Presence" : " nao tem Presence"));
+    }
+}
 int main()
 {
     std::cout << "\n=== testes da GearLibrary ===\n\n";
@@ -328,6 +429,10 @@ int main()
     testUnknownOrMisplacedGearThrows();
     testScanFindsCabinetsAndMicrophones();
     testScanOfMissingDirectoryFindsNothing();
+    testInferRigRecoversTheRigOfASavedChain();
+    testInferRigPicksTheClosestOfTwoLookalikes();
+    testInferRigRejectsAChainThatIsNotARig();
+    testOnlyBritAmpsHavePresence();
 
     return reportResults();
 }

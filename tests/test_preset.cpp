@@ -197,6 +197,43 @@ void testSerializeRoundTrip()
                "parametro do delay preservado");
 }
 
+// O rótulo de rig (linhas "rig ...") vai e volta pelo texto, e um preset
+// sem ele — todos os salvos antes de ele existir — continua carregando.
+void testRigRoundTrips()
+{
+    std::cout << "o rig do preset vai e volta pelo texto\n";
+
+    ModuleChain chain;
+    buildSampleChain(chain);
+    Preset original = preset::capture("Interstate", chain);
+    original.rig.stomps = {"stomp.orange-squeeze", "stomp.yellow-drive"};
+    original.rig.amp = "amp.brit-plexi";
+    original.rig.cabinet = "cab.importados.jcm900-1-sm57";
+    original.rig.rack = {"rack.room"};
+
+    const Preset restored = preset::deserialize(preset::serialize(original));
+
+    check(restored.rig.stomps == original.rig.stomps, "stomps na ordem");
+    check(restored.rig.amp == original.rig.amp, "amp preservado");
+    check(restored.rig.cabinet == original.rig.cabinet, "cabinet preservado");
+    check(restored.rig.rack == original.rig.rack, "rack preservado");
+    check(restored.modules.size() == original.modules.size(), "modulos continuam todos la");
+
+    const Preset withoutRig = preset::deserialize("preset Antigo\nmodule Gain 0\nparam gain 1\n");
+    check(withoutRig.rig.empty(), "preset sem linha rig carrega com rig vazio");
+
+    bool lancouPosicaoDesconhecida = false;
+    try
+    {
+        preset::deserialize("preset X\nrig pedal stomp.gate\n");
+    }
+    catch (const std::runtime_error&)
+    {
+        lancouPosicaoDesconhecida = true;
+    }
+    check(lancouPosicaoDesconhecida, "posicao de rig desconhecida lanca");
+}
+
 // Uma linha fora do formato (module/param/ir malformados, ou palavra-chave
 // desconhecida) lança, em vez de ser ignorada.
 void testDeserializeThrowsOnMalformedText()
@@ -292,6 +329,7 @@ int main()
     testCabinetIrPathRoundTrips();
     testApplyThrowsOnUnknownType();
     testSerializeRoundTrip();
+    testRigRoundTrips();
     testDeserializeThrowsOnMalformedText();
     testPresetManagerRoundTripsThroughDisk();
     testLoadMissingFileThrows();

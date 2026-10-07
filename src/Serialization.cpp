@@ -31,6 +31,17 @@ std::string serialize(const Preset& p)
 
     out << "preset " << p.name << '\n';
 
+    // O rig vem antes dos módulos: é um rótulo sobre a cadeia inteira, não
+    // sobre um módulo — ver Preset::rig.
+    for (const std::string& id : p.rig.stomps)
+        out << "rig stomp " << id << '\n';
+    if (!p.rig.amp.empty())
+        out << "rig amp " << p.rig.amp << '\n';
+    if (!p.rig.cabinet.empty())
+        out << "rig cab " << p.rig.cabinet << '\n';
+    for (const std::string& id : p.rig.rack)
+        out << "rig rack " << id << '\n';
+
     for (const Preset::ModuleState& state : p.modules)
     {
         out << "module " << state.type << ' ' << (state.bypassed ? 1 : 0) << '\n';
@@ -73,6 +84,25 @@ Preset deserialize(const std::string& text)
             std::string rest;
             std::getline(lineStream, rest);
             result.name = trim(rest);
+        }
+        else if (keyword == "rig")
+        {
+            std::string slot;
+            std::string id;
+
+            if (!(lineStream >> slot >> id))
+                throw std::runtime_error("preset malformado: 'rig' precisa de posicao e id");
+
+            if (slot == "stomp")
+                result.rig.stomps.push_back(id);
+            else if (slot == "amp")
+                result.rig.amp = id;
+            else if (slot == "cab")
+                result.rig.cabinet = id;
+            else if (slot == "rack")
+                result.rig.rack.push_back(id);
+            else
+                throw std::runtime_error("preset malformado: posicao de rig desconhecida '" + slot + "'");
         }
         else if (keyword == "module")
         {

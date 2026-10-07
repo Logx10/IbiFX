@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cmath>
 #include <filesystem>
 #include <stdexcept>
 #include <utility>
@@ -110,7 +111,7 @@ void addAmps(std::vector<GearModel>& models)
         "Limpo cristalino com agudo brilhante e muito headroom.",
         {module("HighPass", {{"frequency", 70.0f}}),
          module("Gain", {{"gain", 2.0f}}),
-         module("Preamp", {{"drive", 0.8f}}),
+         module("Preamp", {{"drive", 0.8f}, {"interstage", 11000.0f}}),
          module("ToneStack", {{"bass", 0.6f}, {"mid", 0.35f}, {"treble", 0.7f}}),
          module("Gain", {{"gain", 3.0f}}),
          module("PowerAmp", {{"drive", 0.8f}, {"sag", 0.1f}}),
@@ -122,7 +123,7 @@ void addAmps(std::vector<GearModel>& models)
         "Crunch quente e comprimido que 'respira' com a palhetada (muito sag).",
         {module("HighPass", {{"frequency", 80.0f}}),
          module("Gain", {{"gain", 1.5f}}),
-         module("Preamp", {{"drive", 1.2f}}),
+         module("Preamp", {{"drive", 1.2f}, {"interstage", 6000.0f}}),
          module("ToneStack", {{"bass", 0.5f}, {"mid", 0.6f}, {"treble", 0.55f}}),
          module("Gain", {{"gain", 2.5f}}),
          module("PowerAmp", {{"drive", 2.0f}, {"sag", 0.7f}}),
@@ -132,27 +133,27 @@ void addAmps(std::vector<GearModel>& models)
         "Crunch clássico de rock dos anos 60/70, aberto e com o power amp trabalhando.",
         {module("HighPass", {{"frequency", 100.0f}}),
          module("Gain", {{"gain", 2.0f}}),
-         module("Preamp", {{"drive", 1.8f}}),
+         module("Preamp", {{"drive", 1.8f}, {"interstage", 9000.0f}}),
          module("ToneStack", {{"bass", 0.45f}, {"mid", 0.7f}, {"treble", 0.6f}}),
          module("Gain", {{"gain", 2.5f}}),
-         module("PowerAmp", {{"drive", 2.2f}, {"sag", 0.5f}}),
+         module("PowerAmp", {{"drive", 2.2f}, {"sag", 0.5f}, {"presence", 0.5f}}),
          module("Gain", {{"gain", 0.2f}})}));
 
     models.push_back(gear("amp.brit-800", "Brit 800", GearCategory::Amp, "High Gain",
         "Hard rock dos anos 80: médio para frente, grave apertado.",
         {module("HighPass", {{"frequency", 120.0f}}),
          module("Gain", {{"gain", 3.0f}}),
-         module("Preamp", {{"drive", 2.8f}}),
+         module("Preamp", {{"drive", 2.8f}, {"interstage", 7500.0f}}),
          module("ToneStack", {{"bass", 0.45f}, {"mid", 0.75f}, {"treble", 0.6f}}),
          module("Gain", {{"gain", 2.0f}}),
-         module("PowerAmp", {{"drive", 1.5f}, {"sag", 0.3f}}),
+         module("PowerAmp", {{"drive", 1.5f}, {"sag", 0.3f}, {"presence", 0.5f}}),
          module("Gain", {{"gain", 0.2f}})}));
 
     models.push_back(gear("amp.modern-hi-gain", "Modern Hi-Gain", GearCategory::Amp, "High Gain",
         "Metal moderno: saturação densa, médio cavado, grave firme.",
         {module("HighPass", {{"frequency", 140.0f}}),
          module("Gain", {{"gain", 4.0f}}),
-         module("Preamp", {{"drive", 4.5f}}),
+         module("Preamp", {{"drive", 4.5f}, {"interstage", 6500.0f}}),
          module("ToneStack", {{"bass", 0.65f}, {"mid", 0.3f}, {"treble", 0.65f}}),
          module("Gain", {{"gain", 2.5f}}),
          module("PowerAmp", {{"drive", 1.2f}, {"sag", 0.2f}}),
@@ -162,6 +163,10 @@ void addAmps(std::vector<GearModel>& models)
     // o de um ampli real: Gain, Bass, Middle, Treble, Sag e Master. O teto
     // do Master é 2,5x o volume calibrado da receita, para o padrão cair
     // perto do "4" na escala de 0 a 10.
+    //
+    // Os Brit ganham Presence entre Treble e Sag, onde ele fica num painel
+    // Marshall de verdade. Os outros não: o knob não existe nos amplis que
+    // eles lembram, e a receita deles deixa o presence em 0 (neutro).
     for (GearModel& model : models)
     {
         if (model.category != GearCategory::Amp)
@@ -171,9 +176,13 @@ void addAmps(std::vector<GearModel>& models)
         model.controls = {control("Gain", 2, "drive", 0.1f, 5.0f),
                           control("Bass", 3, "bass", 0.0f, 1.0f),
                           control("Middle", 3, "mid", 0.0f, 1.0f),
-                          control("Treble", 3, "treble", 0.0f, 1.0f),
-                          control("Sag", 5, "sag", 0.0f, 1.0f),
-                          control("Master", 6, "gain", 0.0f, master * 2.5f)};
+                          control("Treble", 3, "treble", 0.0f, 1.0f)};
+
+        if (model.id == "amp.brit-plexi" || model.id == "amp.brit-800")
+            model.controls.push_back(control("Presence", 5, "presence", 0.0f, 1.0f));
+
+        model.controls.push_back(control("Sag", 5, "sag", 0.0f, 1.0f));
+        model.controls.push_back(control("Master", 6, "gain", 0.0f, master * 2.5f));
     }
 }
 
@@ -388,6 +397,175 @@ Preset GearLibrary::buildPreset(const Rig& rig, const std::string& name) const
 
     result.modules.push_back(module("Limiter"));
     return result;
+}
+
+namespace
+{
+// Dois caminhos de IR apontam para o mesmo arquivo? Compara a forma
+// normalizada, porque um preset salvo no Windows guarda "irs\X\y.wav" e o
+// scan pode montar "irs/X\y.wav" — mesmo arquivo, texto diferente.
+bool samePath(const std::string& a, const std::string& b)
+{
+    std::filesystem::path left = std::filesystem::path(a).lexically_normal();
+    std::filesystem::path right = std::filesystem::path(b).lexically_normal();
+    return left.make_preferred() == right.make_preferred();
+}
+
+// A receita cabe em modules a partir de `at`, com os mesmos tipos na mesma
+// ordem (e a mesma IR, se for um cabinet)?
+bool recipeFitsAt(const std::vector<Preset::ModuleState>& recipe,
+                  const std::vector<Preset::ModuleState>& modules, std::size_t at)
+{
+    if (recipe.empty() || at + recipe.size() > modules.size())
+        return false;
+
+    for (std::size_t i = 0; i < recipe.size(); ++i)
+    {
+        const Preset::ModuleState& expected = recipe[i];
+        const Preset::ModuleState& actual = modules[at + i];
+
+        if (expected.type != actual.type)
+            return false;
+
+        if (!expected.irPath.empty() && !samePath(expected.irPath, actual.irPath))
+            return false;
+    }
+    return true;
+}
+
+// O quanto os valores salvos se afastaram da receita — desempata receitas
+// de mesma estrutura (ver GearLibrary::inferRig()). Distância, não "quantos
+// ficaram iguais": quem salvou depois de girar TODOS os knobs não deixou
+// nenhum igual, mas continua mais perto da receita de onde partiu. Cada
+// diferença é relativa ao tamanho do valor, para uma frequência em hertz
+// não pesar mais que um mix de 0 a 1.
+float recipeDistance(const std::vector<Preset::ModuleState>& recipe,
+                     const std::vector<Preset::ModuleState>& modules, std::size_t at)
+{
+    float distance = 0.0f;
+    for (std::size_t i = 0; i < recipe.size(); ++i)
+    {
+        for (const auto& [id, value] : recipe[i].parameters)
+        {
+            for (const auto& [savedId, savedValue] : modules[at + i].parameters)
+            {
+                if (savedId == id)
+                    distance += std::fabs(savedValue - value) / std::max(1.0f, std::fabs(value));
+            }
+        }
+    }
+    return distance;
+}
+
+// Em que ponto da ordem stomp -> amp -> cab -> rack a busca está. Cada
+// estágio só aceita equipamentos dele em diante: um stomp depois do amp não
+// é um rig que a GearLibrary monta.
+enum class RigStage
+{
+    Stomps,
+    AfterAmp,
+    AfterCabinet,
+    Rack
+};
+
+bool parseRig(const std::vector<GearModel>& catalog, const std::vector<Preset::ModuleState>& modules,
+              std::size_t position, RigStage stage, Rig& rig)
+{
+    // O fim de todo rig é o Limiter que buildPreset() acrescenta.
+    if (position + 1 == modules.size() && modules[position].type == "Limiter")
+        return true;
+
+    struct Candidate
+    {
+        const GearModel* model;
+        RigStage next;
+        float distance;
+    };
+    std::vector<Candidate> candidates;
+
+    for (const GearModel& model : catalog)
+    {
+        RigStage next = stage;
+        switch (model.category)
+        {
+        case GearCategory::Stomp:
+            if (stage != RigStage::Stomps) continue;
+            next = RigStage::Stomps;
+            break;
+        case GearCategory::Amp:
+            if (stage != RigStage::Stomps) continue;
+            next = RigStage::AfterAmp;
+            break;
+        case GearCategory::Cabinet:
+            if (stage == RigStage::AfterCabinet || stage == RigStage::Rack) continue;
+            next = RigStage::AfterCabinet;
+            break;
+        case GearCategory::Rack:
+            next = RigStage::Rack;
+            break;
+        }
+
+        if (recipeFitsAt(model.modules, modules, position))
+            candidates.push_back({&model, next, recipeDistance(model.modules, modules, position)});
+    }
+
+    // Mais parecida primeiro; empate fica na ordem do catálogo.
+    std::stable_sort(candidates.begin(), candidates.end(),
+                     [](const Candidate& a, const Candidate& b) { return a.distance < b.distance; });
+
+    for (const Candidate& candidate : candidates)
+    {
+        const GearModel& model = *candidate.model;
+
+        switch (model.category)
+        {
+        case GearCategory::Stomp: rig.stomps.push_back(model.id); break;
+        case GearCategory::Amp: rig.amp = model.id; break;
+        case GearCategory::Cabinet: rig.cabinet = model.id; break;
+        case GearCategory::Rack: rig.rack.push_back(model.id); break;
+        }
+
+        if (parseRig(catalog, modules, position + model.modules.size(), candidate.next, rig))
+            return true;
+
+        // Não fechou mais adiante — desfaz e tenta a próxima.
+        switch (model.category)
+        {
+        case GearCategory::Stomp: rig.stomps.pop_back(); break;
+        case GearCategory::Amp: rig.amp.clear(); break;
+        case GearCategory::Cabinet: rig.cabinet.clear(); break;
+        case GearCategory::Rack: rig.rack.pop_back(); break;
+        }
+    }
+
+    return false;
+}
+}
+
+bool GearLibrary::matchesRig(const Preset& preset, const Rig& rig) const
+{
+    Preset built;
+    try
+    {
+        built = buildPreset(rig, preset.name);
+    }
+    catch (const std::exception&)
+    {
+        return false;
+    }
+
+    return built.modules.size() == preset.modules.size()
+        && recipeFitsAt(built.modules, preset.modules, 0);
+}
+
+bool GearLibrary::inferRig(const Preset& preset, Rig& rig) const
+{
+    Rig found;
+    if (!parseRig(m_models, preset.modules, 0, RigStage::Stomps, found) || found.empty())
+        return false;
+
+    rig = found;
+    return true;
 }
 
 const GearModel& GearLibrary::require(const std::string& id, GearCategory expected) const
