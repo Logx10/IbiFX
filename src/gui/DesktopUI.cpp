@@ -6,9 +6,11 @@
 #include <imgui_impl_sdlrenderer3.h>
 
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
+#include <ctime>
 #include <filesystem>
 #include <iostream>
 #include <string>
@@ -22,6 +24,19 @@ namespace
 // Onde os presets salvos pela janela vivem, relativo ao diretório de
 // trabalho — mesma convenção de audio/ no CLI.
 constexpr const char* kPresetsDir = "presets";
+
+// Onde o seletor de backing track procura .wav (a mesma pasta de áudio de
+// teste do CLI) e onde as gravações da janela são escritas.
+constexpr const char* kAudioDir = "audio";
+constexpr const char* kRecordingsDir = "recordings";
+
+// Altura comum dos três cartões de ferramentas, para a fileira ficar
+// alinhada mesmo com conteúdos de tamanhos diferentes.
+constexpr float kToolCardHeight = 250.0f;
+
+// Desvio, em cents, que ainda conta como "afinado" no afinador — o mesmo
+// limiar que afinadores de pedal costumam usar para acender o verde.
+constexpr float kInTuneCents = 5.0f;
 
 constexpr int kWindowWidth = 1200;
 constexpr int kWindowHeight = 900;
@@ -239,6 +254,85 @@ float amplitudeToDb(float peak)
 {
     const float db = peak > 0.0f ? 20.0f * std::log10(peak) : kFloorDb;
     return std::max(db, kFloorDb);
+}
+
+// Segundos como "mm:ss" — para posição de transporte e tempo de gravação.
+std::string formatClock(double seconds)
+{
+    const int total = std::max(0, static_cast<int>(seconds));
+    char buffer[16];
+    std::snprintf(buffer, sizeof(buffer), "%02d:%02d", total / 60, total % 60);
+    return buffer;
+}
+
+// "20261006-142530": prefixo de arquivo de gravação. Ordena em ordem
+// cronológica e nunca repete entre duas gravações separadas por um
+// segundo ou mais.
+std::string fileTimestamp()
+{
+    const std::time_t now = std::time(nullptr);
+    char buffer[32];
+    std::strftime(buffer, sizeof(buffer), "%Y%m%d-%H%M%S", std::localtime(&now));
+    return buffer;
+}
+
+double secondsSince(std::chrono::steady_clock::time_point start)
+{
+    return std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
+}
+
+// Botão com a cor de "gravando" — vermelho, como o REC de qualquer gravador.
+bool recordButton(const char* label, const ImVec2& size = ImVec2(0.0f, 0.0f))
+{
+    ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.55f, 0.12f, 0.10f, 1.0f));
+    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.70f, 0.16f, 0.13f, 1.0f));
+    ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.85f, 0.20f, 0.15f, 1.0f));
+    const bool clicked = ImGui::Button(label, size);
+    ImGui::PopStyleColor(3);
+    return clicked;
+}
+
+// O ponteiro do afinador: uma régua de -50 a +50 cents com o centro
+// marcado e uma agulha na posição do desvio. Verde dentro de kInTuneCents,
+// âmbar perto, vermelho longe — a mesma leitura de um afinador de pedal.
+void centsMeter(float cents, bool valid)
+{
+    ImDrawList* drawList = ImGui::GetWindowDrawList();
+
+    const float width = ImGui::GetContentRegionAvail().x;
+    const float height = 22.0f;
+    const ImVec2 topLeft = ImGui::GetCursorScreenPos();
+    const ImVec2 bottomRight(topLeft.x + width, topLeft.y + height);
+    const float centerX = topLeft.x + width * 0.5f;
+
+    drawList->AddRectFilled(topLeft, bottomRight, ImGui::GetColorU32(ImGuiCol_FrameBg), 4.0f);
+
+    // Marcas a cada 10 cents; a do centro mais alta.
+    for (int mark = -50; mark <= 50; mark += 10)
+    {
+        const float x = centerX + (static_cast<float>(mark) / 50.0f) * (width * 0.5f - 4.0f);
+        const float inset = (mark == 0) ? 2.0f : 7.0f;
+        drawList->AddLine(ImVec2(x, topLeft.y + inset), ImVec2(x, bottomRight.y - inset),
+                          ImGui::GetColorU32(ImGuiCol_TextDisabled), mark == 0 ? 2.0f : 1.0f);
+    }
+
+    if (valid)
+    {
+        const float clamped = std::clamp(cents, -50.0f, 50.0f);
+        const float x = centerX + (clamped / 50.0f) * (width * 0.5f - 4.0f);
+        const float distance = std::fabs(cents);
+
+        ImVec4 color(0.85f, 0.2f, 0.2f, 1.0f);
+        if (distance <= kInTuneCents)
+            color = ImVec4(0.3f, 0.85f, 0.4f, 1.0f);
+        else if (distance <= 15.0f)
+            color = kAccentColor;
+
+        drawList->AddRectFilled(ImVec2(x - 3.0f, topLeft.y + 1.0f), ImVec2(x + 3.0f, bottomRight.y - 1.0f),
+                                ImGui::GetColorU32(color), 2.0f);
+    }
+
+    ImGui::Dummy(ImVec2(width, height));
 }
 
 // Tema escuro com um acento âmbar — a cor de LED indicador e de VU meter
@@ -649,16 +743,46 @@ void DesktopUI::loadPreset(const std::string& path)
             return;
         }
 
-        m_rigActive = false;
-        m_rigSegments.clear();
-        m_currentPresetName = loaded.name;
-        m_currentPresetPath = path;
-        m_presetMessage = "preset carregado: " + loaded.name;
+        adoptPreset(loaded, path);
     }
     catch (const std::exception& error)
     {
         m_presetMessage = std::string("erro: ") + error.what();
     }
+}
+
+void DesktopUI::adoptPreset(const Preset& loaded, const std::string& path)
+{
+    // Se a cadeia veio de um rig, os módulos voltam agrupados em painéis de
+    // equipamento, com os knobs como foram salvos (adoptRig() só rotula,
+    // não reaplica a receita). Primeiro o rig gravado no arquivo; num
+    // preset antigo, sem ele, tenta deduzir pela cadeia.
+    Rig rig;
+    bool hasRig = false;
+
+    if (!loaded.rig.empty() && m_library.matchesRig(loaded, loaded.rig))
+    {
+        rig = loaded.rig;
+        hasRig = true;
+    }
+    else
+    {
+        hasRig = m_library.inferRig(loaded, rig);
+    }
+
+    if (hasRig)
+    {
+        adoptRig(rig);
+    }
+    else
+    {
+        m_rigActive = false;
+        m_rigSegments.clear();
+    }
+
+    m_currentPresetName = loaded.name;
+    m_currentPresetPath = path;
+    m_presetMessage = "preset carregado: " + loaded.name;
 }
 
 bool DesktopUI::replaceChain(const Preset& newPreset, std::string& error)
@@ -792,9 +916,9 @@ void DesktopUI::drawGearBrowser()
     if (models.empty() && m_browserCategory == GearCategory::Cabinet)
     {
         ImGui::Spacing();
-        ImGui::TextWrapped("Nenhum cabinet encontrado. Coloque IRs em "
-                           "irs/<gabinete>/<microfone>.wav (ver irs/README.md) "
-                           "e clique em \"Reler irs/\".");
+        ImGui::TextWrapped("Nenhum cabinet encontrado. Clique em \"Importar IR...\" "
+                           "(ou arraste um .wav para a janela), ou coloque IRs em "
+                           "irs/<gabinete>/<microfone>.wav e clique em \"Reler irs/\".");
     }
 
     const std::string* lastCabinetName = nullptr;
@@ -836,9 +960,15 @@ void DesktopUI::drawGearBrowser()
         ImGui::ColorButton("##swatch", swatch, ImGuiColorEditFlags_NoTooltip, ImVec2(16.0f, 16.0f));
         ImGui::SameLine();
 
-        const std::string label = (model->category == GearCategory::Cabinet) ? model->microphone : model->name;
+        const bool isCabinet = (model->category == GearCategory::Cabinet);
+        const std::string label = isCabinet ? model->microphone : model->name;
 
-        if (ImGui::Selectable(label.c_str(), selected))
+        // Cabinets ganham um "x" no fim da linha para excluir a IR — o
+        // Selectable encolhe para deixar espaço para ele.
+        const float deleteWidth = isCabinet ? ImGui::GetFrameHeight() + ImGui::GetStyle().ItemSpacing.x : 0.0f;
+
+        if (ImGui::Selectable(label.c_str(), selected, ImGuiSelectableFlags_None,
+                              ImVec2(ImGui::GetContentRegionAvail().x - deleteWidth, 0.0f)))
         {
             Rig next = m_rig;
             switch (model->category)
@@ -854,10 +984,64 @@ void DesktopUI::drawGearBrowser()
         if (ImGui::IsItemHovered())
             ImGui::SetTooltip("%s\n%s", model->character.c_str(), model->description.c_str());
 
+        if (isCabinet)
+        {
+            ImGui::SameLine();
+
+            if (ImGui::SmallButton("x"))
+                m_irPendingDelete = model->id;
+
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("excluir esta IR");
+        }
+
         ImGui::PopID();
     }
 
     ImGui::EndChild();
+
+    // O popup é aberto aqui fora, no mesmo nível de ID do BeginPopupModal
+    // abaixo — de dentro do PushID da linha, o ImGui não o acharia.
+    if (!m_irPendingDelete.empty() && !ImGui::IsPopupOpen("Excluir IR"))
+        ImGui::OpenPopup("Excluir IR");
+
+    if (ImGui::BeginPopupModal("Excluir IR", nullptr, ImGuiWindowFlags_AlwaysAutoResize))
+    {
+        const GearModel* doomed = m_library.find(m_irPendingDelete);
+
+        if (doomed != nullptr)
+        {
+            ImGui::Text("Excluir \"%s\" (%s)?", doomed->microphone.c_str(), doomed->name.c_str());
+            ImGui::TextDisabled("O arquivo .wav sera apagado do disco.");
+        }
+
+        ImGui::Spacing();
+
+        if (recordButton("Excluir", ImVec2(110.0f, 0.0f)))
+        {
+            deleteImpulseResponse(m_irPendingDelete);
+            m_irPendingDelete.clear();
+            ImGui::CloseCurrentPopup();
+        }
+
+        ImGui::SameLine();
+
+        if (ImGui::Button("Cancelar", ImVec2(110.0f, 0.0f)) || ImGui::IsKeyPressed(ImGuiKey_Escape))
+        {
+            m_irPendingDelete.clear();
+            ImGui::CloseCurrentPopup();
+        }
+
+        ImGui::EndPopup();
+    }
+
+    if (ImGui::Button("Importar IR..."))
+        openImpulseResponseDialog();
+
+    if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("escolhe um .wav de IR (ou arraste o arquivo para a janela)");
+
+    ImGui::SameLine();
 
     if (ImGui::Button("Reler irs/"))
     {
@@ -1286,7 +1470,15 @@ void DesktopUI::savePreset(const std::string& name)
         std::filesystem::create_directories(kPresetsDir);
 
         const std::string path = std::string(kPresetsDir) + "/" + name + ".ibifxpreset";
-        preset::save(preset::capture(name, m_engine.chain()), path);
+
+        Preset captured = preset::capture(name, m_engine.chain());
+
+        // Com um rig ativo, o preset leva junto de qual rig a cadeia veio —
+        // é o que deixa loadPreset() reagrupar os painéis depois.
+        if (m_rigActive)
+            captured.rig = m_rig;
+
+        preset::save(captured, path);
 
         m_currentPresetName = name;
         m_currentPresetPath = path;
@@ -1395,6 +1587,484 @@ void DesktopUI::drawPresetPanel()
     }
 }
 
+void DesktopUI::refreshBackingTrackList()
+{
+    m_backingFiles.clear();
+
+    std::error_code error;
+
+    if (!std::filesystem::exists(kAudioDir, error))
+        return;
+
+    for (const auto& entry : std::filesystem::directory_iterator(kAudioDir, error))
+    {
+        if (entry.is_regular_file() && entry.path().extension() == ".wav")
+            m_backingFiles.push_back(entry.path().string());
+    }
+
+    std::sort(m_backingFiles.begin(), m_backingFiles.end());
+}
+
+void DesktopUI::loadBackingTrack(const std::string& path)
+{
+    // Ver o comentário no header: o vetor de amostras da backing track não
+    // pode ser trocado com a thread de áudio lendo dele.
+    m_engine.stop();
+
+    try
+    {
+        m_engine.practiceSession().loadBackingTrack(path);
+        m_backingTrackPath = path;
+        m_practiceMessage = "backing track: " + std::filesystem::path(path).filename().string();
+    }
+    catch (const std::exception& error)
+    {
+        m_practiceMessage = std::string("erro: ") + error.what();
+    }
+
+    // Religa mesmo se o load falhou — a backing track antiga (ou nenhuma)
+    // continua valendo, e o pedalboard não pode ficar mudo por causa disso.
+    if (!m_engine.start(m_mode, m_sampleRate, m_blockSize))
+        m_practiceMessage = "erro ao religar o motor: " + m_engine.lastError();
+}
+
+void DesktopUI::importImpulseResponse(const std::string& sourcePath)
+{
+    namespace fs = std::filesystem;
+
+    try
+    {
+        // O SDL entrega caminhos em UTF-8; montar o path a partir de char8_t
+        // evita que um acento no nome do arquivo vire lixo no Windows.
+        const fs::path source(reinterpret_cast<const char8_t*>(sourcePath.c_str()));
+
+        std::string extension = source.extension().string();
+        std::transform(extension.begin(), extension.end(), extension.begin(),
+                       [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+
+        if (extension != ".wav")
+        {
+            m_rigMessage = "erro: a IR precisa ser um arquivo .wav";
+            return;
+        }
+
+        // COPIA EM VEZ DE APONTAR PARA O ORIGINAL
+        // O catálogo só conhece o que está em irs/ (ver GearLibrary.h), e um
+        // preset salvo guarda o caminho da IR — se ele apontasse para a pasta
+        // de Downloads, mover o arquivo de lá quebraria o preset sem aviso.
+        const fs::path destinationDir = fs::path(m_irsDirectory) / "Importados";
+        const fs::path destination = destinationDir / source.filename();
+
+        fs::create_directories(destinationDir);
+
+        std::error_code sameFile;
+        if (!fs::equivalent(source, destination, sameFile))
+            fs::copy_file(source, destination, fs::copy_options::overwrite_existing);
+
+        m_library.scanImpulseResponses(m_irsDirectory);
+
+        // Acha o cabinet recém-criado pelo caminho da IR, em vez de recalcular
+        // o id aqui — a regra de montar o id é da GearLibrary.
+        const GearModel* imported = nullptr;
+        for (const GearModel* model : m_library.modelsIn(GearCategory::Cabinet))
+        {
+            if (!model->modules.empty() && fs::path(model->modules[0].irPath) == destination)
+                imported = model;
+        }
+
+        if (imported == nullptr)
+        {
+            m_rigMessage = "erro: a IR foi copiada, mas nao apareceu no catalogo";
+            return;
+        }
+
+        m_browserCategory = GearCategory::Cabinet;
+
+        Rig next = m_rig;
+        next.cabinet = imported->id;
+        applyRig(next);
+
+        // applyRig() só muda o rig se a IR carregou (sample rate certo etc.);
+        // se não, ele já deixou o erro em m_rigMessage.
+        if (m_rig.cabinet == imported->id)
+            m_rigMessage = "IR importada: " + destination.filename().string();
+    }
+    catch (const std::exception& error)
+    {
+        m_rigMessage = std::string("erro ao importar IR: ") + error.what();
+    }
+}
+
+void DesktopUI::deleteImpulseResponse(const std::string& cabinetId)
+{
+    namespace fs = std::filesystem;
+
+    const GearModel* model = m_library.find(cabinetId);
+
+    if (model == nullptr || model->category != GearCategory::Cabinet || model->modules.empty())
+    {
+        m_rigMessage = "erro: cabinet nao encontrado";
+        return;
+    }
+
+    // Copiados antes do rescan, que destrói o GearModel apontado por model.
+    const fs::path irPath = model->modules[0].irPath;
+    const std::string label = model->microphone;
+
+    // Se é o cabinet em uso, sai do rig primeiro. O som não depende do
+    // arquivo (a IR já está na memória do Cabinet), mas o rig não pode
+    // continuar apontando para um id que vai deixar de existir.
+    if (m_rig.cabinet == cabinetId)
+    {
+        Rig next = m_rig;
+        next.cabinet.clear();
+
+        if (m_rigActive)
+            applyRig(next);
+        else
+            m_rig = next;
+    }
+
+    try
+    {
+        fs::remove(irPath);
+
+        // Só apaga a pasta do gabinete se ela ficou vazia — fs::remove()
+        // não apaga pasta com conteúdo, mas conferir antes deixa a
+        // intenção explícita.
+        const fs::path cabinetDir = irPath.parent_path();
+        std::error_code error;
+        if (fs::is_empty(cabinetDir, error))
+            fs::remove(cabinetDir, error);
+
+        m_rigMessage = "IR excluida: " + label;
+    }
+    catch (const std::exception& error)
+    {
+        m_rigMessage = std::string("erro ao excluir IR: ") + error.what();
+    }
+
+    m_library.scanImpulseResponses(m_irsDirectory);
+}
+
+void DesktopUI::openImpulseResponseDialog()
+{
+    // Precisa continuar valendo até a resposta chegar — por isso static.
+    static const SDL_DialogFileFilter kFilters[] = {{"Impulse response (.wav)", "wav"}};
+
+    SDL_ShowOpenFileDialog(&DesktopUI::onImpulseResponseChosen, this, m_window, kFilters, 1, nullptr, false);
+}
+
+void DesktopUI::onImpulseResponseChosen(void* userdata, const char* const* files, int /*filter*/)
+{
+    // files == nullptr: erro; files[0] == nullptr: a pessoa cancelou.
+    if (files == nullptr || files[0] == nullptr)
+        return;
+
+    auto* self = static_cast<DesktopUI*>(userdata);
+    const std::lock_guard<std::mutex> lock(self->m_pendingIrMutex);
+    self->m_pendingIrPath = files[0];
+}
+
+void DesktopUI::stopAllRecordings()
+{
+    if (m_engine.reampRecorder().isRecording())
+        m_engine.reampRecorder().stop();
+
+    if (m_engine.practiceSession().isRecording())
+        m_engine.practiceSession().stopRecording();
+}
+
+void DesktopUI::drawTunerPanel()
+{
+    drawSectionHeader("Afinador");
+
+    if (ImGui::Checkbox("ligado", &m_tunerOn))
+        m_engine.setTunerEnabled(m_tunerOn);
+
+    ImGui::SameLine();
+
+    if (ImGui::Checkbox("mudo", &m_tunerMuted))
+        m_engine.setTunerMuted(m_tunerMuted);
+
+    if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("silencia a saida enquanto o afinador esta ligado");
+
+    ImGui::Spacing();
+
+    const Tuner& tuner = m_engine.tuner();
+    const bool valid = m_tunerOn && tuner.isValid();
+    const float cents = valid ? tuner.centsOff() : 0.0f;
+
+    // A nota grande, na cor do ponteiro quando afinada — dá para ler de
+    // longe, com a guitarra no colo.
+    const std::string note = valid ? tuner.noteName() : std::string("--");
+    const bool inTune = valid && std::fabs(cents) <= kInTuneCents;
+
+    ImGui::SetWindowFontScale(2.6f);
+    const float noteWidth = ImGui::CalcTextSize(note.c_str()).x;
+    ImGui::SetCursorPosX((ImGui::GetContentRegionAvail().x - noteWidth) * 0.5f + ImGui::GetCursorPosX());
+
+    if (!m_tunerOn)
+        ImGui::TextDisabled("%s", note.c_str());
+    else if (inTune)
+        ImGui::TextColored(ImVec4(0.3f, 0.85f, 0.4f, 1.0f), "%s", note.c_str());
+    else
+        ImGui::TextUnformatted(note.c_str());
+
+    ImGui::SetWindowFontScale(1.0f);
+
+    centsMeter(cents, valid);
+
+    if (!m_tunerOn)
+        ImGui::TextDisabled("desligado");
+    else if (!valid)
+        ImGui::TextDisabled("toque uma corda...");
+    else
+        ImGui::Text("%.1f Hz   %+.0f cents", static_cast<double>(tuner.frequencyHz()), static_cast<double>(cents));
+}
+
+void DesktopUI::drawRecorderPanel()
+{
+    drawSectionHeader("Gravador");
+
+    ImGui::TextDisabled("DI (seco) + processado");
+
+    ReampRecorder& recorder = m_engine.reampRecorder();
+    const bool recording = recorder.isRecording();
+
+    ImGui::Spacing();
+
+    if (!recording)
+    {
+        if (recordButton("Gravar", ImVec2(-1.0f, 34.0f)))
+        {
+            try
+            {
+                std::filesystem::create_directories(kRecordingsDir);
+
+                const std::string base = std::string(kRecordingsDir) + "/" + fileTimestamp();
+                recorder.start(base + "-di.wav", base + "-processado.wav");
+
+                m_reampStartedAt = std::chrono::steady_clock::now();
+                m_reampMessage.clear();
+            }
+            catch (const std::exception& error)
+            {
+                m_reampMessage = std::string("erro: ") + error.what();
+            }
+        }
+    }
+    else
+    {
+        if (ImGui::Button("Parar", ImVec2(-1.0f, 34.0f)))
+        {
+            // stop() espera a thread de disco terminar de escrever os dois
+            // arquivos — um engasgo curto na janela, nunca no áudio.
+            recorder.stop();
+            m_reampMessage = "salvo em " + std::string(kRecordingsDir) + "/";
+        }
+    }
+
+    ImGui::Spacing();
+
+    if (recording)
+    {
+        ImGui::TextColored(ImVec4(0.95f, 0.25f, 0.2f, 1.0f), "REC");
+        ImGui::SameLine();
+        ImGui::TextUnformatted(formatClock(secondsSince(m_reampStartedAt)).c_str());
+    }
+    else
+    {
+        ImGui::TextDisabled("parado");
+    }
+
+    if (!m_reampMessage.empty())
+        ImGui::TextWrapped("%s", m_reampMessage.c_str());
+}
+
+void DesktopUI::drawPracticePanel()
+{
+    drawSectionHeader("Pratica");
+
+    PracticeSession& session = m_engine.practiceSession();
+    const double rate = m_engine.sampleRate() > 0.0 ? m_engine.sampleRate() : m_sampleRate;
+    const auto toSeconds = [rate](std::uint64_t samples) { return static_cast<double>(samples) / rate; };
+
+    // --- Transporte ---
+    const bool playing = session.isPlaying();
+
+    if (ImGui::Button(playing ? "Pausar" : "Tocar", ImVec2(80.0f, 0.0f)))
+    {
+        if (playing)
+            session.stop();
+        else
+            session.play();
+    }
+
+    ImGui::SameLine();
+
+    if (ImGui::Button("Inicio"))
+        session.seek(m_loopOn ? m_loopStart : 0);
+
+    ImGui::SameLine();
+
+    std::string position = formatClock(toSeconds(session.positionSamples()));
+    if (session.hasBackingTrack())
+        position += " / " + formatClock(toSeconds(session.backingTrackLengthSamples()));
+
+    ImGui::TextUnformatted(position.c_str());
+
+    // --- Metrônomo ---
+    if (ImGui::Checkbox("Metronomo", &m_metronomeOn))
+        session.setMetronomeEnabled(m_metronomeOn);
+
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(90.0f);
+
+    if (ImGui::DragFloat("BPM", &m_bpm, 0.5f, 30.0f, 300.0f, "%.0f", ImGuiSliderFlags_AlwaysClamp))
+        session.setBpm(m_bpm);
+
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(-1.0f);
+
+    if (ImGui::SliderFloat("##clickVolume", &m_metronomeVolume, 0.0f, 1.0f, "clique %.2f"))
+        session.setMetronomeVolume(m_metronomeVolume);
+
+    // --- Backing track ---
+    const std::string currentName = m_backingTrackPath.empty()
+        ? std::string("(nenhuma backing track)")
+        : std::filesystem::path(m_backingTrackPath).filename().string();
+
+    ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x * 0.55f);
+
+    if (ImGui::BeginCombo("##backing", currentName.c_str()))
+    {
+        // Relê a pasta sempre que a lista abre — quem acabou de copiar um
+        // .wav para audio/ não precisa procurar um botão de atualizar.
+        refreshBackingTrackList();
+
+        if (m_backingFiles.empty())
+            ImGui::TextDisabled("coloque arquivos .wav em %s/", kAudioDir);
+
+        for (const std::string& path : m_backingFiles)
+        {
+            const std::string label = std::filesystem::path(path).filename().string();
+
+            if (ImGui::Selectable(label.c_str(), path == m_backingTrackPath))
+                loadBackingTrack(path);
+        }
+
+        ImGui::EndCombo();
+    }
+
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(-1.0f);
+
+    if (ImGui::SliderFloat("##backingVolume", &m_backingVolume, 0.0f, 1.0f, "faixa %.2f"))
+        session.setBackingTrackVolume(m_backingVolume);
+
+    // --- Loop A/B ---
+    if (ImGui::Checkbox("Loop", &m_loopOn))
+        session.setLoopEnabled(m_loopOn);
+
+    ImGui::SameLine();
+
+    if (ImGui::Button("A"))
+    {
+        m_loopStart = session.positionSamples();
+        session.setLoop(m_loopStart, m_loopEnd);
+    }
+
+    if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("marca o inicio do loop na posicao atual");
+
+    ImGui::SameLine();
+
+    if (ImGui::Button("B"))
+    {
+        m_loopEnd = session.positionSamples();
+        session.setLoop(m_loopStart, m_loopEnd);
+    }
+
+    if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("marca o fim do loop na posicao atual");
+
+    ImGui::SameLine();
+
+    if (m_loopEnd > m_loopStart)
+        ImGui::Text("%s - %s", formatClock(toSeconds(m_loopStart)).c_str(), formatClock(toSeconds(m_loopEnd)).c_str());
+    else
+        ImGui::TextDisabled("marque A e B tocando");
+
+    // --- Gravação da sessão ---
+    if (!session.isRecording())
+    {
+        if (recordButton("Gravar sessao"))
+        {
+            try
+            {
+                std::filesystem::create_directories(kRecordingsDir);
+                session.startRecording(std::string(kRecordingsDir) + "/" + fileTimestamp() + "-sessao.wav");
+                m_sessionStartedAt = std::chrono::steady_clock::now();
+                m_practiceMessage.clear();
+            }
+            catch (const std::exception& error)
+            {
+                m_practiceMessage = std::string("erro: ") + error.what();
+            }
+        }
+    }
+    else
+    {
+        if (ImGui::Button("Parar gravacao"))
+        {
+            session.stopRecording();
+            m_practiceMessage = "sessao salva em " + std::string(kRecordingsDir) + "/";
+        }
+
+        ImGui::SameLine();
+        ImGui::TextColored(ImVec4(0.95f, 0.25f, 0.2f, 1.0f), "REC");
+        ImGui::SameLine();
+        ImGui::TextUnformatted(formatClock(secondsSince(m_sessionStartedAt)).c_str());
+    }
+
+    if (!m_practiceMessage.empty())
+        ImGui::TextWrapped("%s", m_practiceMessage.c_str());
+}
+
+void DesktopUI::drawToolsRow()
+{
+    const float spacing = ImGui::GetStyle().ItemSpacing.x;
+    const float available = ImGui::GetContentRegionAvail().x - 2.0f * spacing;
+
+    // A prática tem o dobro de controles dos outros dois, então leva metade
+    // da largura.
+    const float tunerWidth = available * 0.26f;
+    const float recorderWidth = available * 0.24f;
+
+    ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 8.0f);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(12.0f, 10.0f));
+
+    ImGui::BeginChild("##tunerCard", ImVec2(tunerWidth, kToolCardHeight), ImGuiChildFlags_Borders);
+    drawTunerPanel();
+    ImGui::EndChild();
+
+    ImGui::SameLine();
+
+    ImGui::BeginChild("##recorderCard", ImVec2(recorderWidth, kToolCardHeight), ImGuiChildFlags_Borders);
+    drawRecorderPanel();
+    ImGui::EndChild();
+
+    ImGui::SameLine();
+
+    ImGui::BeginChild("##practiceCard", ImVec2(0.0f, kToolCardHeight), ImGuiChildFlags_Borders);
+    drawPracticePanel();
+    ImGui::EndChild();
+
+    ImGui::PopStyleVar(2);
+}
+
 void DesktopUI::drawFrame()
 {
     ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
@@ -1455,6 +2125,11 @@ void DesktopUI::drawFrame()
 
     ImGui::Spacing();
 
+    // --- Afinador, gravador e prática, lado a lado ---
+    drawToolsRow();
+
+    ImGui::Spacing();
+
     // --- Rig, no mesmo estilo de cartão ---
     ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 8.0f);
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(12.0f, 10.0f));
@@ -1490,6 +2165,13 @@ int DesktopUI::run(AudioDevice::Mode mode, double sampleRate, int blockSize)
     m_sampleRate = sampleRate;
     m_blockSize = blockSize;
 
+    // A janela abre com o afinador e o metrônomo desligados, e o estado do
+    // engine precisa bater com o dos checkboxes desde o primeiro quadro.
+    m_engine.setTunerEnabled(m_tunerOn);
+    m_engine.setTunerMuted(m_tunerMuted);
+    m_engine.practiceSession().setMetronomeEnabled(m_metronomeOn);
+    m_engine.practiceSession().setBpm(m_bpm);
+
     if (!initWindow())
     {
         shutdownWindow();
@@ -1520,7 +2202,22 @@ int DesktopUI::run(AudioDevice::Mode mode, double sampleRate, int blockSize)
             if (event.type == SDL_EVENT_WINDOW_CLOSE_REQUESTED &&
                 event.window.windowID == SDL_GetWindowID(m_window))
                 m_quit = true;
+
+            // Arrastar um .wav para a janela importa como IR.
+            if (event.type == SDL_EVENT_DROP_FILE && event.drop.data != nullptr)
+                importImpulseResponse(event.drop.data);
         }
+
+        // Resposta do seletor de arquivos, se chegou uma desde o último
+        // quadro — ver openImpulseResponseDialog().
+        std::string chosenIr;
+        {
+            const std::lock_guard<std::mutex> lock(m_pendingIrMutex);
+            chosenIr.swap(m_pendingIrPath);
+        }
+
+        if (!chosenIr.empty())
+            importImpulseResponse(chosenIr);
 
         ImGui_ImplSDLRenderer3_NewFrame();
         ImGui_ImplSDL3_NewFrame();
@@ -1534,6 +2231,9 @@ int DesktopUI::run(AudioDevice::Mode mode, double sampleRate, int blockSize)
         ImGui_ImplSDLRenderer3_RenderDrawData(ImGui::GetDrawData(), m_renderer);
         SDL_RenderPresent(m_renderer);
     }
+
+    // Fechar a janela no meio de uma gravação não pode perder o arquivo.
+    stopAllRecordings();
 
     m_engine.stop();
     shutdownWindow();

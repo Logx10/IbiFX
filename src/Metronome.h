@@ -1,5 +1,6 @@
 #pragma once
 
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <vector>
@@ -69,7 +70,8 @@ private:
     const MasterTransport& m_transport;
 
     double m_sampleRate = 48000.0;
-    float m_volume = 0.5f;
+    // Atômico: a interface muda o volume com o áudio rodando.
+    std::atomic<float> m_volume{0.5f};
     int m_beatsPerBar = 4;
 
     // O clique em andamento. m_clickLengthSamples == 0 significa nenhum

@@ -9,6 +9,7 @@
 #include "ModuleChain.h"
 #include "PracticeSession.h"
 #include "ReampRecorder.h"
+#include "Tuner.h"
 
 // LiveEngine — liga o dispositivo de áudio à cadeia de módulos.
 //
@@ -121,7 +122,25 @@ public:
     // que se quer reamplificar depois.
     PracticeSession& practiceSession();
 
+    // Afinador sempre à mão, sem precisar entrar na cadeia. Ele escuta o
+    // sinal SECO (antes dos pedais), como um afinador de verdade no começo
+    // do pedalboard — uma distorção na frente bagunçaria a leitura.
+    //
+    // Desligado por padrão: a análise do YIN custa CPU na thread de áudio
+    // (ver Tuner.h), então só roda enquanto alguém está olhando para ele.
+    // Com mute ligado, a saída fica em silêncio enquanto o afinador está
+    // ativo — afinar sem o som passar pelo resto da cadeia.
+    void setTunerEnabled(bool enabled);
+    bool isTunerEnabled() const;
+    void setTunerMuted(bool muted);
+    bool isTunerMuted() const;
+    const Tuner& tuner() const;
+
 private:
+    // Prepara cadeia, gravador, prática e afinador numa taxa. Só com o
+    // dispositivo parado — ver start().
+    void prepareAll(double sampleRate, int blockSize);
+
     // Chamado na thread de áudio.
     void processBlock(float* output, const float* input, std::size_t frameCount, std::size_t channelCount);
 
@@ -129,13 +148,22 @@ private:
     ModuleChain m_chain;
     ReampRecorder m_reampRecorder;
     PracticeSession m_practiceSession;
+    Tuner m_tuner;
+
+    std::atomic<bool> m_tunerEnabled{false};
+    std::atomic<bool> m_tunerMuted{false};
+
+    // Só a thread de áudio lê e escreve: detecta a borda de "acabou de
+    // ligar" para zerar a janela do afinador ali mesmo, sem que a interface
+    // precise chamar reset() de outra thread.
+    bool m_tunerWasEnabled = false;
 
     // Buffer mono de trabalho, alocado no start(). O callback só muda o
     // tamanho lógico dele, nunca a capacidade — então não aloca.
     std::vector<float> m_monoBuffer;
 
-    // Cópia do sinal ANTES da cadeia, para o ReampRecorder — só preenchida
-    // quando ele está gravando (ver processBlock()). Mesma política de
+    // Cópia do sinal ANTES da cadeia, para o ReampRecorder e o afinador —
+    // só preenchida quando um dos dois precisa dela (ver processBlock()). Mesma política de
     // alocação do m_monoBuffer: reservado no start(), nunca redimensionado
     // além da capacidade dentro do callback.
     std::vector<float> m_dryBuffer;

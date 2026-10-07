@@ -1,5 +1,6 @@
 #pragma once
 
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <string>
@@ -55,6 +56,7 @@ public:
     void loadBackingTrack(const std::string& path);
     void setBackingTrackVolume(float volume);
     bool hasBackingTrack() const;
+    std::uint64_t backingTrackLengthSamples() const;
 
     // --- Transporte (delega ao MasterTransport interno) ---
     void play();
@@ -63,6 +65,9 @@ public:
     void seek(std::uint64_t positionSamples);
     void setLoop(std::uint64_t startSamples, std::uint64_t endSamples);
     void setLoopEnabled(bool enabled);
+    bool isLoopEnabled() const;
+    std::uint64_t loopStartSamples() const;
+    std::uint64_t loopEndSamples() const;
     std::uint64_t positionSamples() const;
 
     // --- Metrônomo ---
@@ -90,5 +95,10 @@ private:
     Metronome m_metronome;
     Recorder m_recorder;
 
-    bool m_metronomeEnabled = true;
+    // Atômico porque a interface liga/desliga com o áudio rodando. Desligar
+    // não chama m_metronome.reset() daqui (isso mexeria no estado do clique
+    // enquanto process() o percorre): process() percebe a borda e descarta
+    // o clique em andamento na própria thread de áudio.
+    std::atomic<bool> m_metronomeEnabled{true};
+    bool m_metronomeWasEnabled = true;
 };

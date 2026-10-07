@@ -104,3 +104,7 @@ presets/*
 # versionados; os .wav não — cada pacote de IR tem sua própria licença.
 irs/*
 !irs/README.md
+
+# Gravações feitas pela janela desktop (gravador e modo prática). Áudio
+# pessoal, não código.
+recordings/

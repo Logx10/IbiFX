@@ -1,6 +1,9 @@
 #pragma once
 
+#include <chrono>
 #include <cstddef>
+#include <cstdint>
+#include <mutex>
 #include <set>
 #include <string>
 #include <vector>
@@ -52,6 +55,12 @@ public:
     // ativo no navegador e agrupado no pedalboard. Não reaplica nada. Os
     // ids precisam estar na forma completa (ver resolveRig()).
     void adoptRig(const Rig& rig);
+
+    // Avisa que a cadeia do engine JÁ foi montada a partir deste preset
+    // (por --preset na linha de comando). Como loadPreset(), mas sem
+    // reaplicar: reagrupa os módulos em painéis se o preset veio de um rig
+    // e marca o preset como o atual na lista.
+    void adoptPreset(const Preset& loaded, const std::string& path);
 
     // Roda o laço da janela até ela ser fechada. Devolve o código de saída.
     int run(AudioDevice::Mode mode, double sampleRate, int blockSize);
@@ -140,6 +149,44 @@ private:
     // desenhada com ImGui::ProgressBar em vez de caracteres.
     void drawMeter(const char* label, float peakLinear) const;
 
+    // A faixa de ferramentas, três cartões lado a lado: afinador, gravador
+    // de reamp e modo prática. Nada disso passa pela cadeia — são as peças
+    // que o LiveEngine já mantém sempre presentes (tuner(),
+    // reampRecorder(), practiceSession()).
+    void drawToolsRow();
+    void drawTunerPanel();
+    void drawRecorderPanel();
+    void drawPracticePanel();
+
+    // audio/*.wav, para o seletor de backing track.
+    void refreshBackingTrackList();
+
+    // Troca o arquivo da backing track. Para o motor antes, pelo mesmo
+    // motivo de replaceChain(): BackingTrackPlayer::load() substitui o
+    // vetor de amostras que a thread de áudio está lendo.
+    void loadBackingTrack(const std::string& path);
+
+    // Copia um .wav qualquer para irs/Importados/, relê o catálogo e já põe
+    // esse cabinet no rig. Chamado pelo botão "Importar IR..." e por
+    // arrastar um arquivo para a janela.
+    void importImpulseResponse(const std::string& sourcePath);
+
+    // Apaga do disco o .wav de um cabinet (pelo id do catálogo), tira esse
+    // cabinet do rig se for o atual e relê irs/. A pasta do gabinete some
+    // junto quando fica vazia.
+    void deleteImpulseResponse(const std::string& cabinetId);
+
+    // Abre o seletor de arquivos do sistema. Ele é assíncrono e o SDL pode
+    // chamar a resposta de OUTRA thread, então o caminho escolhido só é
+    // depositado em m_pendingIrPath — quem importa é o laço da janela, no
+    // próximo quadro (ver run()).
+    void openImpulseResponseDialog();
+    static void onImpulseResponseChosen(void* userdata, const char* const* files, int filter);
+
+    // Para as gravações em andamento, para os arquivos serem escritos antes
+    // de a janela fechar.
+    void stopAllRecordings();
+
     LiveEngine& m_engine;
     std::string m_irsDirectory;
 
@@ -217,4 +264,36 @@ private:
     std::string m_browserCharacter;
 
     std::string m_rigMessage;
+
+    // Caminho escolhido no seletor de IR, esperando o laço da janela —
+    // ver openImpulseResponseDialog().
+    std::mutex m_pendingIrMutex;
+    std::string m_pendingIrPath;
+
+    // Cabinet esperando confirmação de exclusão no popup. Apagar um arquivo
+    // não tem desfazer, então o "x" da lista só pergunta.
+    std::string m_irPendingDelete;
+
+    // --- Ferramentas ---
+    // Cópias locais do que o engine guarda em atômicos: ImGui::Checkbox e
+    // os sliders precisam de um bool/float para escrever.
+    bool m_tunerOn = false;
+    bool m_tunerMuted = true;
+
+    std::chrono::steady_clock::time_point m_reampStartedAt;
+    std::string m_reampMessage;
+
+    bool m_metronomeOn = false;
+    float m_bpm = 120.0f;
+    float m_metronomeVolume = 0.5f;
+    float m_backingVolume = 1.0f;
+    bool m_loopOn = false;
+    std::uint64_t m_loopStart = 0;
+    std::uint64_t m_loopEnd = 0;
+
+    std::vector<std::string> m_backingFiles;
+    std::string m_backingTrackPath;
+
+    std::chrono::steady_clock::time_point m_sessionStartedAt;
+    std::string m_practiceMessage;
 };

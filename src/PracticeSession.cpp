@@ -30,6 +30,11 @@ bool PracticeSession::hasBackingTrack() const
     return m_backingTrack.isLoaded();
 }
 
+std::uint64_t PracticeSession::backingTrackLengthSamples() const
+{
+    return m_backingTrack.lengthSamples();
+}
+
 void PracticeSession::play()
 {
     m_transport.play();
@@ -60,6 +65,21 @@ void PracticeSession::setLoopEnabled(bool enabled)
     m_transport.setLoopEnabled(enabled);
 }
 
+bool PracticeSession::isLoopEnabled() const
+{
+    return m_transport.isLoopEnabled();
+}
+
+std::uint64_t PracticeSession::loopStartSamples() const
+{
+    return m_transport.loopStartSamples();
+}
+
+std::uint64_t PracticeSession::loopEndSamples() const
+{
+    return m_transport.loopEndSamples();
+}
+
 std::uint64_t PracticeSession::positionSamples() const
 {
     return m_transport.positionSamples();
@@ -77,20 +97,12 @@ float PracticeSession::bpm() const
 
 void PracticeSession::setMetronomeEnabled(bool enabled)
 {
-    m_metronomeEnabled = enabled;
-
-    if (!enabled)
-    {
-        // Descarta qualquer clique em andamento — sem isso, desligar o
-        // metrônomo no meio de um clique deixaria ele tocando até o fim
-        // sozinho, porque o estado de renderização continuaria ativo.
-        m_metronome.reset();
-    }
+    m_metronomeEnabled.store(enabled, std::memory_order_relaxed);
 }
 
 bool PracticeSession::isMetronomeEnabled() const
 {
-    return m_metronomeEnabled;
+    return m_metronomeEnabled.load(std::memory_order_relaxed);
 }
 
 void PracticeSession::setMetronomeVolume(float volume)
@@ -122,10 +134,21 @@ void PracticeSession::process(std::vector<float>& buffer)
 
     m_backingTrack.process(buffer, startPosition);
 
-    if (m_metronomeEnabled)
+    const bool metronomeEnabled = m_metronomeEnabled.load(std::memory_order_relaxed);
+
+    if (metronomeEnabled)
     {
         m_metronome.process(buffer, startPosition);
     }
+    else if (m_metronomeWasEnabled)
+    {
+        // Descarta qualquer clique em andamento — sem isso, desligar o
+        // metrônomo no meio de um clique deixaria ele tocando até o fim
+        // sozinho, porque o estado de renderização continuaria ativo.
+        m_metronome.reset();
+    }
+
+    m_metronomeWasEnabled = metronomeEnabled;
 
     // Grava o resultado já com backing track e clique somados — ver o
     // comentário no header sobre essa escolha.

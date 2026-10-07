@@ -1,5 +1,6 @@
 #pragma once
 
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <string>
@@ -69,5 +70,6 @@ public:
 private:
     double m_sampleRate = 48000.0;
     std::vector<float> m_samples;
-    float m_volume = 1.0f;
+    // Atômico: a interface muda o volume com o áudio rodando.
+    std::atomic<float> m_volume{1.0f};
 };

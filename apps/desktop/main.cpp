@@ -62,7 +62,11 @@ int main(int argc, char** argv)
 
         // Com --amp/--stomp..., a janela abre com esse rig ativo no
         // navegador. O --preset vence o rig (ver ChainArgs.h), então aí não.
-        if (options.usesRig() && options.loadPresetPath.empty())
+        // Com --preset, a janela abre com ele marcado na lista e, se ele veio
+        // de um rig, com os módulos agrupados em painéis de equipamento.
+        if (!options.loadPresetPath.empty())
+            ui.adoptPreset(preset::load(options.loadPresetPath), options.loadPresetPath);
+        else if (options.usesRig())
         {
             GearLibrary library;
             library.scanImpulseResponses(options.irsDirectory);

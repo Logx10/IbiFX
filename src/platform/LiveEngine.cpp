@@ -24,26 +24,75 @@ bool LiveEngine::start(AudioDevice::Mode mode, double sampleRate, int blockSize)
     m_dryBuffer.reserve(reserve);
     m_dryBuffer.assign(reserve, 0.0f);
 
-    const bool started = m_device.start(
-        [this](float* output, const float* input, std::size_t frames, std::size_t channels)
-        {
-            processBlock(output, input, frames, channels);
-        },
-        mode, sampleRate, blockSize);
+    // PREPARA ANTES DE LIGAR
+    // Assim que o dispositivo liga, a thread de áudio começa a chamar
+    // processBlock() — e prepare() aloca (o Delay o buffer, o Cabinet a IR
+    // convertida). Preparar com o motor já rodando seria realocar um vetor
+    // que a outra thread pode estar lendo naquele instante. Então prepara
+    // com a taxa PEDIDA, e só depois liga.
+    prepareAll(sampleRate, blockSize);
 
-    if (!started)
+    const auto callback = [this](float* output, const float* input, std::size_t frames, std::size_t channels)
+    {
+        processBlock(output, input, frames, channels);
+    };
+
+    if (!m_device.start(callback, mode, sampleRate, blockSize))
     {
         return false;
     }
 
-    // O sample rate que vale é o negociado com o driver, não o pedido. Os
-    // módulos precisam dele para converter segundos em amostras.
-    m_chain.prepare(m_device.sampleRate(), blockSize);
-    m_chain.reset();
-    m_reampRecorder.prepare(m_device.sampleRate());
-    m_practiceSession.prepare(m_device.sampleRate());
+    // O sample rate que vale é o negociado com o driver, não o pedido. No
+    // caso raro de o driver ter imposto outro, desliga, prepara de novo com
+    // o negociado e religa já nele — pelo mesmo motivo acima.
+    const double negotiated = m_device.sampleRate();
+
+    if (negotiated != sampleRate)
+    {
+        m_device.stop();
+        prepareAll(negotiated, blockSize);
+
+        if (!m_device.start(callback, mode, negotiated, blockSize))
+        {
+            return false;
+        }
+    }
 
     return true;
+}
+
+void LiveEngine::prepareAll(double sampleRate, int blockSize)
+{
+    m_chain.prepare(sampleRate, blockSize);
+    m_chain.reset();
+    m_reampRecorder.prepare(sampleRate);
+    m_practiceSession.prepare(sampleRate);
+    m_tuner.prepare(sampleRate, blockSize);
+}
+
+void LiveEngine::setTunerEnabled(bool enabled)
+{
+    m_tunerEnabled.store(enabled, std::memory_order_relaxed);
+}
+
+bool LiveEngine::isTunerEnabled() const
+{
+    return m_tunerEnabled.load(std::memory_order_relaxed);
+}
+
+void LiveEngine::setTunerMuted(bool muted)
+{
+    m_tunerMuted.store(muted, std::memory_order_relaxed);
+}
+
+bool LiveEngine::isTunerMuted() const
+{
+    return m_tunerMuted.load(std::memory_order_relaxed);
+}
+
+const Tuner& LiveEngine::tuner() const
+{
+    return m_tuner;
 }
 
 ReampRecorder& LiveEngine::reampRecorder()
@@ -178,10 +227,13 @@ void LiveEngine::processBlock(float* output,
 
     m_monoBuffer.resize(frames);
 
-    // Só copia o sinal seco se alguém for de fato gravá-lo — uma checagem
-    // atômica por bloco é mais barata que copiar `frames` amostras à toa
-    // sempre que nenhum reamp está em andamento (o caso comum).
-    const bool capturingDry = m_reampRecorder.isRecording();
+    // Só copia o sinal seco se alguém for de fato usá-lo — o reamp ou o
+    // afinador. Uma checagem atômica por bloco é mais barata que copiar
+    // `frames` amostras à toa no caso comum, em que nenhum dos dois está
+    // ligado.
+    const bool recordingDry = m_reampRecorder.isRecording();
+    const bool tuning = m_tunerEnabled.load(std::memory_order_relaxed);
+    const bool capturingDry = recordingDry || tuning;
 
     if (capturingDry)
     {
@@ -219,6 +271,21 @@ void LiveEngine::processBlock(float* output,
         }
     }
 
+    // O afinador lê o sinal seco e não o altera (process() é passthrough).
+    // Na borda de "acabou de ligar", descarta a janela antiga para não
+    // mostrar uma nota de minutos atrás.
+    if (tuning)
+    {
+        if (!m_tunerWasEnabled)
+        {
+            m_tuner.reset();
+        }
+
+        m_tuner.process(m_dryBuffer);
+    }
+
+    m_tunerWasEnabled = tuning;
+
     // A cadeia modifica m_monoBuffer NO LUGAR — é por isso que o sinal seco
     // precisa ter sido copiado ANTES desta linha. Depois dela, m_monoBuffer
     // já é o sinal processado, não existe mais uma cópia do original.
@@ -227,7 +294,7 @@ void LiveEngine::processBlock(float* output,
     // Fase 18: alimenta as duas tracks (seca e processada) do reamp, se
     // alguém estiver gravando. pushBlock() não faz nada e não bloqueia se
     // não houver gravação em andamento.
-    if (capturingDry)
+    if (recordingDry)
     {
         m_reampRecorder.pushBlock(m_dryBuffer.data(), m_monoBuffer.data(), frames);
     }
@@ -237,6 +304,13 @@ void LiveEngine::processBlock(float* output,
     // do ReampRecorder de propósito — ver o comentário em
     // LiveEngine::practiceSession().
     m_practiceSession.process(m_monoBuffer);
+
+    // Afinando em mudo: silencia a saída, mas só DEPOIS de tudo acima —
+    // uma gravação em andamento continua recebendo o sinal normalmente.
+    if (tuning && m_tunerMuted.load(std::memory_order_relaxed))
+    {
+        std::fill(m_monoBuffer.begin(), m_monoBuffer.end(), 0.0f);
+    }
 
     float saida = 0.0f;
     for (float sample : m_monoBuffer)
