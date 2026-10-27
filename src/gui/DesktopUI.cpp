@@ -2190,8 +2190,14 @@ int DesktopUI::run(AudioDevice::Mode mode, double sampleRate, int blockSize)
     captureTargets();
     refreshPresetList();
 
+    // 30 fps é suficiente para uma UI de pedais e deixa mais CPU para a
+    // thread de áudio — especialmente em máquinas com poucos núcleos.
+    constexpr Uint64 kFrameNs = 1'000'000'000ULL / 30;
+
     while (!m_quit)
     {
+        const Uint64 frameStart = SDL_GetTicksNS();
+
         SDL_Event event;
 
         while (SDL_PollEvent(&event))
@@ -2232,6 +2238,11 @@ int DesktopUI::run(AudioDevice::Mode mode, double sampleRate, int blockSize)
         SDL_RenderClear(m_renderer);
         ImGui_ImplSDLRenderer3_RenderDrawData(ImGui::GetDrawData(), m_renderer);
         SDL_RenderPresent(m_renderer);
+
+        // Dorme o tempo restante do frame para não queimar CPU em busy-wait.
+        const Uint64 elapsed = SDL_GetTicksNS() - frameStart;
+        if (elapsed < kFrameNs)
+            SDL_DelayNS(kFrameNs - elapsed);
     }
 
     // Fechar a janela no meio de uma gravação não pode perder o arquivo.

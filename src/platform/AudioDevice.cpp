@@ -207,6 +207,12 @@ bool AudioDevice::start(ProcessCallback callback, Mode mode, double sampleRate, 
         config.capture.channels = 0;
     }
 
+    // Modo exclusivo no WASAPI: bypassa o mixer do Windows e entrega o buffer
+    // diretamente ao driver, eliminando ~10-20 ms de latência adicionados pelo
+    // audio graph compartilhado. Só funciona no Windows; nos outros backends
+    // o campo wasapi é ignorado.
+    config.wasapi.usage = ma_wasapi_usage_pro_audio;
+
     config.sampleRate = static_cast<ma_uint32>(sampleRate);
     config.periodSizeInFrames = static_cast<ma_uint32>(blockSize);
     config.dataCallback = dataCallback;
