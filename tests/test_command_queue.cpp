@@ -249,6 +249,13 @@ void testParameterChangesWhileProcessing()
         }
     });
 
+    // Garante que a thread de áudio executou antes de encerrar o teste.
+    // Em runners rápidos, o laço de controle pode terminar antes de ela ser agendada.
+    while (blocos.load(std::memory_order_relaxed) == 0)
+    {
+        std::this_thread::yield();
+    }
+
     // "Thread de controle": gira o knob de um lado para o outro.
     for (int i = 0; i < 20000; ++i)
     {
@@ -296,6 +303,11 @@ void testChainAcceptsCommandsWhileProcessing()
             blocos.fetch_add(1, std::memory_order_relaxed);
         }
     });
+
+    while (blocos.load(std::memory_order_relaxed) == 0)
+    {
+        std::this_thread::yield();
+    }
 
     std::size_t enviados = 0;
     std::size_t recusados = 0;
