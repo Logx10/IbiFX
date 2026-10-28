@@ -25,3 +25,24 @@ forma direta, sem FFT, e o custo cresce com o tamanho da IR.
 
 Os `.wav` desta pasta **não são versionados**, só este README, porque
 cada pacote de IR tem a sua própria licença.
+
+## Exemplo: Celestion Cenzo Townshend Mix
+
+A Celestion disponibiliza esse mix para [download no site oficial](https://www.celestionplus.com/free-download/).
+Cada usuário deve obtê-lo por lá: a licença da Celestion não permite
+redistribuir os arquivos WAV sem autorização por escrito.
+
+O pacote vem separado por sample rate e duração. Para o motor do IbiFX,
+escolha a versão **48.0 kHz / 200 ms** e coloque uma cópia diretamente na
+pasta do gabinete, assim:
+
+```text
+irs/
+  Celestion Vintage30 - Cenzo Townshend Mix/
+    Cenzo Celestion V30 Mix.wav
+```
+
+O catálogo procura arquivos `.wav` diretamente dentro de cada pasta de
+gabinete; as subpastas `48.0 kHz/200 ms/` do download original não são
+percorridas. A cópia local continua ignorada pelo Git e não entra nas builds
+publicadas no GitHub.
