@@ -397,6 +397,19 @@ Trocar por JUCE ou RtAudio depois significa reescrever
 
 ## Como compilar
 
+### Builds prontas no GitHub
+
+O workflow [Build Windows and macOS](.github/workflows/build-desktop.yml) compila
+as versões Release para Windows x64, macOS Intel e macOS Apple Silicon, executa
+os testes e disponibiliza três pacotes na seção **Artifacts** de cada execução
+em **Actions**. Ele roda a cada push na `main` ou em uma tag `v*`. Para gerar
+uma build sob demanda, abra **Actions → Build Windows and macOS → Run workflow**.
+
+Cada pacote contém o programa de terminal (`ibifx`), a interface gráfica
+(`ibifx_desktop`), as pastas `presets` e `irs`, o README e a licença. No macOS,
+a interface gráfica é um executável de linha de comando; os pacotes não são
+assinados nem notarizados.
+
 ### macOS / Linux
 
 ```sh

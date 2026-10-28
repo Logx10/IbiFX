@@ -1,0 +1,67 @@
+name: Build Windows and macOS
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: ${{ matrix.artifact }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: windows-2022
+            artifact: IbiFX-Windows-x64
+          - runner: macos-15-intel
+            artifact: IbiFX-macOS-Intel
+          - runner: macos-15
+            artifact: IbiFX-macOS-Apple-Silicon
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Configure Release build
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DIBIFX_BUILD_DESKTOP=ON
+
+      - name: Build CLI, desktop app and tests
+        run: cmake --build build --config Release --parallel 2
+
+      - name: Run tests
+        run: ctest --test-dir build -C Release --output-on-failure --parallel 2
+
+      - name: Package executables and resources
+        shell: bash
+        env:
+          ARTIFACT_NAME: ${{ matrix.artifact }}
+        run: |
+          set -euo pipefail
+          package="dist/$ARTIFACT_NAME"
+          mkdir -p "$package"
+          if [[ "$RUNNER_OS" == "Windows" ]]; then
+            cp build/Release/ibifx.exe build/Release/ibifx_desktop.exe "$package/"
+          else
+            cp build/ibifx build/ibifx_desktop "$package/"
+            chmod +x "$package/ibifx" "$package/ibifx_desktop"
+          fi
+          cp README.md LICENSE "$package/"
+          cp -R presets irs "$package/"
+          cd dist
+          if [[ "$RUNNER_OS" == "Windows" ]]; then
+            cmake -E tar cf "$ARTIFACT_NAME.zip" --format=zip "$ARTIFACT_NAME"
+          else
+            cmake -E tar czf "$ARTIFACT_NAME.tar.gz" "$ARTIFACT_NAME"
+          fi
+
+      - name: Upload build
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ matrix.artifact }}
+          path: dist/${{ matrix.artifact }}.*
+          if-no-files-found: error
