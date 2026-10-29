@@ -68,9 +68,24 @@ constexpr float kSignalMinScale = 0.35f;
 constexpr float kSignalThumbWidth = 42.0f;
 constexpr float kSignalThumbHeight = 48.0f;
 
-constexpr ImVec4 kAccentColor(0.90f, 0.55f, 0.15f, 1.0f);
-constexpr ImVec4 kSurfaceRaised(0.135f, 0.135f, 0.155f, 1.0f);
-constexpr ImVec4 kSurfaceSelected(0.24f, 0.18f, 0.10f, 1.0f);
+// Paleta da identidade visual (docs/identidade-visual.md): Ivory para
+// texto, Charcoal para o fundo, Warm Gray para o que é secundário e
+// Vintage Gold como único acento.
+constexpr ImVec4 kIvory(0.910f, 0.878f, 0.800f, 1.0f);         // #E8E0CC
+constexpr ImVec4 kCharcoal(0.067f, 0.075f, 0.082f, 1.0f);      // #111315
+constexpr ImVec4 kWarmGray(0.616f, 0.592f, 0.541f, 1.0f);      // #9D978A
+constexpr ImVec4 kVintageGold(0.780f, 0.690f, 0.541f, 1.0f);   // #C7B08A
+
+constexpr ImVec4 kAccentColor = kVintageGold;
+constexpr ImVec4 kSurfaceRaised(0.118f, 0.122f, 0.125f, 1.0f);
+constexpr ImVec4 kSurfaceSelected(0.235f, 0.208f, 0.165f, 1.0f);
+
+constexpr const char* kLogoPath = "assets/brand/ibifx-logo.bmp";
+
+// Unbounded (OFL), sans larga no lugar da Monument Extended da folha da
+// marca. Só para rótulos e nomes; o texto corrido segue na fonte padrão.
+constexpr const char* kBrandFontPath = "assets/fonts/Unbounded-SemiBold.ttf";
+constexpr float kBrandLabelSize = 13.0f;
 constexpr ImVec4 kHealthyColor(0.30f, 0.85f, 0.40f, 1.0f);
 
 constexpr const char* kGearDragPayload = "IBIFX_GEAR_ID";
@@ -143,8 +158,8 @@ std::string fitLabel(const std::string& value, float fontSize, float maxWidth)
 void drawSignalThumbnail(ImDrawList* drawList, ImVec2 origin, float scale, SignalCardKind kind, ImU32 bodyColor)
 {
     const ImU32 edge = ImGui::GetColorU32(ImVec4(0.04f, 0.04f, 0.05f, 0.85f));
-    const ImU32 control = ImGui::GetColorU32(ImVec4(0.78f, 0.78f, 0.80f, 1.0f));
-    const ImU32 dark = ImGui::GetColorU32(ImVec4(0.09f, 0.09f, 0.10f, 1.0f));
+    const ImU32 control = ImGui::GetColorU32(kIvory);
+    const ImU32 dark = ImGui::GetColorU32(kCharcoal);
     const ImU32 led = ImGui::GetColorU32(kAccentColor);
 
     auto at = [&](float dx, float dy) { return ImVec2(origin.x + dx * scale, origin.y + dy * scale); };
@@ -323,7 +338,7 @@ bool footswitch(ImVec2 center, bool bypassed)
         ImGui::SetTooltip(bypassed ? "ligar" : "desligar (bypass)");
 
     const ImU32 color = ImGui::GetColorU32(
-        hovered ? ImVec4(0.38f, 0.38f, 0.42f, 1.0f) : ImVec4(0.24f, 0.24f, 0.27f, 1.0f));
+        hovered ? ImVec4(0.40f, 0.38f, 0.35f, 1.0f) : ImVec4(0.26f, 0.25f, 0.23f, 1.0f));
 
     drawList->AddCircleFilled(center, kFootswitchRadius, color, 24);
     drawList->AddCircle(center, kFootswitchRadius, borderColor, 24, 2.0f);
@@ -473,47 +488,51 @@ void centsMeter(float cents, bool valid)
     ImGui::Dummy(ImVec2(width, height));
 }
 
-// Tema escuro com um acento âmbar — a cor de LED indicador e de VU meter
-// de equipamento de áudio de verdade — no lugar do cinza de fábrica do
-// ImGui. Chamado uma vez, logo após CreateContext().
+// Tema da identidade visual: fundo Charcoal, texto Ivory, Warm Gray para
+// o secundário e Vintage Gold como acento — o dourado de placa de ampli
+// vintage. Botões em pílula, como os rótulos da folha da marca. Chamado
+// uma vez, logo após CreateContext().
 void applyTheme()
 {
     ImGuiStyle& style = ImGui::GetStyle();
 
-    style.WindowRounding = 6.0f;
-    style.ChildRounding = 4.0f;
-    style.FrameRounding = 4.0f;
-    style.GrabRounding = 4.0f;
-    style.PopupRounding = 4.0f;
-    style.ScrollbarRounding = 6.0f;
+    style.WindowRounding = 8.0f;
+    style.ChildRounding = 8.0f;
+    style.FrameRounding = 12.0f;
+    style.GrabRounding = 12.0f;
+    style.PopupRounding = 8.0f;
+    style.ScrollbarRounding = 12.0f;
+    style.TabRounding = 12.0f;
+    style.ChildBorderSize = 1.0f;
+    style.FrameBorderSize = 0.0f;
 
     // Espaçamento mais folgado que o padrão do ImGui — sliders e checkboxes
     // colados uns nos outros parecem uma lista crua, não uma pedaleira.
     style.WindowPadding = ImVec2(16.0f, 16.0f);
-    style.FramePadding = ImVec2(10.0f, 6.0f);
+    style.FramePadding = ImVec2(12.0f, 6.0f);
     style.ItemSpacing = ImVec2(10.0f, 10.0f);
     style.ItemInnerSpacing = ImVec2(8.0f, 6.0f);
     style.IndentSpacing = 20.0f;
-    style.ScrollbarSize = 14.0f;
+    style.ScrollbarSize = 12.0f;
     style.GrabMinSize = 10.0f;
 
-    const ImVec4 background(0.09f, 0.09f, 0.11f, 1.00f);
-    const ImVec4 panel(0.16f, 0.16f, 0.19f, 1.00f);
-    const ImVec4 panelHovered(0.22f, 0.22f, 0.26f, 1.00f);
-    const ImVec4 panelActive(0.27f, 0.27f, 0.32f, 1.00f);
-    const ImVec4 accent(0.90f, 0.55f, 0.15f, 1.00f);
-    const ImVec4 accentHovered(1.00f, 0.63f, 0.20f, 1.00f);
-    const ImVec4 accentActive(1.00f, 0.70f, 0.30f, 1.00f);
-    const ImVec4 text(0.92f, 0.92f, 0.94f, 1.00f);
-    const ImVec4 textDisabled(0.50f, 0.50f, 0.54f, 1.00f);
+    const ImVec4 background = kCharcoal;
+    const ImVec4 panel(0.153f, 0.153f, 0.149f, 1.00f);
+    const ImVec4 panelHovered(0.212f, 0.204f, 0.188f, 1.00f);
+    const ImVec4 panelActive(0.267f, 0.251f, 0.224f, 1.00f);
+    const ImVec4 accent = kVintageGold;
+    const ImVec4 accentHovered(0.851f, 0.769f, 0.631f, 1.00f);
+    const ImVec4 accentActive(0.910f, 0.839f, 0.710f, 1.00f);
+    const ImVec4 text = kIvory;
+    const ImVec4 textDisabled = kWarmGray;
 
     ImVec4* colors = style.Colors;
     colors[ImGuiCol_Text] = text;
     colors[ImGuiCol_TextDisabled] = textDisabled;
     colors[ImGuiCol_WindowBg] = background;
-    colors[ImGuiCol_ChildBg] = background;
+    colors[ImGuiCol_ChildBg] = ImVec4(0.090f, 0.098f, 0.102f, 1.00f);
     colors[ImGuiCol_PopupBg] = panel;
-    colors[ImGuiCol_Border] = ImVec4(0.05f, 0.05f, 0.06f, 1.00f);
+    colors[ImGuiCol_Border] = ImVec4(kWarmGray.x, kWarmGray.y, kWarmGray.z, 0.22f);
     colors[ImGuiCol_FrameBg] = panel;
     colors[ImGuiCol_FrameBgHovered] = panelHovered;
     colors[ImGuiCol_FrameBgActive] = panelActive;
@@ -533,13 +552,58 @@ void applyTheme()
     colors[ImGuiCol_Header] = panel;
     colors[ImGuiCol_HeaderHovered] = panelHovered;
     colors[ImGuiCol_HeaderActive] = panelActive;
-    colors[ImGuiCol_Separator] = ImVec4(0.25f, 0.25f, 0.28f, 1.00f);
+    colors[ImGuiCol_Separator] = ImVec4(kWarmGray.x, kWarmGray.y, kWarmGray.z, 0.30f);
     colors[ImGuiCol_SeparatorHovered] = accent;
     colors[ImGuiCol_SeparatorActive] = accentActive;
     // O medidor sobrescreve esta cor por chamada em drawMeter() (verde,
     // amarelo ou vermelho conforme o nível) — isto aqui é só o padrão.
     colors[ImGuiCol_PlotHistogram] = accent;
     colors[ImGuiCol_PlotHistogramHovered] = accentHovered;
+    colors[ImGuiCol_Tab] = panel;
+    colors[ImGuiCol_TabHovered] = panelHovered;
+    colors[ImGuiCol_TabSelected] = panelActive;
+    colors[ImGuiCol_DragDropTarget] = accent;
+    colors[ImGuiCol_NavCursor] = accent;
+    colors[ImGuiCol_TextSelectedBg] = ImVec4(accent.x, accent.y, accent.z, 0.35f);
+}
+
+// Texto em caixa alta com espaçamento largo entre as letras — o estilo dos
+// rótulos da marca ("AUDIO TOOLS FOR CREATORS"). Avança o cursor como um
+// item normal.
+void trackedCaps(const char* label, ImVec4 color, ImFont* font, float tracking = 2.0f,
+                 float size = kBrandLabelSize)
+{
+    // Sem a fonte da marca, a padrão no tamanho atual.
+    ImGui::PushFont(font, font != nullptr ? size : 0.0f);
+
+    std::string upper(label);
+    for (char& c : upper)
+        c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+
+    const ImVec2 origin = ImGui::GetCursorScreenPos();
+    ImDrawList* drawList = ImGui::GetWindowDrawList();
+    const ImU32 col = ImGui::GetColorU32(color);
+    float x = origin.x;
+    for (char c : upper)
+    {
+        const char glyph[2] = {c, '\0'};
+        drawList->AddText(ImVec2(x, origin.y), col, glyph);
+        x += ImGui::CalcTextSize(glyph).x + tracking;
+    }
+    ImGui::Dummy(ImVec2(std::max(0.0f, x - origin.x - tracking), ImGui::GetTextLineHeight()));
+    ImGui::PopFont();
+}
+
+// Os quatro traços inclinados que fecham os detalhes da folha da marca.
+void drawBrandStripes(ImDrawList* drawList, ImVec2 origin, float height, ImU32 color)
+{
+    for (int i = 0; i < 4; ++i)
+    {
+        const float x = origin.x + static_cast<float>(i) * height * 0.75f;
+        drawList->AddQuadFilled(ImVec2(x + height * 0.45f, origin.y), ImVec2(x + height * 0.80f, origin.y),
+                                ImVec2(x + height * 0.35f, origin.y + height), ImVec2(x, origin.y + height),
+                                color);
+    }
 }
 }
 
@@ -685,7 +749,27 @@ bool DesktopUI::initWindow()
     fontConfig.SizePixels = 19.0f;
     io.Fonts->AddFontDefault(&fontConfig);
 
+    // Opcional, como o logo: sem o arquivo, os rótulos usam a padrão.
+    std::error_code fontError;
+    if (std::filesystem::exists(kBrandFontPath, fontError))
+        m_brandFont = io.Fonts->AddFontFromFileTTF(kBrandFontPath, kBrandLabelSize);
+
     applyTheme();
+
+    // O logo é opcional: sem o arquivo (rodando de outra pasta), o
+    // cabeçalho cai para o nome em texto. A textura pertence ao renderer,
+    // que a libera em SDL_DestroyRenderer().
+    if (SDL_Surface* logo = SDL_LoadBMP(kLogoPath))
+    {
+        m_logoTexture = SDL_CreateTextureFromSurface(m_renderer, logo);
+        if (m_logoTexture != nullptr)
+        {
+            m_logoWidth = static_cast<float>(logo->w);
+            m_logoHeight = static_cast<float>(logo->h);
+            SDL_SetTextureScaleMode(m_logoTexture, SDL_SCALEMODE_LINEAR);
+        }
+        SDL_DestroySurface(logo);
+    }
 
     ImGui_ImplSDL3_InitForSDLRenderer(m_window, m_renderer);
     ImGui_ImplSDLRenderer3_Init(m_renderer);
@@ -1448,9 +1532,10 @@ void DesktopUI::drawGearPanel(std::size_t segmentIndex, const GearModel& model)
     if (isAmp)
     {
         const float dim = bypassed ? 0.45f : 1.0f;
-        drawList->AddRectFilled(origin, bodyMax, ImGui::GetColorU32(ImVec4(0.07f, 0.07f, 0.08f, 1.0f)), 10.0f);
+        drawList->AddRectFilled(origin, bodyMax, ImGui::GetColorU32(kCharcoal), 10.0f);
         drawList->AddRectFilled(plateMin, plateMax,
-                                ImGui::GetColorU32(ImVec4(0.74f * dim, 0.62f * dim, 0.38f * dim, 1.0f)), 4.0f);
+                                ImGui::GetColorU32(ImVec4(kVintageGold.x * dim, kVintageGold.y * dim,
+                                                          kVintageGold.z * dim, 1.0f)), 4.0f);
         drawList->AddRect(plateMin, plateMax, borderColor, 4.0f, 0, 1.5f);
     }
     else
@@ -1462,11 +1547,18 @@ void DesktopUI::drawGearPanel(std::size_t segmentIndex, const GearModel& model)
     // O nome serigrafado no topo — maior no ampli, como o logo na grade. O
     // cabinet mostra o microfone embaixo, que é o que diferencia duas IRs
     // do mesmo gabinete.
-    ImGui::SetWindowFontScale(isAmp ? 1.45f : 1.0f);
+    if (m_brandFont != nullptr)
+        ImGui::PushFont(m_brandFont, isAmp ? 22.0f : 15.0f);
+    else
+        ImGui::SetWindowFontScale(isAmp ? 1.45f : 1.0f);
     const ImVec2 nameSize = ImGui::CalcTextSize(model.name.c_str());
-    ImGui::SetCursorScreenPos(ImVec2(origin.x + (width - nameSize.x) * 0.5f, origin.y + 8.0f));
+    ImGui::SetCursorScreenPos(ImVec2(origin.x + (width - nameSize.x) * 0.5f,
+                                     origin.y + (isAmp ? 14.0f : 10.0f)));
     ImGui::TextUnformatted(model.name.c_str());
-    ImGui::SetWindowFontScale(1.0f);
+    if (m_brandFont != nullptr)
+        ImGui::PopFont();
+    else
+        ImGui::SetWindowFontScale(1.0f);
 
     if (!model.microphone.empty())
     {
@@ -1563,7 +1655,7 @@ void DesktopUI::drawGearPanel(std::size_t segmentIndex, const GearModel& model)
     if (isAmp)
     {
         ImGui::SetCursorScreenPos(ImVec2(bodyMax.x - 74.0f, bodyMax.y - 36.0f));
-        ImGui::PushStyleColor(ImGuiCol_Button, bypassed ? ImVec4(0.25f, 0.25f, 0.28f, 1.0f)
+        ImGui::PushStyleColor(ImGuiCol_Button, bypassed ? ImVec4(0.26f, 0.25f, 0.23f, 1.0f)
                                                         : ImVec4(0.75f, 0.12f, 0.08f, 1.0f));
         toggle = ImGui::Button(bypassed ? "OFF" : "ON", ImVec2(60.0f, 0.0f));
         ImGui::PopStyleColor();
@@ -1614,23 +1706,17 @@ void DesktopUI::savePreset(const std::string& name)
 void DesktopUI::drawSectionHeader(const char* label) const
 {
     ImGui::Spacing();
-    ImGui::PushStyleColor(ImGuiCol_Text, kAccentColor);
-    ImGui::SetWindowFontScale(1.08f);
-    ImGui::TextUnformatted(label);
-    ImGui::SetWindowFontScale(1.0f);
-    ImGui::PopStyleColor();
+    trackedCaps(label, kVintageGold, m_brandFont);
 
-    // Uma linha fina na cor de destaque, só embaixo do título — não a
-    // largura inteira da janela, pra marcar "isto é um cabeçalho", não
-    // "isto corta a janela em duas metades" (esse já é o papel do
-    // Separator() ao redor de cada cartão).
+    // Uma linha fina dourada só embaixo do título — marca "isto é um
+    // cabeçalho" sem cortar a janela em duas metades.
     const ImVec2 textEnd = ImGui::GetItemRectMax();
     const ImVec2 textStart = ImGui::GetItemRectMin();
     ImGui::GetWindowDrawList()->AddLine(
-        ImVec2(textStart.x, textEnd.y + 2.0f), ImVec2(textStart.x + 120.0f, textEnd.y + 2.0f),
-        ImGui::GetColorU32(kAccentColor), 2.0f);
+        ImVec2(textStart.x, textEnd.y + 4.0f), ImVec2(textStart.x + 120.0f, textEnd.y + 4.0f),
+        ImGui::GetColorU32(kAccentColor), 1.5f);
 
-    ImGui::Dummy(ImVec2(0.0f, 6.0f));
+    ImGui::Dummy(ImVec2(0.0f, 8.0f));
 }
 
 void DesktopUI::drawPresetPanel(bool showHeader)
@@ -2180,28 +2266,51 @@ void DesktopUI::drawWorkspaceHeader()
         ImGui::TableNextRow();
 
         ImGui::TableSetColumnIndex(0);
-        ImGui::SetWindowFontScale(1.35f);
-        ImGui::TextUnformatted("ibiFX");
-        ImGui::SetWindowFontScale(1.0f);
+        if (m_logoTexture != nullptr)
+        {
+            const float logoHeight = 52.0f;
+            ImGui::Image(ImTextureRef(reinterpret_cast<ImTextureID>(m_logoTexture)),
+                         ImVec2(m_logoWidth * logoHeight / m_logoHeight, logoHeight));
+        }
+        else
+        {
+            ImGui::SetWindowFontScale(1.35f);
+            ImGui::TextColored(kIvory, "ibiFX");
+            ImGui::SetWindowFontScale(1.0f);
+        }
         ImGui::SameLine();
-        ImGui::TextDisabled("Signal Chain");
+        ImGui::BeginGroup();
+        ImGui::Dummy(ImVec2(0.0f, 6.0f));
+        trackedCaps("Audio tools", kWarmGray, m_brandFont, 3.0f, 11.0f);
+        trackedCaps("for creators", kWarmGray, m_brandFont, 3.0f, 11.0f);
+        ImGui::EndGroup();
 
+        ImGui::PushFont(m_brandFont, m_brandFont != nullptr ? kBrandLabelSize : 0.0f);
         const bool pedalboard = m_workspace == Workspace::Pedalboard;
         if (pedalboard)
-            ImGui::PushStyleColor(ImGuiCol_Button, kSurfaceSelected);
-        if (ImGui::Button("Pedaleira"))
+        {
+            ImGui::PushStyleColor(ImGuiCol_Button, kVintageGold);
+            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, kVintageGold);
+            ImGui::PushStyleColor(ImGuiCol_Text, kCharcoal);
+        }
+        if (ImGui::Button("PEDALEIRA"))
             m_workspace = Workspace::Pedalboard;
         if (pedalboard)
-            ImGui::PopStyleColor();
+            ImGui::PopStyleColor(3);
 
         ImGui::SameLine();
         const bool practice = m_workspace == Workspace::Practice;
         if (practice)
-            ImGui::PushStyleColor(ImGuiCol_Button, kSurfaceSelected);
-        if (ImGui::Button("Pratica"))
+        {
+            ImGui::PushStyleColor(ImGuiCol_Button, kVintageGold);
+            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, kVintageGold);
+            ImGui::PushStyleColor(ImGuiCol_Text, kCharcoal);
+        }
+        if (ImGui::Button("PRATICA"))
             m_workspace = Workspace::Practice;
         if (practice)
-            ImGui::PopStyleColor();
+            ImGui::PopStyleColor(3);
+        ImGui::PopFont();
 
         ImGui::TableSetColumnIndex(1);
         if (ImGui::Checkbox("Afinador", &m_tunerOn))
@@ -2264,9 +2373,9 @@ void DesktopUI::drawSignalChain()
     ImGui::BeginChild("##signalChain", ImVec2(0.0f, kSignalChainHeight), ImGuiChildFlags_Borders,
                       ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
 
-    ImGui::TextUnformatted("Signal Chain");
+    trackedCaps("Signal chain", kVintageGold, m_brandFont);
     ImGui::SameLine();
-    ImGui::TextDisabled("- %s", m_currentPresetName.empty() ? "sem preset" : m_currentPresetName.c_str());
+    ImGui::TextDisabled("%s", m_currentPresetName.empty() ? "sem preset" : m_currentPresetName.c_str());
 
     // Tudo na linha é posicionado à mão: IN, slots de inserção, cards e
     // OUT. A escala sai da largura disponível, para nunca precisar de
@@ -2396,9 +2505,14 @@ void DesktopUI::drawSelectedEquipmentEditor()
     ImGui::BeginChild("##selectedEditor", ImVec2(0.0f, editorHeight), ImGuiChildFlags_Borders,
                       ImGuiWindowFlags_HorizontalScrollbar);
 
-    ImGui::TextUnformatted("Editor do equipamento selecionado");
-    ImGui::SameLine();
-    ImGui::TextDisabled("knobs, switches e bypass");
+    trackedCaps("Equipamento", kVintageGold, m_brandFont);
+    {
+        // Detalhe da marca no canto do editor.
+        const ImVec2 windowMin = ImGui::GetWindowPos();
+        drawBrandStripes(ImGui::GetWindowDrawList(),
+                         ImVec2(windowMin.x + ImGui::GetWindowWidth() - 150.0f, windowMin.y + 18.0f), 12.0f,
+                         ImGui::GetColorU32(ImVec4(kVintageGold.x, kVintageGold.y, kVintageGold.z, 0.55f)));
+    }
     bool removeSelected = false;
     if (m_selectedItem < m_chainItems.size())
     {
@@ -2660,7 +2774,7 @@ int DesktopUI::run(AudioDevice::Mode mode, double sampleRate, int blockSize)
         drawFrame();
 
         ImGui::Render();
-        SDL_SetRenderDrawColor(m_renderer, 20, 20, 20, 255);
+        SDL_SetRenderDrawColor(m_renderer, 17, 19, 21, 255);   // Charcoal
         SDL_RenderClear(m_renderer);
         ImGui_ImplSDLRenderer3_RenderDrawData(ImGui::GetDrawData(), m_renderer);
         SDL_RenderPresent(m_renderer);

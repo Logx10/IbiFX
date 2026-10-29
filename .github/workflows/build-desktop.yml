@@ -51,7 +51,7 @@ jobs:
             chmod +x "$package/ibifx" "$package/ibifx_desktop"
           fi
           cp README.md LICENSE "$package/"
-          cp -R presets irs "$package/"
+          cp -R presets irs assets "$package/"
           cd dist
           if [[ "$RUNNER_OS" == "Windows" ]]; then
             cmake -E tar cf "$ARTIFACT_NAME.zip" --format=zip "$ARTIFACT_NAME"

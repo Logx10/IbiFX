@@ -13,6 +13,8 @@
 
 struct SDL_Window;
 struct SDL_Renderer;
+struct SDL_Texture;
+struct ImFont;
 
 // DesktopUI — a mesma pedaleira da PedalboardUI, desenhada com Dear ImGui
 // numa janela SDL em vez de caracteres de terminal (Fase 12, AI_GUIDELINES
@@ -213,6 +215,14 @@ private:
 
     SDL_Window* m_window = nullptr;
     SDL_Renderer* m_renderer = nullptr;
+
+    // Logo da marca (assets/brand), ou nullptr se o arquivo não estiver lá.
+    SDL_Texture* m_logoTexture = nullptr;
+    float m_logoWidth = 0.0f;
+    float m_logoHeight = 0.0f;
+
+    // Fonte dos rótulos da marca (assets/fonts), ou nullptr sem o arquivo.
+    ImFont* m_brandFont = nullptr;
 
     // A POSIÇÃO DOS CONTROLES É ESTADO DA INTERFACE, NÃO DO ÁUDIO.
     //
