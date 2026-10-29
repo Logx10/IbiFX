@@ -234,9 +234,19 @@ void addEqualizers(std::vector<GearModel>& models)
         "Remove subgrave e excesso de grave antes ou depois da saturação.",
         {module("HighPass", {{"frequency", 100.0f}})}));
 
+    // O tone stack é passivo: com os knobs no meio ele tira ~8 dB na faixa
+    // da guitarra (~11 dB perto de 1 kHz). Dentro de um ampli, o estágio de
+    // ganho seguinte repõe isso; avulso, a receita precisa do mesmo
+    // estágio, senão inserir o EQ derruba o volume da cadeia. 2,5x (+8 dB)
+    // devolve o nível médio entre 100 Hz e 3 kHz com os knobs no meio.
     models.push_back(gear("eq.tone-stack", "3-Band Tone Stack", GearCategory::Equalizer, "Tone Stack",
         "Equalização passiva de três bandas baseada em circuito de amplificador.",
-        {module("ToneStack", {{"bass", 0.5f}, {"mid", 0.5f}, {"treble", 0.5f}})}));
+        {module("ToneStack", {{"bass", 0.5f}, {"mid", 0.5f}, {"treble", 0.5f}}),
+         module("Gain", {{"gain", 2.5f}})}));
+    models.back().controls = {control("Bass", 0, "bass", 0.0f, 1.0f),
+                              control("Mid", 0, "mid", 0.0f, 1.0f),
+                              control("Treble", 0, "treble", 0.0f, 1.0f),
+                              control("Level", 1, "gain", 0.0f, 6.0f)};
 }
 
 // Um knob por parâmetro do módulo, na faixa e com o rótulo do próprio

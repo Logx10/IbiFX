@@ -81,6 +81,20 @@
 // cancelamentos ainda ser confiável. Só a amostra de áudio em si continua
 // float, como em todo o resto do projeto.
 //
+// O KNOB DE BASS É UM POT LOGARÍTMICO, NÃO LINEAR
+// No artigo, l, m e t são a fração da resistência de cada pot, de 0 a 1.
+// O parâmetro "bass" deste módulo é a POSIÇÃO DO KNOB, e o pot de bass do
+// Bassman é de curva logarítmica (audio taper, tipo "A"): com o knob no
+// meio, o cursor está em ~10% da resistência, não em 50%. Usar a posição
+// direto como l deixava o knob no meio quase igual ao máximo (500 kΩ de
+// 1 MΩ). bassTaper() no .cpp faz a conversão antes da Eqn. 1; mid e treble
+// seguem lineares, como nas implementações de referência deste modelo.
+//
+// A CURVA É PARTE DO CIRCUITO, NÃO DA INTERFACE
+// Ela fica aqui, e não na tela, pelo mesmo motivo que os valores de R e C:
+// é como o componente físico se comporta. Qualquer frontend, preset ou
+// automação que mande bass = 0,5 ouve o mesmo knob no meio.
+//
 // COMPONENTES USADOS: OS DO FENDER '59 BASSMAN
 // C1 = 0,25 nF, C2 = C3 = 20 nF, R1 = 250 kΩ (treble), R2 = 1 MΩ (bass),
 // R3 = 25 kΩ (mid), R4 = 56 kΩ — os valores publicados no artigo pra esse
