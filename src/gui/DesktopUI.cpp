@@ -7,10 +7,12 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cfloat>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <ctime>
+#include <exception>
 #include <filesystem>
 #include <iostream>
 #include <string>
@@ -30,9 +32,8 @@ constexpr const char* kPresetsDir = "presets";
 constexpr const char* kAudioDir = "audio";
 constexpr const char* kRecordingsDir = "recordings";
 
-// Altura comum dos três cartões de ferramentas, para a fileira ficar
-// alinhada mesmo com conteúdos de tamanhos diferentes.
-constexpr float kToolCardHeight = 250.0f;
+// Hallmark · pre-emit critique: P5 H5 E4 S5 R5 V5 · macrostructure:
+// Workbench · tone: technical/austere.
 
 // Desvio, em cents, que ainda conta como "afinado" no afinador — o mesmo
 // limiar que afinadores de pedal costumam usar para acender o verde.
@@ -53,14 +54,33 @@ constexpr float kFootswitchRadius = 20.0f;
 // Largura do navegador de equipamentos, à direita.
 constexpr float kBrowserWidth = 330.0f;
 
+constexpr float kWorkspaceHeaderHeight = 120.0f;
+// Tamanhos da signal chain em escala 1. Quando a cadeia não cabe na
+// largura, tudo encolhe pelo mesmo fator (até kSignalMinScale) em vez de
+// abrir um scroll horizontal.
+constexpr float kSignalChainHeight = 136.0f;
+constexpr float kSignalCardWidth = 84.0f;
+constexpr float kSignalCardHeight = 86.0f;
+constexpr float kSignalSlotWidth = 22.0f;
+constexpr float kSignalMinScale = 0.35f;
+
+// A miniatura é desenhada numa caixa de 42 x 48 em escala 1.
+constexpr float kSignalThumbWidth = 42.0f;
+constexpr float kSignalThumbHeight = 48.0f;
+
 constexpr ImVec4 kAccentColor(0.90f, 0.55f, 0.15f, 1.0f);
+constexpr ImVec4 kSurfaceRaised(0.135f, 0.135f, 0.155f, 1.0f);
+constexpr ImVec4 kSurfaceSelected(0.24f, 0.18f, 0.10f, 1.0f);
+constexpr ImVec4 kHealthyColor(0.30f, 0.85f, 0.40f, 1.0f);
+
+constexpr const char* kGearDragPayload = "IBIFX_GEAR_ID";
+constexpr const char* kChainItemDragPayload = "IBIFX_CHAIN_ITEM";
 
 // O painel de um ampli: uma célula por knob, numa fileira só.
 constexpr float kAmpKnobCellWidth = 86.0f;
 constexpr float kAmpKnobRadius = 20.0f;
 
-// Largura do painel de um equipamento — drawPedalboard() precisa dela
-// antes de desenhar, para decidir se ainda cabe na mesma fileira.
+// Largura do painel grande de um equipamento selecionado.
 float gearPanelWidth(const GearModel& model)
 {
     if (model.category == GearCategory::Amp)
@@ -68,29 +88,145 @@ float gearPanelWidth(const GearModel& model)
     return kPedalWidth;
 }
 
-// As fileiras do pedalboard, na ordem do sinal. Amp e cabinet dividem
-// uma: no mundo real, é a cabeça em cima da caixa.
-int rowFor(GearCategory category)
+enum class SignalCardKind
+{
+    Stomp,
+    Amp,
+    Cabinet,
+    Rack,
+    Module,
+    Output
+};
+
+SignalCardKind signalCardKind(GearCategory category)
 {
     switch (category)
     {
-    case GearCategory::Stomp: return 0;
-    case GearCategory::Amp:
-    case GearCategory::Cabinet: return 1;
-    case GearCategory::Rack: return 2;
+    case GearCategory::Stomp: return SignalCardKind::Stomp;
+    case GearCategory::Amp: return SignalCardKind::Amp;
+    case GearCategory::Cabinet: return SignalCardKind::Cabinet;
+    case GearCategory::Rack: return SignalCardKind::Rack;
+    case GearCategory::Equalizer: return SignalCardKind::Rack;
     }
-    return 3;
+    return SignalCardKind::Module;
 }
 
-const char* rowTitle(int row)
+ImU32 colorForModuleName(const char* name, bool bypassed);
+
+std::string compactLabel(const std::string& value, std::size_t limit = 18)
 {
-    switch (row)
+    if (value.size() <= limit)
+        return value;
+    return value.substr(0, limit > 3 ? limit - 3 : limit) + "...";
+}
+
+// Corta o texto com "..." até caber em maxWidth pixels no tamanho dado.
+std::string fitLabel(const std::string& value, float fontSize, float maxWidth)
+{
+    ImFont* font = ImGui::GetFont();
+    if (font->CalcTextSizeA(fontSize, FLT_MAX, 0.0f, value.c_str()).x <= maxWidth)
+        return value;
+
+    std::string cut = value;
+    while (!cut.empty())
     {
-    case 0: return "Stomps";
-    case 1: return "Amp + Cab";
-    case 2: return "Rack";
+        cut.pop_back();
+        const std::string candidate = cut + "...";
+        if (font->CalcTextSizeA(fontSize, FLT_MAX, 0.0f, candidate.c_str()).x <= maxWidth)
+            return candidate;
     }
-    return "";
+    return {};
+}
+
+// Desenha a miniatura com o canto superior esquerdo em origin, numa caixa
+// de kSignalThumbWidth x kSignalThumbHeight multiplicada por scale.
+void drawSignalThumbnail(ImDrawList* drawList, ImVec2 origin, float scale, SignalCardKind kind, ImU32 bodyColor)
+{
+    const ImU32 edge = ImGui::GetColorU32(ImVec4(0.04f, 0.04f, 0.05f, 0.85f));
+    const ImU32 control = ImGui::GetColorU32(ImVec4(0.78f, 0.78f, 0.80f, 1.0f));
+    const ImU32 dark = ImGui::GetColorU32(ImVec4(0.09f, 0.09f, 0.10f, 1.0f));
+    const ImU32 led = ImGui::GetColorU32(kAccentColor);
+
+    auto at = [&](float dx, float dy) { return ImVec2(origin.x + dx * scale, origin.y + dy * scale); };
+    const float r = scale;
+
+    if (kind == SignalCardKind::Stomp || kind == SignalCardKind::Module)
+    {
+        drawList->AddRectFilled(at(5.0f, 0.0f), at(35.0f, 48.0f), bodyColor, 4.0f * r);
+        drawList->AddRect(at(5.0f, 0.0f), at(35.0f, 48.0f), edge, 4.0f * r);
+        drawList->AddCircleFilled(at(14.0f, 12.0f), 3.0f * r, control);
+        drawList->AddCircleFilled(at(26.0f, 12.0f), 3.0f * r, control);
+        drawList->AddCircleFilled(at(20.0f, 27.0f), 2.5f * r, led);
+        drawList->AddCircle(at(20.0f, 39.0f), 5.0f * r, control, 12, 1.5f * r);
+        return;
+    }
+
+    if (kind == SignalCardKind::Amp)
+    {
+        drawList->AddRectFilled(at(0.0f, 7.0f), at(42.0f, 39.0f), dark, 4.0f * r);
+        drawList->AddRect(at(0.0f, 7.0f), at(42.0f, 39.0f), edge, 4.0f * r);
+        drawList->AddRectFilled(at(4.0f, 12.0f), at(38.0f, 25.0f), bodyColor, 2.0f * r);
+        for (int knobIndex = 0; knobIndex < 5; ++knobIndex)
+            drawList->AddCircleFilled(at(8.0f + static_cast<float>(knobIndex) * 6.5f, 18.5f), 1.6f * r, dark);
+        drawList->AddRectFilled(at(7.0f, 30.0f), at(35.0f, 35.0f), bodyColor, 1.0f * r);
+        return;
+    }
+
+    if (kind == SignalCardKind::Cabinet)
+    {
+        drawList->AddRectFilled(at(4.0f, 0.0f), at(38.0f, 48.0f), dark, 3.0f * r);
+        drawList->AddRect(at(4.0f, 0.0f), at(38.0f, 48.0f), edge, 3.0f * r);
+        drawList->AddCircleFilled(at(21.0f, 16.0f), 9.0f * r, bodyColor);
+        drawList->AddCircle(at(21.0f, 16.0f), 4.0f * r, edge, 16, 1.0f * r);
+        drawList->AddCircleFilled(at(21.0f, 36.0f), 8.0f * r, bodyColor);
+        drawList->AddCircle(at(21.0f, 36.0f), 3.5f * r, edge, 16, 1.0f * r);
+        return;
+    }
+
+    drawList->AddRectFilled(at(0.0f, 10.0f), at(42.0f, 36.0f), dark, 3.0f * r);
+    drawList->AddRect(at(0.0f, 10.0f), at(42.0f, 36.0f), edge, 3.0f * r);
+    drawList->AddRectFilled(at(5.0f, 15.0f), at(29.0f, 31.0f), bodyColor, 2.0f * r);
+    drawList->AddCircleFilled(at(34.0f, 19.0f), 2.0f * r, led);
+    drawList->AddCircleFilled(at(34.0f, 27.0f), 2.0f * r, control);
+}
+
+// Um item da signal chain: miniatura em cima, nome embaixo. Desenhado na
+// posição atual do cursor, já no tamanho multiplicado por scale.
+bool signalCard(const char* id, const std::string& title, SignalCardKind kind, ImU32 bodyColor,
+                bool selected, float scale)
+{
+    const ImVec2 origin = ImGui::GetCursorScreenPos();
+    const ImVec2 size(kSignalCardWidth * scale, kSignalCardHeight * scale);
+    ImGui::InvisibleButton(id, size);
+
+    const bool hovered = ImGui::IsItemHovered();
+    const bool clicked = ImGui::IsItemClicked();
+    ImDrawList* drawList = ImGui::GetWindowDrawList();
+    const ImVec2 end(origin.x + size.x, origin.y + size.y);
+
+    const ImVec4 fill = selected ? kSurfaceSelected
+                                 : (hovered ? ImGui::GetStyleColorVec4(ImGuiCol_FrameBgHovered)
+                                            : kSurfaceRaised);
+    const ImVec4 border = selected ? kAccentColor : ImGui::GetStyleColorVec4(ImGuiCol_Separator);
+
+    drawList->AddRectFilled(origin, end, ImGui::GetColorU32(fill), 6.0f * scale);
+    drawList->AddRect(origin, end, ImGui::GetColorU32(border), 6.0f * scale, 0, selected ? 2.0f : 1.0f);
+
+    const ImVec2 thumbOrigin(origin.x + (size.x - kSignalThumbWidth * scale) * 0.5f, origin.y + 10.0f * scale);
+    drawSignalThumbnail(drawList, thumbOrigin, scale, kind, bodyColor);
+
+    // A fonte encolhe menos que a miniatura, para o nome continuar legível.
+    const float fontSize = ImGui::GetFontSize() * std::clamp(scale, 0.75f, 1.0f);
+    const std::string visibleTitle = fitLabel(title, fontSize, size.x - 6.0f);
+    const ImVec2 titleSize = ImGui::GetFont()->CalcTextSizeA(fontSize, FLT_MAX, 0.0f, visibleTitle.c_str());
+    drawList->AddText(ImGui::GetFont(), fontSize,
+                      ImVec2(origin.x + (size.x - titleSize.x) * 0.5f, end.y - titleSize.y - 6.0f * scale),
+                      ImGui::GetColorU32(ImGuiCol_Text), visibleTitle.c_str());
+
+    if (hovered && visibleTitle != title)
+        ImGui::SetTooltip("%s", title.c_str());
+
+    return clicked;
 }
 
 // Um knob giratório, no estilo de um pedal de guitarra de verdade — o
@@ -416,21 +552,20 @@ DesktopUI::DesktopUI(LiveEngine& engine, std::string irsDirectory)
 
 void DesktopUI::adoptRig(const Rig& rig)
 {
-    m_rig = rig;
-    m_rigActive = true;
-    m_rigSegments.clear();
-    m_expandedSegments.clear();
-
-    std::size_t firstModule = 0;
+    Preset current = preset::capture("Rig", m_engine.chain());
     for (const GearModel* model : m_library.rigModels(rig))
-    {
-        std::string label = std::string(gearCategoryName(model->category)) + ": " + model->name;
-        if (!model->microphone.empty())
-            label += " / " + model->microphone;
+        current.chainItems.push_back({model->id, model->modules.size()});
 
-        m_rigSegments.push_back({label, model->id, firstModule, model->modules.size()});
-        firstModule += model->modules.size();
+    std::size_t covered = 0;
+    for (const Preset::ChainItemState& item : current.chainItems)
+        covered += item.moduleCount;
+    while (covered < current.modules.size())
+    {
+        current.chainItems.push_back({"", 1});
+        ++covered;
     }
+
+    adoptChainLayout(current);
 
     // A cadeia não é mais o preset carregado — deixar o nome dele em
     // destaque seria mentir sobre o que está tocando.
@@ -571,6 +706,26 @@ void DesktopUI::shutdownWindow()
         SDL_DestroyWindow(m_window);
 
     SDL_Quit();
+}
+
+bool DesktopUI::startAudio()
+{
+    try
+    {
+        if (m_engine.start(m_mode, m_sampleRate, m_blockSize))
+        {
+            m_audioStartError.clear();
+            return true;
+        }
+
+        m_audioStartError = m_engine.lastError();
+    }
+    catch (const std::exception& error)
+    {
+        m_audioStartError = error.what();
+    }
+
+    return false;
 }
 
 void DesktopUI::drawMeter(const char* label, float peakLinear) const
@@ -755,32 +910,7 @@ void DesktopUI::loadPreset(const std::string& path)
 
 void DesktopUI::adoptPreset(const Preset& loaded, const std::string& path)
 {
-    // Se a cadeia veio de um rig, os módulos voltam agrupados em painéis de
-    // equipamento, com os knobs como foram salvos (adoptRig() só rotula,
-    // não reaplica a receita). Primeiro o rig gravado no arquivo; num
-    // preset antigo, sem ele, tenta deduzir pela cadeia.
-    Rig rig;
-    bool hasRig = false;
-
-    if (!loaded.rig.empty() && m_library.matchesRig(loaded, loaded.rig))
-    {
-        rig = loaded.rig;
-        hasRig = true;
-    }
-    else
-    {
-        hasRig = m_library.inferRig(loaded, rig);
-    }
-
-    if (hasRig)
-    {
-        adoptRig(rig);
-    }
-    else
-    {
-        m_rigActive = false;
-        m_rigSegments.clear();
-    }
+    adoptChainLayout(loaded);
 
     m_currentPresetName = loaded.name;
     m_currentPresetPath = path;
@@ -808,9 +938,9 @@ bool DesktopUI::replaceChain(const Preset& newPreset, std::string& error)
     m_engine.stop();
     preset::apply(newPreset, m_engine.chain());
 
-    if (!m_engine.start(m_mode, m_sampleRate, m_blockSize))
+    if (!startAudio())
     {
-        error = "erro ao religar o motor: " + m_engine.lastError();
+        error = "erro ao religar o motor: " + m_audioStartError;
         return false;
     }
 
@@ -818,104 +948,250 @@ bool DesktopUI::replaceChain(const Preset& newPreset, std::string& error)
     return true;
 }
 
-void DesktopUI::applyRig(const Rig& next)
+void DesktopUI::adoptChainLayout(const Preset& source)
 {
-    try
-    {
-        // buildPreset() lança num id inválido ANTES de replaceChain() parar
-        // o motor.
-        std::string error;
-        if (!replaceChain(m_library.buildPreset(next, "Rig"), error))
-        {
-            m_rigMessage = error;
-            return;
-        }
+    m_chainItems.clear();
+    m_expandedSegments.clear();
 
-        adoptRig(next);
-    }
-    catch (const std::exception& e)
+    auto adoptStates = [&](const std::vector<Preset::ChainItemState>& states) {
+        std::size_t firstModule = 0;
+        for (const Preset::ChainItemState& state : states)
+        {
+            if (state.moduleCount == 0 || firstModule + state.moduleCount > source.modules.size())
+                return false;
+            m_chainItems.push_back({state.gearId, firstModule, state.moduleCount});
+            firstModule += state.moduleCount;
+        }
+        return firstModule == source.modules.size();
+    };
+
+    if (!source.chainItems.empty() && adoptStates(source.chainItems))
     {
-        m_rigMessage = std::string("erro: ") + e.what();
+        m_selectedItem = m_chainItems.empty() ? kNoSelection : 0;
+        return;
     }
+
+    m_chainItems.clear();
+
+    // Compatibilidade: presets antigos conheciam apenas o Rig fixo. Ele é
+    // convertido uma vez para a sequência livre, sem reaplicar receitas.
+    Rig legacyRig;
+    bool hasLegacyRig = !source.rig.empty() && m_library.matchesRig(source, source.rig);
+    if (hasLegacyRig)
+        legacyRig = source.rig;
+    else
+        hasLegacyRig = m_library.inferRig(source, legacyRig);
+
+    std::size_t firstModule = 0;
+    if (hasLegacyRig)
+    {
+        for (const GearModel* model : m_library.rigModels(legacyRig))
+        {
+            m_chainItems.push_back({model->id, firstModule, model->modules.size()});
+            firstModule += model->modules.size();
+        }
+    }
+
+    while (firstModule < source.modules.size())
+    {
+        m_chainItems.push_back({"", firstModule, 1});
+        ++firstModule;
+    }
+
+    m_selectedItem = m_chainItems.empty() ? kNoSelection : 0;
+}
+
+Preset DesktopUI::captureCurrentPreset(const std::string& name) const
+{
+    Preset captured = preset::capture(name, m_engine.chain());
+
+    std::size_t covered = 0;
+    for (const ChainItem& item : m_chainItems)
+    {
+        if (item.moduleCount == 0 || item.firstModule != covered
+            || covered + item.moduleCount > captured.modules.size())
+        {
+            captured.chainItems.clear();
+            break;
+        }
+        captured.chainItems.push_back({item.gearId, item.moduleCount});
+        covered += item.moduleCount;
+    }
+
+    if (covered != captured.modules.size())
+    {
+        captured.chainItems.clear();
+        for (std::size_t i = 0; i < captured.modules.size(); ++i)
+            captured.chainItems.push_back({"", 1});
+    }
+
+    return captured;
+}
+
+void DesktopUI::insertGearAt(const std::string& gearId, std::size_t itemIndex)
+{
+    const GearModel* model = m_library.find(gearId);
+    if (model == nullptr || itemIndex > m_chainItems.size())
+        return;
+
+    Preset edited = captureCurrentPreset("Cadeia");
+    std::size_t moduleIndex = 0;
+    for (std::size_t i = 0; i < itemIndex; ++i)
+        moduleIndex += edited.chainItems[i].moduleCount;
+
+    edited.modules.insert(edited.modules.begin() + static_cast<std::ptrdiff_t>(moduleIndex),
+                          model->modules.begin(), model->modules.end());
+    edited.chainItems.insert(edited.chainItems.begin() + static_cast<std::ptrdiff_t>(itemIndex),
+                             {model->id, model->modules.size()});
+    edited.rig = {};
+
+    std::string error;
+    if (!replaceChain(edited, error))
+    {
+        m_rigMessage = error;
+        return;
+    }
+
+    adoptChainLayout(edited);
+    m_selectedItem = itemIndex;
+    m_currentPresetName.clear();
+    m_currentPresetPath.clear();
+    m_rigMessage = model->name + " inserido na cadeia";
+}
+
+void DesktopUI::removeChainItem(std::size_t itemIndex)
+{
+    if (itemIndex >= m_chainItems.size())
+        return;
+
+    Preset edited = captureCurrentPreset("Cadeia");
+    std::size_t moduleIndex = 0;
+    for (std::size_t i = 0; i < itemIndex; ++i)
+        moduleIndex += edited.chainItems[i].moduleCount;
+    const std::size_t count = edited.chainItems[itemIndex].moduleCount;
+
+    edited.modules.erase(edited.modules.begin() + static_cast<std::ptrdiff_t>(moduleIndex),
+                         edited.modules.begin() + static_cast<std::ptrdiff_t>(moduleIndex + count));
+    edited.chainItems.erase(edited.chainItems.begin() + static_cast<std::ptrdiff_t>(itemIndex));
+    edited.rig = {};
+
+    std::string error;
+    if (!replaceChain(edited, error))
+    {
+        m_rigMessage = error;
+        return;
+    }
+
+    adoptChainLayout(edited);
+    if (!m_chainItems.empty())
+        m_selectedItem = std::min(itemIndex, m_chainItems.size() - 1);
+    m_currentPresetName.clear();
+    m_currentPresetPath.clear();
+    m_rigMessage = "item removido da cadeia";
+}
+
+void DesktopUI::moveChainItem(std::size_t from, std::size_t insertionIndex)
+{
+    if (from >= m_chainItems.size() || insertionIndex > m_chainItems.size()
+        || insertionIndex == from || insertionIndex == from + 1)
+        return;
+
+    Preset edited = captureCurrentPreset("Cadeia");
+    std::size_t moduleFrom = 0;
+    for (std::size_t i = 0; i < from; ++i)
+        moduleFrom += edited.chainItems[i].moduleCount;
+
+    const Preset::ChainItemState movedItem = edited.chainItems[from];
+    std::vector<Preset::ModuleState> movedModules(
+        edited.modules.begin() + static_cast<std::ptrdiff_t>(moduleFrom),
+        edited.modules.begin() + static_cast<std::ptrdiff_t>(moduleFrom + movedItem.moduleCount));
+
+    edited.modules.erase(edited.modules.begin() + static_cast<std::ptrdiff_t>(moduleFrom),
+                         edited.modules.begin() + static_cast<std::ptrdiff_t>(moduleFrom + movedItem.moduleCount));
+    edited.chainItems.erase(edited.chainItems.begin() + static_cast<std::ptrdiff_t>(from));
+
+    std::size_t destinationItem = insertionIndex;
+    if (from < insertionIndex)
+        --destinationItem;
+
+    std::size_t moduleDestination = 0;
+    for (std::size_t i = 0; i < destinationItem; ++i)
+        moduleDestination += edited.chainItems[i].moduleCount;
+
+    edited.modules.insert(edited.modules.begin() + static_cast<std::ptrdiff_t>(moduleDestination),
+                          movedModules.begin(), movedModules.end());
+    edited.chainItems.insert(edited.chainItems.begin() + static_cast<std::ptrdiff_t>(destinationItem), movedItem);
+    edited.rig = {};
+
+    std::string error;
+    if (!replaceChain(edited, error))
+    {
+        m_rigMessage = error;
+        return;
+    }
+
+    adoptChainLayout(edited);
+    m_selectedItem = destinationItem;
+    m_currentPresetName.clear();
+    m_currentPresetPath.clear();
+    m_rigMessage = "ordem da cadeia atualizada";
 }
 
 void DesktopUI::drawGearBrowser()
 {
-    drawSectionHeader("Equipamentos");
+    drawSectionHeader("Biblioteca");
 
-    // As abas, na ordem do sinal — a mesma do rig.
-    constexpr GearCategory kTabs[] = {GearCategory::Stomp, GearCategory::Amp,
-                                      GearCategory::Cabinet, GearCategory::Rack};
-    constexpr const char* kTabLabels[] = {"Stomp", "Amp", "Cab", "Rack"};
-
-    for (int t = 0; t < 4; ++t)
+    if (ImGui::CollapsingHeader("Presets"))
     {
-        if (t > 0)
+        ImGui::Indent();
+        drawPresetPanel(false);
+        ImGui::Unindent();
+    }
+
+    if (ImGui::CollapsingHeader("Cadeia atual"))
+    {
+        ImGui::Indent();
+        drawRigStrip(false);
+        ImGui::Unindent();
+    }
+
+    constexpr GearCategory kCategories[] = {GearCategory::Stomp, GearCategory::Amp,
+                                            GearCategory::Cabinet, GearCategory::Rack,
+                                            GearCategory::Equalizer};
+    constexpr const char* kLabels[] = {"Pedais", "Amp", "Cab", "Rack", "EQ"};
+    constexpr float kWidths[] = {62.0f, 46.0f, 46.0f, 50.0f, 40.0f};
+
+    for (int i = 0; i < 5; ++i)
+    {
+        if (i > 0)
             ImGui::SameLine();
-
-        const bool selected = (kTabs[t] == m_browserCategory);
+        const bool selected = m_browserCategory == kCategories[i];
         if (selected)
-            ImGui::PushStyleColor(ImGuiCol_Button, kAccentColor);
-
-        if (ImGui::Button(kTabLabels[t], ImVec2(68.0f, 0.0f)))
-        {
-            m_browserCategory = kTabs[t];
-            m_browserCharacter.clear();
-        }
-
+            ImGui::PushStyleColor(ImGuiCol_Button, kSurfaceSelected);
+        if (ImGui::Button(kLabels[i], ImVec2(kWidths[i], 0.0f)))
+            m_browserCategory = kCategories[i];
         if (selected)
             ImGui::PopStyleColor();
     }
 
-    const std::vector<const GearModel*> models = m_library.modelsIn(m_browserCategory);
-
-    // Filtro por character ("Overdrive", "Clean"...), na ordem em que
-    // aparecem no catálogo. Cabinets não têm: lá o agrupamento é por
-    // gabinete.
-    if (m_browserCategory != GearCategory::Cabinet)
-    {
-        std::vector<std::string> characters;
-        for (const GearModel* model : models)
-        {
-            if (std::find(characters.begin(), characters.end(), model->character) == characters.end())
-                characters.push_back(model->character);
-        }
-
-        ImGui::Spacing();
-        if (ImGui::RadioButton("Todos", m_browserCharacter.empty()))
-            m_browserCharacter.clear();
-
-        for (const std::string& character : characters)
-        {
-            ImGui::SameLine();
-            if (ImGui::GetContentRegionAvail().x < ImGui::CalcTextSize(character.c_str()).x + 40.0f)
-                ImGui::NewLine();
-
-            if (ImGui::RadioButton(character.c_str(), m_browserCharacter == character))
-                m_browserCharacter = character;
-        }
-    }
-
+    ImGui::Spacing();
+    ImGui::TextDisabled("Arraste para um ponto da linha. Duplo clique adiciona no final.");
     ImGui::Separator();
+    drawGearCategory(m_browserCategory, gearCategoryName(m_browserCategory), true);
 
-    const float footerHeight = ImGui::GetFrameHeightWithSpacing() + 4.0f;
-    ImGui::BeginChild("##gearList", ImVec2(0.0f, -footerHeight));
-
-    // Amp e cabinet são um só por rig — "nenhum" é uma escolha válida.
-    if (m_browserCategory == GearCategory::Amp || m_browserCategory == GearCategory::Cabinet)
+    if (!m_rigMessage.empty())
     {
-        const bool isAmp = (m_browserCategory == GearCategory::Amp);
-        const std::string& current = isAmp ? m_rig.amp : m_rig.cabinet;
-
-        if (ImGui::Selectable("(nenhum)", m_rigActive && current.empty()))
-        {
-            Rig next = m_rig;
-            (isAmp ? next.amp : next.cabinet).clear();
-            applyRig(next);
-        }
+        ImGui::Spacing();
+        ImGui::TextWrapped("%s", m_rigMessage.c_str());
     }
+}
 
-    if (models.empty() && m_browserCategory == GearCategory::Cabinet)
+void DesktopUI::drawGearCategory(GearCategory category, const char* label, bool defaultOpen)
+{
+    ImGui::PushID(label);
+    const std::vector<const GearModel*> models = m_library.modelsIn(category);
+
+    if (models.empty() && category == GearCategory::Cabinet)
     {
         ImGui::Spacing();
         ImGui::TextWrapped("Nenhum cabinet encontrado. Clique em \"Importar IR...\" "
@@ -923,84 +1199,74 @@ void DesktopUI::drawGearBrowser()
                            "irs/<gabinete>/<microfone>.wav e clique em \"Reler irs/\".");
     }
 
-    const std::string* lastCabinetName = nullptr;
-
+    std::vector<std::string> groups;
     for (const GearModel* model : models)
     {
-        if (!m_browserCharacter.empty() && model->character != m_browserCharacter)
-            continue;
-
-        // Cabinets agrupados: o nome do gabinete uma vez, os microfones
-        // embaixo dele.
-        if (model->category == GearCategory::Cabinet
-            && (lastCabinetName == nullptr || *lastCabinetName != model->name))
-        {
-            ImGui::Spacing();
-            ImGui::TextDisabled("%s", model->name.c_str());
-            lastCabinetName = &model->name;
-        }
-
-        bool selected = false;
-        switch (model->category)
-        {
-        case GearCategory::Amp: selected = (m_rig.amp == model->id); break;
-        case GearCategory::Cabinet: selected = (m_rig.cabinet == model->id); break;
-        case GearCategory::Stomp:
-            selected = std::find(m_rig.stomps.begin(), m_rig.stomps.end(), model->id) != m_rig.stomps.end();
-            break;
-        case GearCategory::Rack:
-            selected = std::find(m_rig.rack.begin(), m_rig.rack.end(), model->id) != m_rig.rack.end();
-            break;
-        }
-        selected = selected && m_rigActive;
-
-        ImGui::PushID(model->id.c_str());
-
-        // Uma amostra da cor do equipamento — a mesma família de cor que o
-        // pedal dele vai ter no pedalboard.
-        const ImVec4 swatch = ImGui::ColorConvertU32ToFloat4(colorForModuleName(model->name.c_str(), false));
-        ImGui::ColorButton("##swatch", swatch, ImGuiColorEditFlags_NoTooltip, ImVec2(16.0f, 16.0f));
-        ImGui::SameLine();
-
-        const bool isCabinet = (model->category == GearCategory::Cabinet);
-        const std::string label = isCabinet ? model->microphone : model->name;
-
-        // Cabinets ganham um "x" no fim da linha para excluir a IR — o
-        // Selectable encolhe para deixar espaço para ele.
-        const float deleteWidth = isCabinet ? ImGui::GetFrameHeight() + ImGui::GetStyle().ItemSpacing.x : 0.0f;
-
-        if (ImGui::Selectable(label.c_str(), selected, ImGuiSelectableFlags_None,
-                              ImVec2(ImGui::GetContentRegionAvail().x - deleteWidth, 0.0f)))
-        {
-            Rig next = m_rig;
-            switch (model->category)
-            {
-            case GearCategory::Amp: next.amp = model->id; break;
-            case GearCategory::Cabinet: next.cabinet = model->id; break;
-            case GearCategory::Stomp: next.stomps.push_back(model->id); break;
-            case GearCategory::Rack: next.rack.push_back(model->id); break;
-            }
-            applyRig(next);
-        }
-
-        if (ImGui::IsItemHovered())
-            ImGui::SetTooltip("%s\n%s", model->character.c_str(), model->description.c_str());
-
-        if (isCabinet)
-        {
-            ImGui::SameLine();
-
-            if (ImGui::SmallButton("x"))
-                m_irPendingDelete = model->id;
-
-            if (ImGui::IsItemHovered())
-                ImGui::SetTooltip("excluir esta IR");
-        }
-
-        ImGui::PopID();
+        const std::string group = category == GearCategory::Cabinet ? model->name : model->character;
+        if (std::find(groups.begin(), groups.end(), group) == groups.end())
+            groups.push_back(group);
     }
 
-    ImGui::EndChild();
+    for (std::size_t groupIndex = 0; groupIndex < groups.size(); ++groupIndex)
+    {
+        const ImGuiTreeNodeFlags flags = defaultOpen && groupIndex == 0
+            ? ImGuiTreeNodeFlags_DefaultOpen : ImGuiTreeNodeFlags_None;
+        if (!ImGui::CollapsingHeader(groups[groupIndex].c_str(), flags))
+            continue;
+
+        ImGui::Indent();
+        for (const GearModel* model : models)
+        {
+            const std::string group = category == GearCategory::Cabinet ? model->name : model->character;
+            if (group != groups[groupIndex])
+                continue;
+
+            ImGui::PushID(model->id.c_str());
+            const ImVec4 swatch = ImGui::ColorConvertU32ToFloat4(
+                colorForModuleName(model->name.c_str(), false));
+            ImGui::ColorButton("##swatch", swatch, ImGuiColorEditFlags_NoTooltip, ImVec2(16.0f, 16.0f));
+            ImGui::SameLine();
+
+            const bool isCabinet = model->category == GearCategory::Cabinet;
+            const std::string itemLabel = isCabinet ? model->microphone : model->name;
+            const bool inChain = std::any_of(m_chainItems.begin(), m_chainItems.end(),
+                [&](const ChainItem& item) { return item.gearId == model->id; });
+            const float deleteWidth = isCabinet
+                ? ImGui::GetFrameHeight() + ImGui::GetStyle().ItemSpacing.x : 0.0f;
+
+            ImGui::Selectable(itemLabel.c_str(), inChain, ImGuiSelectableFlags_AllowDoubleClick,
+                              ImVec2(ImGui::GetContentRegionAvail().x - deleteWidth, 0.0f));
+
+            if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
+                insertGearAt(model->id, m_chainItems.size());
+
+            if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_SourceAllowNullID))
+            {
+                ImGui::SetDragDropPayload(kGearDragPayload, model->id.c_str(), model->id.size() + 1);
+                ImGui::TextUnformatted(model->name.c_str());
+                ImGui::TextDisabled("solte entre dois itens da cadeia");
+                ImGui::EndDragDropSource();
+            }
+
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("%s\n%s\nArraste para inserir; duplo clique adiciona no final.",
+                                  model->character.c_str(), model->description.c_str());
+
+            if (isCabinet)
+            {
+                ImGui::SameLine();
+
+                if (ImGui::SmallButton("x"))
+                    m_irPendingDelete = model->id;
+
+                if (ImGui::IsItemHovered())
+                    ImGui::SetTooltip("excluir esta IR");
+            }
+
+            ImGui::PopID();
+        }
+        ImGui::Unindent();
+    }
 
     // O popup é aberto aqui fora, no mesmo nível de ID do BeginPopupModal
     // abaixo — de dentro do PushID da linha, o ImGui não o acharia.
@@ -1037,232 +1303,89 @@ void DesktopUI::drawGearBrowser()
         ImGui::EndPopup();
     }
 
-    if (ImGui::Button("Importar IR..."))
-        openImpulseResponseDialog();
-
-    if (ImGui::IsItemHovered())
-        ImGui::SetTooltip("escolhe um .wav de IR (ou arraste o arquivo para a janela)");
-
-    ImGui::SameLine();
-
-    if (ImGui::Button("Reler irs/"))
+    if (category == GearCategory::Cabinet)
     {
-        const std::size_t found = m_library.scanImpulseResponses(m_irsDirectory);
-        m_rigMessage = std::to_string(found) + " cabinet(s) em " + m_irsDirectory;
+        if (ImGui::Button("Importar IR..."))
+            openImpulseResponseDialog();
+
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("escolhe um .wav de IR (ou arraste o arquivo para a janela)");
+
+        if (ImGui::Button("Reler irs/"))
+        {
+            const std::size_t found = m_library.scanImpulseResponses(m_irsDirectory);
+            m_rigMessage = std::to_string(found) + " cabinet(s) em " + m_irsDirectory;
+        }
+
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("procura cabinets de novo em irs/");
     }
 
-    if (ImGui::IsItemHovered())
-        ImGui::SetTooltip("procura cabinets de novo em irs/");
+    ImGui::PopID();
 }
 
-void DesktopUI::drawRigStrip()
+void DesktopUI::drawRigStrip(bool showHeader)
 {
-    drawSectionHeader("Rig");
+    if (showHeader)
+        drawSectionHeader("Cadeia atual");
 
-    if (!m_rigActive)
+    if (m_chainItems.empty())
+        ImGui::TextDisabled("cadeia vazia - arraste qualquer equipamento para a linha");
+
+    std::size_t moveFrom = kNoSelection;
+    std::size_t moveTo = kNoSelection;
+    std::size_t removeAt = kNoSelection;
+
+    for (std::size_t i = 0; i < m_chainItems.size(); ++i)
     {
-        ImGui::TextWrapped("A cadeia atual veio das flags ou de um preset. Escolha "
-                           "um equipamento no painel da direita para montar um rig.");
+        const ChainItem& item = m_chainItems[i];
+        const GearModel* model = item.gearId.empty() ? nullptr : m_library.find(item.gearId);
+        const std::string name = model != nullptr
+            ? model->name
+            : (item.firstModule < m_engine.chain().size()
+                   ? m_engine.chain().moduleAt(item.firstModule).name() : "Modulo");
+
+        ImGui::PushID(static_cast<int>(i));
+        ImGui::TextDisabled("%02d", static_cast<int>(i + 1));
+        ImGui::SameLine();
+        ImGui::TextUnformatted(name.c_str());
+
+        const float controlsWidth = 3.0f * ImGui::GetFrameHeight()
+                                  + 2.0f * ImGui::GetStyle().ItemSpacing.x;
+        ImGui::SameLine(std::max(ImGui::GetCursorPosX(), ImGui::GetWindowContentRegionMax().x - controlsWidth));
+
+        ImGui::BeginDisabled(i == 0);
+        if (ImGui::SmallButton("<"))
+        {
+            moveFrom = i;
+            moveTo = i - 1;
+        }
+        ImGui::EndDisabled();
+        ImGui::SameLine();
+
+        ImGui::BeginDisabled(i + 1 >= m_chainItems.size());
+        if (ImGui::SmallButton(">"))
+        {
+            moveFrom = i;
+            moveTo = i + 2;
+        }
+        ImGui::EndDisabled();
+        ImGui::SameLine();
+
+        if (ImGui::SmallButton("x"))
+            removeAt = i;
+        ImGui::PopID();
     }
-    else
-    {
-        // As ações só são registradas durante o desenho e aplicadas no fim:
-        // mexer no vetor enquanto ele é percorrido invalidaria o laço.
-        Rig next = m_rig;
-        bool changed = false;
 
-        auto drawList = [&](const char* title, std::vector<std::string>& ids) {
-            ImGui::TextDisabled("%s", title);
-
-            if (ids.empty())
-            {
-                ImGui::SameLine();
-                ImGui::TextDisabled("-");
-            }
-
-            for (std::size_t k = 0; k < ids.size() && !changed; ++k)
-            {
-                const GearModel* model = m_library.find(ids[k]);
-                const std::string name = (model != nullptr) ? model->name : ids[k];
-
-                ImGui::SameLine();
-                if (ImGui::GetContentRegionAvail().x < ImGui::CalcTextSize(name.c_str()).x + 80.0f)
-                    ImGui::NewLine();
-
-                ImGui::PushID(title);
-                ImGui::PushID(static_cast<int>(k));
-
-                if (k > 0)
-                {
-                    if (ImGui::SmallButton("<"))
-                    {
-                        std::swap(ids[k], ids[k - 1]);
-                        changed = true;
-                    }
-                    if (ImGui::IsItemHovered())
-                        ImGui::SetTooltip("mover para antes");
-                    ImGui::SameLine();
-                }
-
-                ImGui::TextUnformatted(name.c_str());
-                ImGui::SameLine();
-
-                if (!changed && ImGui::SmallButton("x"))
-                {
-                    ids.erase(ids.begin() + static_cast<std::ptrdiff_t>(k));
-                    changed = true;
-                }
-
-                ImGui::PopID();
-                ImGui::PopID();
-            }
-        };
-
-        auto drawSingle = [&](const char* title, std::string& id) {
-            ImGui::TextDisabled("%s", title);
-            ImGui::SameLine();
-
-            const GearModel* model = m_library.find(id);
-            if (model == nullptr)
-            {
-                ImGui::TextDisabled("-");
-                return;
-            }
-
-            std::string name = model->name;
-            if (!model->microphone.empty())
-                name += " / " + model->microphone;
-
-            ImGui::TextUnformatted(name.c_str());
-            ImGui::SameLine();
-
-            ImGui::PushID(title);
-            if (ImGui::SmallButton("x"))
-            {
-                id.clear();
-                changed = true;
-            }
-            ImGui::PopID();
-        };
-
-        drawList("Stomps:", next.stomps);
-        drawSingle("Amp:   ", next.amp);
-        drawSingle("Cab:   ", next.cabinet);
-        drawList("Rack:  ", next.rack);
-
-        if (changed)
-            applyRig(next);
-    }
+    if (removeAt != kNoSelection)
+        removeChainItem(removeAt);
+    else if (moveFrom != kNoSelection)
+        moveChainItem(moveFrom, moveTo);
 
     if (!m_rigMessage.empty())
     {
         ImGui::Spacing();
         ImGui::TextWrapped("%s", m_rigMessage.c_str());
-    }
-}
-
-void DesktopUI::drawPedalboard()
-{
-    const ModuleChain& chain = m_engine.chain();
-
-    // Sem rig ativo, a cadeia inteira é um grupo só, sem título. Com rig, um
-    // grupo por equipamento, e o que sobrar no fim (o Limiter) vira "Saida".
-    std::vector<RigSegment> groups;
-    if (m_rigActive)
-    {
-        groups = m_rigSegments;
-
-        const std::size_t covered = groups.empty() ? 0 : groups.back().firstModule + groups.back().moduleCount;
-        if (covered < chain.size())
-            groups.push_back({"Saida", "", covered, chain.size() - covered});
-    }
-    else
-    {
-        groups.push_back({"", "", 0, chain.size()});
-    }
-
-    // Painéis da mesma fileira (stomps; amp + cab; rack) ficam lado a lado,
-    // quebrando linha quando não cabem. Um grupo aberto "por dentro" e a
-    // saída começam linha própria, com título.
-    int previousRow = -1;
-
-    for (std::size_t g = 0; g < groups.size(); ++g)
-    {
-        const RigSegment& group = groups[g];
-        const GearModel* model = group.gearId.empty() ? nullptr : m_library.find(group.gearId);
-        const bool asPanel = model != nullptr && !model->controls.empty()
-                             && m_expandedSegments.count(g) == 0;
-
-        if (asPanel)
-        {
-            const int row = rowFor(model->category);
-
-            if (row == previousRow)
-            {
-                ImGui::SameLine();
-                if (ImGui::GetContentRegionAvail().x < gearPanelWidth(*model))
-                    ImGui::NewLine();
-            }
-            else
-            {
-                ImGui::PushStyleColor(ImGuiCol_Text, kAccentColor);
-                ImGui::TextUnformatted(rowTitle(row));
-                ImGui::PopStyleColor();
-            }
-
-            ImGui::PushID(static_cast<int>(g));
-            drawGearPanel(g, *model);
-            ImGui::PopID();
-
-            previousRow = row;
-            continue;
-        }
-
-        previousRow = -1;
-
-        if (!group.label.empty())
-        {
-            ImGui::PushStyleColor(ImGuiCol_Text, kAccentColor);
-            ImGui::TextUnformatted(group.label.c_str());
-            ImGui::PopStyleColor();
-
-            // Um equipamento aberto "por dentro" pode voltar ao painel.
-            if (model != nullptr && !model->controls.empty())
-            {
-                ImGui::SameLine();
-                ImGui::PushID(static_cast<int>(g));
-                if (ImGui::SmallButton("fechar"))
-                    m_expandedSegments.erase(g);
-                ImGui::PopID();
-            }
-        }
-
-        // Lado a lado, como um pedalboard de verdade — quebrando pra
-        // próxima linha quando não cabe mais nenhum na largura. É o mesmo
-        // idioma de quebra que o próprio demo do ImGui usa pra botões.
-        for (std::size_t k = 0; k < group.moduleCount; ++k)
-        {
-            const std::size_t i = group.firstModule + k;
-            if (i >= chain.size())
-                break;
-
-            // Escopa os ids de todos os widgets deste pedal (knobs, reset,
-            // footswitch), pra dois módulos do mesmo tipo (dois Gain, por
-            // exemplo) não colidirem só por terem o mesmo name().
-            ImGui::PushID(static_cast<int>(i));
-            drawPedal(i, firstFlatIndexForModule(i));
-            ImGui::PopID();
-
-            if (k + 1 < group.moduleCount)
-            {
-                ImGui::SameLine();
-
-                if (ImGui::GetContentRegionAvail().x < kPedalWidth)
-                    ImGui::NewLine();
-            }
-        }
-
-        ImGui::Spacing();
     }
 }
 
@@ -1288,7 +1411,7 @@ bool DesktopUI::flatIndexFor(std::size_t moduleIndex, const std::string& paramet
 
 void DesktopUI::drawGearPanel(std::size_t segmentIndex, const GearModel& model)
 {
-    const RigSegment& segment = m_rigSegments[segmentIndex];
+    const ChainItem& segment = m_chainItems[segmentIndex];
     const ModuleChain& chain = m_engine.chain();
 
     const bool isAmp = model.category == GearCategory::Amp;
@@ -1473,12 +1596,7 @@ void DesktopUI::savePreset(const std::string& name)
 
         const std::string path = std::string(kPresetsDir) + "/" + name + ".ibifxpreset";
 
-        Preset captured = preset::capture(name, m_engine.chain());
-
-        // Com um rig ativo, o preset leva junto de qual rig a cadeia veio —
-        // é o que deixa loadPreset() reagrupar os painéis depois.
-        if (m_rigActive)
-            captured.rig = m_rig;
+        Preset captured = captureCurrentPreset(name);
 
         preset::save(captured, path);
 
@@ -1515,9 +1633,10 @@ void DesktopUI::drawSectionHeader(const char* label) const
     ImGui::Dummy(ImVec2(0.0f, 6.0f));
 }
 
-void DesktopUI::drawPresetPanel()
+void DesktopUI::drawPresetPanel(bool showHeader)
 {
-    drawSectionHeader("Presets");
+    if (showHeader)
+        drawSectionHeader("Presets");
 
     if (!m_currentPresetName.empty())
     {
@@ -1626,8 +1745,8 @@ void DesktopUI::loadBackingTrack(const std::string& path)
 
     // Religa mesmo se o load falhou — a backing track antiga (ou nenhuma)
     // continua valendo, e o pedalboard não pode ficar mudo por causa disso.
-    if (!m_engine.start(m_mode, m_sampleRate, m_blockSize))
-        m_practiceMessage = "erro ao religar o motor: " + m_engine.lastError();
+    if (!startAudio())
+        m_practiceMessage = "erro ao religar o motor: " + m_audioStartError;
 }
 
 void DesktopUI::importImpulseResponse(const std::string& sourcePath)
@@ -1680,16 +1799,11 @@ void DesktopUI::importImpulseResponse(const std::string& sourcePath)
             return;
         }
 
-        m_browserCategory = GearCategory::Cabinet;
-
-        Rig next = m_rig;
-        next.cabinet = imported->id;
-        applyRig(next);
-
-        // applyRig() só muda o rig se a IR carregou (sample rate certo etc.);
-        // se não, ele já deixou o erro em m_rigMessage.
-        if (m_rig.cabinet == imported->id)
-            m_rigMessage = "IR importada: " + destination.filename().string();
+        const std::string importedId = imported->id;
+        insertGearAt(importedId, m_chainItems.size());
+        if (std::any_of(m_chainItems.begin(), m_chainItems.end(),
+                        [&](const ChainItem& item) { return item.gearId == importedId; }))
+            m_rigMessage = "IR importada e inserida: " + destination.filename().string();
     }
     catch (const std::exception& error)
     {
@@ -1713,18 +1827,35 @@ void DesktopUI::deleteImpulseResponse(const std::string& cabinetId)
     const fs::path irPath = model->modules[0].irPath;
     const std::string label = model->microphone;
 
-    // Se é o cabinet em uso, sai do rig primeiro. O som não depende do
-    // arquivo (a IR já está na memória do Cabinet), mas o rig não pode
-    // continuar apontando para um id que vai deixar de existir.
-    if (m_rig.cabinet == cabinetId)
+    // Remove todas as instâncias antes de apagar o arquivo, para um preset
+    // salvo em seguida não guardar um caminho de IR que deixou de existir.
+    Preset edited = captureCurrentPreset("Cadeia");
+    bool changed = false;
+    for (std::size_t i = edited.chainItems.size(); i-- > 0;)
     {
-        Rig next = m_rig;
-        next.cabinet.clear();
+        if (edited.chainItems[i].gearId != cabinetId)
+            continue;
 
-        if (m_rigActive)
-            applyRig(next);
-        else
-            m_rig = next;
+        std::size_t moduleIndex = 0;
+        for (std::size_t before = 0; before < i; ++before)
+            moduleIndex += edited.chainItems[before].moduleCount;
+        const std::size_t count = edited.chainItems[i].moduleCount;
+
+        edited.modules.erase(edited.modules.begin() + static_cast<std::ptrdiff_t>(moduleIndex),
+                             edited.modules.begin() + static_cast<std::ptrdiff_t>(moduleIndex + count));
+        edited.chainItems.erase(edited.chainItems.begin() + static_cast<std::ptrdiff_t>(i));
+        changed = true;
+    }
+
+    if (changed)
+    {
+        std::string replaceError;
+        if (!replaceChain(edited, replaceError))
+        {
+            m_rigMessage = replaceError;
+            return;
+        }
+        adoptChainLayout(edited);
     }
 
     try
@@ -2035,35 +2166,412 @@ void DesktopUI::drawPracticePanel()
         ImGui::TextWrapped("%s", m_practiceMessage.c_str());
 }
 
-void DesktopUI::drawToolsRow()
+void DesktopUI::drawWorkspaceHeader()
 {
-    const float spacing = ImGui::GetStyle().ItemSpacing.x;
-    const float available = ImGui::GetContentRegionAvail().x - 2.0f * spacing;
+    ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 8.0f);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(16.0f, 12.0f));
+    ImGui::BeginChild("##workspaceHeader", ImVec2(0.0f, kWorkspaceHeaderHeight), ImGuiChildFlags_Borders);
 
-    // A prática tem o dobro de controles dos outros dois, então leva metade
-    // da largura.
-    const float tunerWidth = available * 0.26f;
-    const float recorderWidth = available * 0.24f;
+    if (ImGui::BeginTable("##headerLayout", 3, ImGuiTableFlags_SizingStretchProp))
+    {
+        ImGui::TableSetupColumn("brand", ImGuiTableColumnFlags_WidthStretch, 0.34f);
+        ImGui::TableSetupColumn("tuner", ImGuiTableColumnFlags_WidthStretch, 0.25f);
+        ImGui::TableSetupColumn("io", ImGuiTableColumnFlags_WidthStretch, 0.41f);
+        ImGui::TableNextRow();
+
+        ImGui::TableSetColumnIndex(0);
+        ImGui::SetWindowFontScale(1.35f);
+        ImGui::TextUnformatted("ibiFX");
+        ImGui::SetWindowFontScale(1.0f);
+        ImGui::SameLine();
+        ImGui::TextDisabled("Signal Chain");
+
+        const bool pedalboard = m_workspace == Workspace::Pedalboard;
+        if (pedalboard)
+            ImGui::PushStyleColor(ImGuiCol_Button, kSurfaceSelected);
+        if (ImGui::Button("Pedaleira"))
+            m_workspace = Workspace::Pedalboard;
+        if (pedalboard)
+            ImGui::PopStyleColor();
+
+        ImGui::SameLine();
+        const bool practice = m_workspace == Workspace::Practice;
+        if (practice)
+            ImGui::PushStyleColor(ImGuiCol_Button, kSurfaceSelected);
+        if (ImGui::Button("Pratica"))
+            m_workspace = Workspace::Practice;
+        if (practice)
+            ImGui::PopStyleColor();
+
+        ImGui::TableSetColumnIndex(1);
+        if (ImGui::Checkbox("Afinador", &m_tunerOn))
+            m_engine.setTunerEnabled(m_tunerOn);
+        ImGui::SameLine();
+        if (ImGui::Checkbox("Mudo", &m_tunerMuted))
+            m_engine.setTunerMuted(m_tunerMuted);
+
+        const Tuner& tuner = m_engine.tuner();
+        const bool valid = m_tunerOn && tuner.isValid();
+        const float cents = valid ? tuner.centsOff() : 0.0f;
+        const ImVec4 noteColor = valid && std::fabs(cents) <= kInTuneCents ? kHealthyColor
+                                                                          : ImGui::GetStyleColorVec4(ImGuiCol_Text);
+        if (valid)
+        {
+            ImGui::TextColored(noteColor, "%s", tuner.noteName().c_str());
+            ImGui::SameLine();
+            ImGui::TextDisabled("%.1f Hz  %+.0f cents", static_cast<double>(tuner.frequencyHz()),
+                                static_cast<double>(cents));
+        }
+        else
+        {
+            ImGui::TextDisabled(m_tunerOn ? "toque uma corda..." : "afinador desligado");
+        }
+
+        ImGui::TableSetColumnIndex(2);
+        const bool running = m_engine.isRunning();
+        ImGui::TextColored(running ? kHealthyColor : ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled),
+                           "%s", running ? "Audio ON" : "Audio OFF");
+        ImGui::SameLine();
+        ImGui::TextDisabled("%d Hz", static_cast<int>(m_engine.sampleRate() > 0.0
+                                                          ? m_engine.sampleRate()
+                                                          : m_sampleRate));
+
+        if (!running)
+        {
+            ImGui::SameLine();
+            if (ImGui::SmallButton("Tentar ligar") && startAudio())
+                captureTargets();
+        }
+
+        drawMeter("IN", m_engine.inputPeak());
+        drawMeter("OUT", m_engine.outputPeak());
+
+        ImGui::EndTable();
+    }
+
+    ImGui::EndChild();
+    ImGui::PopStyleVar(2);
+}
+
+void DesktopUI::drawSignalChain()
+{
+    const ModuleChain& chain = m_engine.chain();
+    if (m_selectedItem >= m_chainItems.size())
+        m_selectedItem = m_chainItems.empty() ? kNoSelection : 0;
 
     ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 8.0f);
-    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(12.0f, 10.0f));
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(16.0f, 10.0f));
+    ImGui::BeginChild("##signalChain", ImVec2(0.0f, kSignalChainHeight), ImGuiChildFlags_Borders,
+                      ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
 
-    ImGui::BeginChild("##tunerCard", ImVec2(tunerWidth, kToolCardHeight), ImGuiChildFlags_Borders);
-    drawTunerPanel();
+    ImGui::TextUnformatted("Signal Chain");
+    ImGui::SameLine();
+    ImGui::TextDisabled("- %s", m_currentPresetName.empty() ? "sem preset" : m_currentPresetName.c_str());
+
+    // Tudo na linha é posicionado à mão: IN, slots de inserção, cards e
+    // OUT. A escala sai da largura disponível, para nunca precisar de
+    // scroll horizontal; quanto mais itens, menores as miniaturas.
+    const float inWidth = ImGui::CalcTextSize("IN").x + 8.0f;
+    const float outWidth = ImGui::CalcTextSize("OUT").x + 8.0f;
+    const float available = ImGui::GetContentRegionAvail().x - inWidth - outWidth;
+    const float itemCount = static_cast<float>(m_chainItems.size());
+    const float naturalWidth = itemCount * kSignalCardWidth + (itemCount + 1.0f) * kSignalSlotWidth;
+    const float scale = std::clamp(available / naturalWidth, kSignalMinScale, 1.0f);
+
+    const float cardWidth = kSignalCardWidth * scale;
+    const float cardHeight = kSignalCardHeight * scale;
+    const float slotWidth = kSignalSlotWidth * scale;
+
+    const ImVec2 rowStart = ImGui::GetCursorScreenPos();
+    const float rowHeight = ImGui::GetContentRegionAvail().y;
+    const float cardTop = rowStart.y + std::max(0.0f, (rowHeight - cardHeight) * 0.5f);
+    // O cabo passa na altura do meio da miniatura.
+    const float wireY = cardTop + (10.0f + kSignalThumbHeight * 0.5f) * scale;
+    const float rowEnd = rowStart.x + inWidth + naturalWidth * scale + outWidth;
+
+    ImDrawList* drawList = ImGui::GetWindowDrawList();
+    const ImU32 wireColor = ImGui::GetColorU32(ImGuiCol_TextDisabled);
+    drawList->AddLine(ImVec2(rowStart.x + inWidth - 4.0f, wireY), ImVec2(rowEnd - outWidth + 4.0f, wireY),
+                      wireColor, 1.0f);
+
+    const float textHeight = ImGui::GetTextLineHeight();
+    drawList->AddText(ImVec2(rowStart.x, wireY - textHeight * 0.5f), wireColor, "IN");
+    drawList->AddText(ImVec2(rowEnd - outWidth + 8.0f, wireY - textHeight * 0.5f), wireColor, "OUT");
+
+    std::string droppedGearId;
+    std::size_t dropIndex = kNoSelection;
+    std::size_t draggedItem = kNoSelection;
+    float x = rowStart.x + inWidth;
+
+    auto drawDropSlot = [&](std::size_t insertionIndex) {
+        ImGui::SetCursorScreenPos(ImVec2(x, cardTop));
+        ImGui::PushID(static_cast<int>(insertionIndex));
+
+        ImGui::InvisibleButton("##insert", ImVec2(slotWidth, cardHeight));
+        const bool hovered = ImGui::IsItemHovered()
+                             || (ImGui::GetDragDropPayload() != nullptr
+                                 && ImGui::IsMouseHoveringRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax()));
+        if (hovered)
+        {
+            const float centerX = x + slotWidth * 0.5f;
+            drawList->AddLine(ImVec2(centerX, cardTop + 4.0f), ImVec2(centerX, cardTop + cardHeight - 4.0f),
+                              ImGui::GetColorU32(kAccentColor), 2.0f);
+        }
+
+        if (ImGui::BeginDragDropTarget())
+        {
+            if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload(kGearDragPayload))
+            {
+                droppedGearId = static_cast<const char*>(payload->Data);
+                dropIndex = insertionIndex;
+            }
+            if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload(kChainItemDragPayload))
+            {
+                if (payload->DataSize == static_cast<int>(sizeof(std::size_t)))
+                {
+                    draggedItem = *static_cast<const std::size_t*>(payload->Data);
+                    dropIndex = insertionIndex;
+                }
+            }
+            ImGui::EndDragDropTarget();
+        }
+
+        ImGui::PopID();
+        x += slotWidth;
+    };
+
+    drawDropSlot(0);
+
+    for (std::size_t i = 0; i < m_chainItems.size(); ++i)
+    {
+        const ChainItem& item = m_chainItems[i];
+        const GearModel* model = item.gearId.empty() ? nullptr : m_library.find(item.gearId);
+        const char* rawName = item.firstModule < chain.size() ? chain.moduleAt(item.firstModule).name() : "Modulo";
+        const std::string title = model != nullptr ? model->name : rawName;
+        const SignalCardKind kind = model != nullptr ? signalCardKind(model->category)
+                                                     : SignalCardKind::Module;
+
+        ImGui::SetCursorScreenPos(ImVec2(x, cardTop));
+        ImGui::PushID(static_cast<int>(i));
+        if (signalCard("##item", title, kind, colorForModuleName(title.c_str(), false),
+                       m_selectedItem == i, scale))
+            m_selectedItem = i;
+
+        if (ImGui::BeginDragDropSource())
+        {
+            ImGui::SetDragDropPayload(kChainItemDragPayload, &i, sizeof(i));
+            ImGui::Text("Mover %s", title.c_str());
+            ImGui::EndDragDropSource();
+        }
+        ImGui::PopID();
+        x += cardWidth;
+
+        drawDropSlot(i + 1);
+    }
+
+    if (m_chainItems.empty())
+    {
+        const char* hint = "Cadeia vazia: arraste um equipamento da biblioteca para cá.";
+        drawList->AddText(ImVec2(rowStart.x + inWidth + slotWidth + 12.0f, wireY - textHeight - 6.0f),
+                          wireColor, hint);
+    }
+
+    ImGui::EndChild();
+    ImGui::PopStyleVar(2);
+
+    if (!droppedGearId.empty() && dropIndex != kNoSelection)
+        insertGearAt(droppedGearId, dropIndex);
+    else if (draggedItem != kNoSelection && dropIndex != kNoSelection)
+        moveChainItem(draggedItem, dropIndex);
+}
+
+void DesktopUI::drawSelectedEquipmentEditor()
+{
+    const ModuleChain& chain = m_engine.chain();
+    ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 8.0f);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(16.0f, 16.0f));
+    // Deixa embaixo o espaço da signal chain, que vem depois do editor.
+    const float editorHeight = std::max(160.0f, ImGui::GetContentRegionAvail().y - kSignalChainHeight
+                                                     - ImGui::GetStyle().ItemSpacing.y);
+    ImGui::BeginChild("##selectedEditor", ImVec2(0.0f, editorHeight), ImGuiChildFlags_Borders,
+                      ImGuiWindowFlags_HorizontalScrollbar);
+
+    ImGui::TextUnformatted("Editor do equipamento selecionado");
+    ImGui::SameLine();
+    ImGui::TextDisabled("knobs, switches e bypass");
+    bool removeSelected = false;
+    if (m_selectedItem < m_chainItems.size())
+    {
+        ImGui::SameLine(ImGui::GetWindowContentRegionMax().x - 78.0f);
+        if (ImGui::SmallButton("Remover"))
+            removeSelected = true;
+    }
+    ImGui::Separator();
+    ImGui::Spacing();
+
+    if (m_selectedItem < m_chainItems.size())
+    {
+        const ChainItem& segment = m_chainItems[m_selectedItem];
+        const GearModel* model = m_library.find(segment.gearId);
+        const bool raw = model == nullptr || model->controls.empty()
+                         || m_expandedSegments.count(m_selectedItem) != 0;
+
+        if (raw)
+        {
+            if (model != nullptr && !model->controls.empty())
+            {
+                if (ImGui::Button("Voltar ao painel"))
+                    m_expandedSegments.erase(m_selectedItem);
+                ImGui::Spacing();
+            }
+
+            for (std::size_t k = 0; k < segment.moduleCount; ++k)
+            {
+                const std::size_t moduleIndex = segment.firstModule + k;
+                if (moduleIndex >= chain.size())
+                    break;
+                ImGui::PushID(static_cast<int>(moduleIndex));
+                drawPedal(moduleIndex, firstFlatIndexForModule(moduleIndex));
+                ImGui::PopID();
+                if (k + 1 < segment.moduleCount)
+                    ImGui::SameLine();
+            }
+        }
+        else
+        {
+            const float width = gearPanelWidth(*model);
+            if (width < ImGui::GetContentRegionAvail().x)
+                ImGui::SetCursorPosX(ImGui::GetCursorPosX() + (ImGui::GetContentRegionAvail().x - width) * 0.5f);
+            ImGui::PushID(static_cast<int>(m_selectedItem));
+            drawGearPanel(m_selectedItem, *model);
+            ImGui::PopID();
+        }
+    }
+    else
+    {
+        ImGui::TextDisabled("Selecione uma miniatura na cadeia para editar o equipamento.");
+    }
+
+    ImGui::EndChild();
+    ImGui::PopStyleVar(2);
+
+    if (removeSelected)
+        removeChainItem(m_selectedItem);
+}
+
+void DesktopUI::drawPedalboardWorkspace()
+{
+    const float mainWidth = std::max(360.0f, ImGui::GetContentRegionAvail().x - kBrowserWidth
+                                              - ImGui::GetStyle().ItemSpacing.x);
+    ImGui::BeginChild("##pedalboardMain", ImVec2(mainWidth, 0.0f));
+    drawSelectedEquipmentEditor();
+    drawSignalChain();
     ImGui::EndChild();
 
     ImGui::SameLine();
-
-    ImGui::BeginChild("##recorderCard", ImVec2(recorderWidth, kToolCardHeight), ImGuiChildFlags_Borders);
-    drawRecorderPanel();
+    ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 8.0f);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(12.0f, 12.0f));
+    ImGui::BeginChild("##browser", ImVec2(0.0f, 0.0f), ImGuiChildFlags_Borders);
+    drawGearBrowser();
     ImGui::EndChild();
+    ImGui::PopStyleVar(2);
+}
 
+void DesktopUI::drawPracticeTimeline()
+{
+    PracticeSession& session = m_engine.practiceSession();
+    const double rate = m_engine.sampleRate() > 0.0 ? m_engine.sampleRate() : m_sampleRate;
+    const std::uint64_t length = session.hasBackingTrack() ? session.backingTrackLengthSamples() : 0;
+    const std::uint64_t position = session.positionSamples();
+
+    ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 8.0f);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(16.0f, 12.0f));
+    ImGui::BeginChild("##practiceTimeline", ImVec2(0.0f, 190.0f), ImGuiChildFlags_Borders);
+
+    ImGui::TextUnformatted("Timeline de pratica");
     ImGui::SameLine();
+    ImGui::TextDisabled("backing track, loop A/B e agulha");
 
-    ImGui::BeginChild("##practiceCard", ImVec2(0.0f, kToolCardHeight), ImGuiChildFlags_Borders);
+    const ImVec2 origin = ImGui::GetCursorScreenPos();
+    const ImVec2 size(ImGui::GetContentRegionAvail().x, 106.0f);
+    ImGui::InvisibleButton("##timeline", size);
+    ImDrawList* drawList = ImGui::GetWindowDrawList();
+    const ImVec2 end(origin.x + size.x, origin.y + size.y);
+
+    drawList->AddRectFilled(origin, end, ImGui::GetColorU32(kSurfaceRaised), 6.0f);
+    drawList->AddRect(origin, end, ImGui::GetColorU32(ImGuiCol_Separator), 6.0f);
+    drawList->AddText(ImVec2(origin.x + 12.0f, origin.y + 12.0f), ImGui::GetColorU32(ImGuiCol_TextDisabled),
+                      m_backingTrackPath.empty() ? "BACKING TRACK" : compactLabel(std::filesystem::path(m_backingTrackPath).filename().string(), 42).c_str());
+    drawList->AddText(ImVec2(origin.x + 12.0f, origin.y + 66.0f), ImGui::GetColorU32(ImGuiCol_TextDisabled),
+                      "LOOP A/B");
+
+    const float laneLeft = origin.x + 132.0f;
+    const float laneRight = end.x - 16.0f;
+    drawList->AddLine(ImVec2(laneLeft, origin.y + 33.0f), ImVec2(laneRight, origin.y + 33.0f),
+                      ImGui::GetColorU32(ImGuiCol_Separator), 12.0f);
+    drawList->AddLine(ImVec2(laneLeft, origin.y + 82.0f), ImVec2(laneRight, origin.y + 82.0f),
+                      ImGui::GetColorU32(ImGuiCol_Separator), 8.0f);
+
+    if (length > 0 && laneRight > laneLeft)
+    {
+        const float progress = std::clamp(static_cast<float>(position) / static_cast<float>(length), 0.0f, 1.0f);
+        const float playheadX = laneLeft + (laneRight - laneLeft) * progress;
+        drawList->AddLine(ImVec2(playheadX, origin.y + 18.0f), ImVec2(playheadX, end.y - 10.0f),
+                          ImGui::GetColorU32(kAccentColor), 2.0f);
+
+        if (m_loopEnd > m_loopStart)
+        {
+            const float loopA = std::clamp(static_cast<float>(m_loopStart) / static_cast<float>(length), 0.0f, 1.0f);
+            const float loopB = std::clamp(static_cast<float>(m_loopEnd) / static_cast<float>(length), 0.0f, 1.0f);
+            drawList->AddRectFilled(ImVec2(laneLeft + (laneRight - laneLeft) * loopA, origin.y + 76.0f),
+                                    ImVec2(laneLeft + (laneRight - laneLeft) * loopB, origin.y + 88.0f),
+                                    ImGui::GetColorU32(kAccentColor), 3.0f);
+        }
+
+        if (ImGui::IsItemClicked())
+        {
+            const float clicked = std::clamp((ImGui::GetIO().MousePos.x - laneLeft) / (laneRight - laneLeft), 0.0f, 1.0f);
+            session.seek(static_cast<std::uint64_t>(clicked * static_cast<float>(length)));
+        }
+    }
+    else
+    {
+        drawList->AddText(ImVec2(laneLeft, origin.y + 24.0f), ImGui::GetColorU32(ImGuiCol_TextDisabled),
+                          "carregue uma faixa para usar a agulha e o scrub");
+    }
+
+    const auto seconds = [rate](std::uint64_t samples) { return static_cast<double>(samples) / rate; };
+    ImGui::TextDisabled("%s / %s", formatClock(seconds(position)).c_str(),
+                        length > 0 ? formatClock(seconds(length)).c_str() : "00:00");
+
+    ImGui::EndChild();
+    ImGui::PopStyleVar(2);
+}
+
+void DesktopUI::drawPracticeWorkspace()
+{
+    drawPracticeTimeline();
+    ImGui::Spacing();
+
+    const float spacing = ImGui::GetStyle().ItemSpacing.x;
+    const float controlsWidth = ImGui::GetContentRegionAvail().x * 0.62f;
+
+    ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 8.0f);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(16.0f, 12.0f));
+    ImGui::BeginChild("##practiceControls", ImVec2(controlsWidth, 0.0f), ImGuiChildFlags_Borders);
     drawPracticePanel();
     ImGui::EndChild();
 
+    ImGui::SameLine(0.0f, spacing);
+    ImGui::BeginChild("##practiceTools", ImVec2(0.0f, 0.0f));
+    ImGui::BeginChild("##practiceTuner", ImVec2(0.0f, 255.0f), ImGuiChildFlags_Borders);
+    drawTunerPanel();
+    ImGui::EndChild();
+    ImGui::Spacing();
+    ImGui::BeginChild("##practiceRecorder", ImVec2(0.0f, 0.0f), ImGuiChildFlags_Borders);
+    drawRecorderPanel();
+    ImGui::EndChild();
+    ImGui::EndChild();
     ImGui::PopStyleVar(2);
 }
 
@@ -2073,88 +2581,16 @@ void DesktopUI::drawFrame()
     ImGui::SetNextWindowSize(ImGui::GetIO().DisplaySize);
 
     ImGui::Begin("IbiFX", nullptr,
-                  ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove);
+                  ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoCollapse
+                      | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove);
 
-    // Duas colunas, como o AmpliTube: o rig à esquerda, o navegador de
-    // equipamentos à direita. Cada coluna é uma child com rolagem própria.
-    const float mainWidth = ImGui::GetContentRegionAvail().x - kBrowserWidth - ImGui::GetStyle().ItemSpacing.x;
-    ImGui::BeginChild("##main", ImVec2(mainWidth, 0.0f));
-
-    // --- Título ---
-    // Fonte embutida do ImGui ampliada na hora, sem precisar carregar uma
-    // segunda fonte só pra ter um "H1" — SetWindowFontScale muda só o
-    // tamanho de desenho, não a nitidez (o glifo já é bitmap, não vetor).
-    ImGui::SetWindowFontScale(1.9f);
-    ImGui::TextUnformatted("IbiFX");
-    ImGui::SetWindowFontScale(1.0f);
-    ImGui::SameLine();
-    ImGui::SetCursorPosY(ImGui::GetCursorPosY() + 14.0f);
-    ImGui::TextDisabled("pedalboard digital");
-
-    // --- Status ---
-    // A palavra em si muda de cor (verde tocando, cinza parado) — mais
-    // simples e mais seguro de alinhar do que desenhar uma bolinha à mão
-    // misturada com o layout automático do ImGui.
-    const bool running = m_engine.isRunning();
-    const ImVec4 statusColor = running ? ImVec4(0.3f, 0.85f, 0.4f, 1.0f) : ImVec4(0.6f, 0.6f, 0.65f, 1.0f);
-
-    ImGui::TextColored(statusColor, "%s", running ? "tocando" : "parado");
-    ImGui::SameLine();
-    ImGui::Text("   %s   %d Hz", m_engine.deviceName().c_str(), static_cast<int>(m_engine.sampleRate()));
-
-    ImGui::Spacing();
-    ImGui::Separator();
-
-    // --- Presets, dentro de um cartão com fundo e borda próprios ---
-    ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 8.0f);
-    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(12.0f, 10.0f));
-    ImGui::BeginChild("##presetCard", ImVec2(0.0f, 210.0f), ImGuiChildFlags_Borders);
-    drawPresetPanel();
-    ImGui::EndChild();
-    ImGui::PopStyleVar(2);
-
+    drawWorkspaceHeader();
     ImGui::Spacing();
 
-    // --- Níveis, no mesmo estilo de cartão ---
-    ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 8.0f);
-    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(12.0f, 10.0f));
-    ImGui::BeginChild("##meterCard", ImVec2(0.0f, 0.0f), ImGuiChildFlags_Borders | ImGuiChildFlags_AutoResizeY);
-    drawSectionHeader("Niveis");
-    drawMeter("entrada", m_engine.inputPeak());
-    drawMeter("saida", m_engine.outputPeak());
-    ImGui::EndChild();
-    ImGui::PopStyleVar(2);
-
-    ImGui::Spacing();
-
-    // --- Afinador, gravador e prática, lado a lado ---
-    drawToolsRow();
-
-    ImGui::Spacing();
-
-    // --- Rig, no mesmo estilo de cartão ---
-    ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 8.0f);
-    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(12.0f, 10.0f));
-    ImGui::BeginChild("##rigCard", ImVec2(0.0f, 0.0f),
-                      ImGuiChildFlags_Borders | ImGuiChildFlags_AutoResizeY);
-    drawRigStrip();
-    ImGui::EndChild();
-    ImGui::PopStyleVar(2);
-
-    ImGui::Spacing();
-    drawSectionHeader("Pedalboard");
-    drawPedalboard();
-
-    ImGui::EndChild();
-
-    ImGui::SameLine();
-
-    ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 8.0f);
-    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(12.0f, 10.0f));
-    ImGui::BeginChild("##browser", ImVec2(0.0f, 0.0f), ImGuiChildFlags_Borders);
-    drawGearBrowser();
-    ImGui::EndChild();
-    ImGui::PopStyleVar(2);
+    if (m_workspace == Workspace::Pedalboard)
+        drawPedalboardWorkspace();
+    else
+        drawPracticeWorkspace();
 
     ImGui::End();
 }
@@ -2180,12 +2616,8 @@ int DesktopUI::run(AudioDevice::Mode mode, double sampleRate, int blockSize)
         return 1;
     }
 
-    if (!m_engine.start(mode, sampleRate, blockSize))
-    {
-        std::cerr << "erro: " << m_engine.lastError() << "\n";
-        shutdownWindow();
-        return 1;
-    }
+    if (!startAudio())
+        std::cerr << "erro: " << m_audioStartError << "\n";
 
     captureTargets();
     refreshPresetList();
@@ -2240,5 +2672,5 @@ int DesktopUI::run(AudioDevice::Mode mode, double sampleRate, int blockSize)
     m_engine.stop();
     shutdownWindow();
 
-    return 0;
+    return m_audioStartError.empty() ? 0 : 1;
 }

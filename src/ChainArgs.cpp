@@ -26,6 +26,27 @@ std::string resolveId(const GearLibrary& library, const std::string& id, const c
 
     throw std::runtime_error("equipamento desconhecido: " + id + " (veja ibifx --list-gear)");
 }
+
+bool isClassicChainOption(const std::string& option)
+{
+    return option == "--no-gate" || option == "--no-compressor"
+        || option == "--no-highpass" || option == "--no-drive"
+        || option == "--no-delay" || option == "--no-reverb"
+        || option == "--asymmetric" || option == "--preamp"
+        || option == "--tonestack" || option == "--poweramp"
+        || option == "--cabinet" || option == "--bias"
+        || option == "--preamp-drive" || option == "--tone-bass"
+        || option == "--tone-mid" || option == "--tone-treble"
+        || option == "--gate-threshold" || option == "--gate-release"
+        || option == "--comp-threshold" || option == "--comp-ratio"
+        || option == "--comp-attack" || option == "--comp-release"
+        || option == "--highpass" || option == "--gain"
+        || option == "--drive" || option == "--time"
+        || option == "--feedback" || option == "--mix"
+        || option == "--reverb-decay" || option == "--reverb-damping"
+        || option == "--reverb-mix" || option == "--poweramp-drive"
+        || option == "--poweramp-sag" || option == "--cabinet-mix";
+}
 }
 
 bool CliOptions::usesRig() const
@@ -40,6 +61,9 @@ CliOptions parseSettings(const std::vector<std::string>& args)
     for (std::size_t i = 0; i < args.size(); ++i)
     {
         const std::string& option = args[i];
+
+        if (isClassicChainOption(option))
+            settings.hasExplicitClassicChain = true;
 
         if (option == "--no-gate")
         {

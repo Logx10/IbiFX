@@ -36,13 +36,11 @@ struct SDL_Renderer;
 // Terminal.
 //
 // O NAVEGADOR DE EQUIPAMENTOS (painel da direita)
-// Mostra a GearLibrary em abas Stomp / Amp / Cab / Rack, como o navegador
-// do AmpliTube. Clicar num item muda m_rig, e o rig inteiro vira um Preset
-// novo aplicado na cadeia (applyRig()). Uma troca de equipamento é
-// estrutural (módulos entram e saem da cadeia), então ela passa pelo mesmo
-// caminho de parar/aplicar/religar de loadPreset(), não pela fila de
-// comandos — e por isso os knobs mexidos à mão voltam aos valores da
-// receita a cada troca.
+// Mostra a GearLibrary por categoria e subtipo. Arrastar um equipamento
+// insere a receita na posição escolhida da cadeia linear; nenhuma categoria
+// possui posição privilegiada. Mudanças estruturais continuam usando o
+// caminho seguro de parar/aplicar/religar, enquanto knobs e bypass seguem
+// pela fila de comandos.
 class DesktopUI
 {
 public:
@@ -69,6 +67,10 @@ private:
     bool initWindow();
     void shutdownWindow();
 
+    // Tenta iniciar o audio com a configuracao guardada por run(). Se falhar,
+    // conserva a janela aberta e guarda o motivo para mostrar na interface.
+    bool startAudio();
+
     // Preenche m_targets a partir dos valores atuais de todos os
     // parâmetros da cadeia.
     void captureTargets();
@@ -84,6 +86,23 @@ private:
 
     void drawFrame();
 
+    // Cabeçalho operacional persistente: troca de workspace, afinador,
+    // estado do dispositivo e níveis. É apresentação sobre snapshots já
+    // publicados pelo engine; não participa do callback de áudio.
+    void drawWorkspaceHeader();
+
+    // Os dois espaços de trabalho são deliberadamente separados. A
+    // Pedaleira prioriza cadeia + edição; Prática prioriza timeline,
+    // transporte e gravação.
+    void drawPedalboardWorkspace();
+    void drawPracticeWorkspace();
+    void drawPracticeTimeline();
+
+    // A cadeia compacta é apenas uma projeção visual da cadeia atual. A
+    // seleção decide qual painel grande aparece abaixo, sem mudar o áudio.
+    void drawSignalChain();
+    void drawSelectedEquipmentEditor();
+
     // Lista de presets, em disco (presets/*.ibifxpreset), para a seção de
     // presets da janela.
     void refreshPresetList();
@@ -97,26 +116,33 @@ private:
     // deliberada como esta, bem diferente de girar um knob.
     void loadPreset(const std::string& path);
 
-    // O caminho comum de loadPreset() e applyRig(): para o motor, aplica o
+    // O caminho comum de loadPreset() e das edições estruturais: aplica o
     // preset, religa e recaptura os alvos dos knobs. Devolve false (com a
     // mensagem em error) se algo falhar.
     bool replaceChain(const Preset& preset, std::string& error);
 
-    // Monta next como preset e o aplica na cadeia, guardando em
-    // m_rigSegments qual faixa de módulos pertence a cada equipamento. Só
-    // vira m_rig se der certo — uma IR que não carrega deixa o rig antigo.
-    void applyRig(const Rig& next);
+    // Reconstrói o agrupamento visual. chainItems novos têm precedência;
+    // presets antigos tentam converter o Rig legado; o fallback é um item
+    // cru por módulo. Nunca altera a ModuleChain.
+    void adoptChainLayout(const Preset& preset);
+
+    // Captura a lista plana atual e acrescenta os agrupamentos visuais.
+    Preset captureCurrentPreset(const std::string& name) const;
+
+    // Operações estruturais livres. Todas constroem um Preset de controle,
+    // passam por replaceChain() e só então atualizam o layout da interface.
+    void insertGearAt(const std::string& gearId, std::size_t itemIndex);
+    void removeChainItem(std::size_t itemIndex);
+    void moveChainItem(std::size_t from, std::size_t insertionIndex);
 
     // Painel da direita: abas de categoria, filtro por character e a lista
     // de equipamentos.
     void drawGearBrowser();
+    void drawGearCategory(GearCategory category, const char* label, bool defaultOpen);
 
-    // Faixa com o rig atual (stomps, amp, cab, rack), com botões para
-    // remover e reordenar stomps/rack.
-    void drawRigStrip();
-
-    // Os pedais da cadeia, agrupados por equipamento quando há um rig ativo.
-    void drawPedalboard();
+    // Lista acessível da cadeia atual com botões de mover e remover; é a
+    // alternativa de teclado ao drag and drop.
+    void drawRigStrip(bool showHeader = true);
 
     // Desenha um equipamento com painel (GearModel::controls) como UMA
     // peça só: um ampli com a faixa de knobs de 0 a 10, ou um pedal com
@@ -132,7 +158,7 @@ private:
     // e grava em presets/<nome>.ibifxpreset.
     void savePreset(const std::string& name);
 
-    void drawPresetPanel();
+    void drawPresetPanel(bool showHeader = true);
 
     // Título de seção no estilo da janela: cor de destaque, um pouco maior
     // que o texto comum, com uma linha fina embaixo — separa visualmente
@@ -149,11 +175,6 @@ private:
     // desenhada com ImGui::ProgressBar em vez de caracteres.
     void drawMeter(const char* label, float peakLinear) const;
 
-    // A faixa de ferramentas, três cartões lado a lado: afinador, gravador
-    // de reamp e modo prática. Nada disso passa pela cadeia — são as peças
-    // que o LiveEngine já mantém sempre presentes (tuner(),
-    // reampRecorder(), practiceSession()).
-    void drawToolsRow();
     void drawTunerPanel();
     void drawRecorderPanel();
     void drawPracticePanel();
@@ -210,6 +231,7 @@ private:
     AudioDevice::Mode m_mode = AudioDevice::Mode::Null;
     double m_sampleRate = 48000.0;
     int m_blockSize = 128;
+    std::string m_audioStartError;
 
     // presets/*.ibifxpreset encontrados em disco, recarregado após salvar.
     std::vector<std::string> m_presetFiles;
@@ -233,35 +255,36 @@ private:
     std::string m_currentPresetPath;
 
     GearLibrary m_library;
-    Rig m_rig;
+    GearCategory m_browserCategory = GearCategory::Stomp;
 
-    // false enquanto a cadeia veio de flags ou de um preset — aí ela não
-    // corresponde a m_rig, e o pedalboard não tem como agrupar por
-    // equipamento.
-    bool m_rigActive = false;
-
-    // Um equipamento do rig visto como faixa de módulos da cadeia:
+    // Um item visual visto como faixa de módulos da cadeia:
     // [firstModule, firstModule + moduleCount).
-    struct RigSegment
+    struct ChainItem
     {
-        std::string label;
-
-        // Vazio para o grupo "Saida" (o Limiter), que não é um equipamento.
+        // Vazio para um módulo cru que não veio do catálogo.
         std::string gearId;
 
         std::size_t firstModule = 0;
         std::size_t moduleCount = 0;
     };
-    std::vector<RigSegment> m_rigSegments;
+    std::vector<ChainItem> m_chainItems;
 
-    // Segmentos que a pessoa abriu para ver "por dentro" — os módulos crus
-    // da receita em vez do painel. Zerado a cada applyRig().
+    enum class Workspace
+    {
+        Pedalboard,
+        Practice
+    };
+
+    static constexpr std::size_t kNoSelection = static_cast<std::size_t>(-1);
+
+    Workspace m_workspace = Workspace::Pedalboard;
+
+    // Item visual selecionado na cadeia.
+    std::size_t m_selectedItem = kNoSelection;
+
+    // Itens que a pessoa abriu para ver "por dentro" — os módulos crus da
+    // receita em vez do painel. Zerado a cada mudança estrutural.
     std::set<std::size_t> m_expandedSegments;
-
-    GearCategory m_browserCategory = GearCategory::Amp;
-
-    // Vazio = todos os "character" da categoria aberta.
-    std::string m_browserCharacter;
 
     std::string m_rigMessage;
 

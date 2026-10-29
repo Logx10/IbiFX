@@ -105,6 +105,14 @@ void addStomps(std::vector<GearModel>& models)
     models.push_back(gear("stomp.blue-chorus", "Blue Chorus", GearCategory::Stomp, "Modulation",
         "Chorus clássico dos anos 80: uma cópia levemente desafinada que ondula junto com o som.",
         {module("Chorus", {{"rate", 0.8f}, {"depth", 0.5f}, {"mix", 0.5f}})}));
+
+    models.push_back(gear("stomp.analog-echo", "Analog Echo", GearCategory::Stomp, "Delay",
+        "Delay de pedal escuro e curto para base e solos.",
+        {module("Delay", {{"time", 0.32f}, {"feedback", 0.38f}, {"mix", 0.28f}})}));
+
+    models.push_back(gear("stomp.spring-room", "Spring Room", GearCategory::Stomp, "Reverb",
+        "Ambiência curta inspirada em reverb de mola de amplificador.",
+        {module("Reverb", {{"decay", 0.45f}, {"damping", 0.72f}, {"mix", 0.22f}})}));
 }
 
 // Os amplis: a MESMA estrutura (filtro de entrada -> ganho -> Preamp ->
@@ -214,6 +222,21 @@ void addRack(std::vector<GearModel>& models)
     models.push_back(gear("rack.hall", "Hall Reverb", GearCategory::Rack, "Reverb",
         "Salão grande, cauda longa e brilhante.",
         {module("Reverb", {{"decay", 0.85f}, {"damping", 0.3f}, {"mix", 0.35f}})}));
+
+    models.push_back(gear("rack.output-limiter", "Output Limiter", GearCategory::Rack, "Dynamics",
+        "Proteção de saída que segura picos acima de 0 dBFS.",
+        {module("Limiter")}));
+}
+
+void addEqualizers(std::vector<GearModel>& models)
+{
+    models.push_back(gear("eq.high-pass", "High Pass", GearCategory::Equalizer, "Filter",
+        "Remove subgrave e excesso de grave antes ou depois da saturação.",
+        {module("HighPass", {{"frequency", 100.0f}})}));
+
+    models.push_back(gear("eq.tone-stack", "3-Band Tone Stack", GearCategory::Equalizer, "Tone Stack",
+        "Equalização passiva de três bandas baseada em circuito de amplificador.",
+        {module("ToneStack", {{"bass", 0.5f}, {"mid", 0.5f}, {"treble", 0.5f}})}));
 }
 
 // Um knob por parâmetro do módulo, na faixa e com o rótulo do próprio
@@ -272,6 +295,7 @@ const char* gearCategoryName(GearCategory category)
     case GearCategory::Amp: return "Amp";
     case GearCategory::Cabinet: return "Cabinet";
     case GearCategory::Rack: return "Rack";
+    case GearCategory::Equalizer: return "EQ";
     }
     return "?";
 }
@@ -281,6 +305,7 @@ GearLibrary::GearLibrary()
     addStomps(m_models);
     addAmps(m_models);
     addRack(m_models);
+    addEqualizers(m_models);
 
     for (GearModel& model : m_models)
     {
@@ -405,6 +430,25 @@ Preset GearLibrary::buildPreset(const Rig& rig, const std::string& name) const
     return result;
 }
 
+Preset GearLibrary::buildSignalChain(const std::vector<std::string>& equipmentIds,
+                                     const std::string& name) const
+{
+    Preset result;
+    result.name = name;
+
+    for (const std::string& id : equipmentIds)
+    {
+        const GearModel* model = find(id);
+        if (model == nullptr)
+            throw std::runtime_error("equipamento desconhecido: " + id);
+
+        result.modules.insert(result.modules.end(), model->modules.begin(), model->modules.end());
+        result.chainItems.push_back({model->id, model->modules.size()});
+    }
+
+    return result;
+}
+
 namespace
 {
 // Dois caminhos de IR apontam para o mesmo arquivo? Compara a forma
@@ -509,6 +553,10 @@ bool parseRig(const std::vector<GearModel>& catalog, const std::vector<Preset::M
         case GearCategory::Rack:
             next = RigStage::Rack;
             break;
+        case GearCategory::Equalizer:
+            // O Rig legado não tinha EQ livre. Presets novos usam
+            // Preset::chainItems e não passam por esta inferência.
+            continue;
         }
 
         if (recipeFitsAt(model.modules, modules, position))
@@ -529,6 +577,7 @@ bool parseRig(const std::vector<GearModel>& catalog, const std::vector<Preset::M
         case GearCategory::Amp: rig.amp = model.id; break;
         case GearCategory::Cabinet: rig.cabinet = model.id; break;
         case GearCategory::Rack: rig.rack.push_back(model.id); break;
+        case GearCategory::Equalizer: break;
         }
 
         if (parseRig(catalog, modules, position + model.modules.size(), candidate.next, rig))
@@ -541,6 +590,7 @@ bool parseRig(const std::vector<GearModel>& catalog, const std::vector<Preset::M
         case GearCategory::Amp: rig.amp.clear(); break;
         case GearCategory::Cabinet: rig.cabinet.clear(); break;
         case GearCategory::Rack: rig.rack.pop_back(); break;
+        case GearCategory::Equalizer: break;
         }
     }
 

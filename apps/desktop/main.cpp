@@ -49,8 +49,37 @@ int main(int argc, char** argv)
         LiveEngine engine;
         const CliOptions options = parseSettings(chainArgs);
 
-        // Preset, rig ou flags — ver a precedência em ChainArgs.h.
-        std::cout << buildChainFromOptions(options, engine.chain()) << "\n";
+        Preset initialPreset;
+        bool hasInitialPreset = false;
+
+        // Sem qualquer escolha explícita, o desktop nasce audível e curto:
+        // um amp limpo + a primeira IR disponível. É uma cadeia livre desde
+        // o primeiro quadro, não um Rig que passará a limitar a edição.
+        if (options.loadPresetPath.empty() && !options.usesRig()
+            && !options.hasExplicitClassicChain)
+        {
+            GearLibrary library;
+            library.scanImpulseResponses(options.irsDirectory);
+
+            std::vector<std::string> equipmentIds = {"amp.american-clean"};
+            const std::vector<const GearModel*> cabinets = library.modelsIn(GearCategory::Cabinet);
+            if (!cabinets.empty())
+                equipmentIds.push_back(cabinets.front()->id);
+
+            initialPreset = library.buildSignalChain(equipmentIds, "Inicio");
+            preset::apply(initialPreset, engine.chain());
+            hasInitialPreset = true;
+
+            std::cout << (cabinets.empty()
+                ? "cadeia inicial: American Clean (nenhuma IR encontrada)\n"
+                : "cadeia inicial: American Clean + cabinet\n");
+        }
+        else
+        {
+            // Preset, rig legado ou flags clássicas continuam com a mesma
+            // precedência e o mesmo parser compartilhado com o CLI.
+            std::cout << buildChainFromOptions(options, engine.chain()) << "\n";
+        }
 
         if (!useNullDevice)
         {
@@ -64,7 +93,9 @@ int main(int argc, char** argv)
         // navegador. O --preset vence o rig (ver ChainArgs.h), então aí não.
         // Com --preset, a janela abre com ele marcado na lista e, se ele veio
         // de um rig, com os módulos agrupados em painéis de equipamento.
-        if (!options.loadPresetPath.empty())
+        if (hasInitialPreset)
+            ui.adoptPreset(initialPreset, "");
+        else if (!options.loadPresetPath.empty())
             ui.adoptPreset(preset::load(options.loadPresetPath), options.loadPresetPath);
         else if (options.usesRig())
         {

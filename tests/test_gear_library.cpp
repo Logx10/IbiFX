@@ -257,6 +257,66 @@ void testUnknownOrMisplacedGearThrows()
     check(throws(library, misplaced), "amp na lista de stomps lanca");
 }
 
+// A cadeia livre não tem ordem por categoria: amp depois de cabinet, o
+// mesmo pedal duas vezes e nenhum Limiter escondido no fim.
+void testSignalChainKeepsAnyOrderAndDuplicates()
+{
+    std::cout << "cadeia livre aceita qualquer ordem e duplicatas\n";
+
+    GearLibrary library;
+    const GearModel* drive = library.find("stomp.yellow-drive");
+    const GearModel* amp = library.find("amp.brit-800");
+    const GearModel* eq = library.find("eq.high-pass");
+    check(drive != nullptr && amp != nullptr && eq != nullptr, "modelos existem no catalogo");
+    if (drive == nullptr || amp == nullptr || eq == nullptr)
+        return;
+
+    const Preset result = library.buildSignalChain(
+        {"amp.brit-800", "stomp.yellow-drive", "eq.high-pass", "stomp.yellow-drive"}, "Livre");
+
+    check(result.name == "Livre", "nome");
+    check(result.rig.empty(), "sem rig legado");
+    check(result.chainItems.size() == 4, "um item por equipamento, duplicatas inclusas");
+    check(result.chainItems[0].gearId == "amp.brit-800", "amp primeiro");
+    check(result.chainItems[1].gearId == "stomp.yellow-drive", "stomp depois do amp");
+    check(result.chainItems[3].gearId == "stomp.yellow-drive", "mesmo stomp de novo");
+
+    std::size_t covered = 0;
+    for (const Preset::ChainItemState& item : result.chainItems)
+        covered += item.moduleCount;
+    check(covered == result.modules.size(), "itens cobrem a lista plana inteira");
+    check(result.chainItems[0].moduleCount == amp->modules.size(), "amp ocupa a receita inteira");
+
+    const std::size_t total = 2 * drive->modules.size() + amp->modules.size() + eq->modules.size();
+    check(result.modules.size() == total, "nenhum Limiter implicito");
+    check(result.modules.front().type == amp->modules.front().type, "receita do amp no inicio");
+
+    ModuleChain chain;
+    preset::apply(result, chain);
+    check(chain.size() == total, "a cadeia livre aplica sem erro");
+}
+
+void testEmptySignalChainAndUnknownId()
+{
+    std::cout << "cadeia livre vazia e id desconhecido\n";
+
+    GearLibrary library;
+    const Preset empty = library.buildSignalChain({}, "Vazia");
+    check(empty.modules.empty(), "lista vazia vira cadeia vazia");
+    check(empty.chainItems.empty(), "sem itens");
+
+    bool lancou = false;
+    try
+    {
+        library.buildSignalChain({"amp.nao-existe"}, "x");
+    }
+    catch (const std::runtime_error&)
+    {
+        lancou = true;
+    }
+    check(lancou, "id desconhecido lanca");
+}
+
 void testScanFindsCabinetsAndMicrophones()
 {
     std::cout << "scan encontra cabinets (pastas) e microfones (.wav)\n";
@@ -427,6 +487,8 @@ int main()
     testRigModelsMatchBuildPreset();
     testEmptyRigIsJustTheLimiter();
     testUnknownOrMisplacedGearThrows();
+    testSignalChainKeepsAnyOrderAndDuplicates();
+    testEmptySignalChainAndUnknownId();
     testScanFindsCabinetsAndMicrophones();
     testScanOfMissingDirectoryFindsNothing();
     testInferRigRecoversTheRigOfASavedChain();

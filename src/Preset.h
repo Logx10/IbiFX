@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <string>
 #include <utility>
 #include <vector>
@@ -61,6 +62,21 @@ struct Preset
 
     // Na ordem em que os módulos aparecem na cadeia.
     std::vector<ModuleState> modules;
+
+    // Como a interface agrupa a lista plana em equipamentos visuais. Um
+    // item pode representar uma receita composta (um amp com sete módulos)
+    // ou um módulo cru (gearId vazio, moduleCount 1). A soma precisa cobrir
+    // modules inteira, na mesma ordem.
+    //
+    // Isto NÃO participa do processamento: preset::apply() continua lendo
+    // somente modules. É metadado opcional para qualquer frontend conseguir
+    // reconstruir o painel de hardware sem impor Stomp -> Amp -> Cab -> Rack.
+    struct ChainItemState
+    {
+        std::string gearId;
+        std::size_t moduleCount = 1;
+    };
+    std::vector<ChainItemState> chainItems;
 
     // De qual rig da GearLibrary os módulos vieram, se vieram de um. É só
     // um rótulo: preset::apply() ignora, quem aplica continua sendo a

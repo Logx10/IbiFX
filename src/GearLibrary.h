@@ -49,7 +49,8 @@ enum class GearCategory
     Stomp,
     Amp,
     Cabinet,
-    Rack
+    Rack,
+    Equalizer
 };
 
 // Texto para exibição: "Stomp", "Amp", "Cabinet", "Rack".
@@ -128,6 +129,13 @@ public:
     // terminando no Limiter (mesma garantia de buildChain()). Lança nos
     // mesmos casos de rigModels().
     Preset buildPreset(const Rig& rig, const std::string& name) const;
+
+    // Monta uma cadeia linear exatamente na ordem recebida. Aceita qualquer
+    // categoria em qualquer posição, duplicatas e lista vazia. Diferente do
+    // buildPreset(Rig), não acrescenta Limiter implicitamente e registra em
+    // Preset::chainItems como cada receita ocupa a lista plana de módulos.
+    Preset buildSignalChain(const std::vector<std::string>& equipmentIds,
+                            const std::string& name) const;
 
     // Verdadeiro se a cadeia do preset tem exatamente a ESTRUTURA do rig —
     // os mesmos tipos de módulo, na mesma ordem, terminando no Limiter.

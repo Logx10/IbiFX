@@ -24,10 +24,13 @@
 //     module Cabinet 0
 //     ir audio/ir/bassman.wav
 //     param mix 1
+//     item amp.brit-800 7
+//     item cab.4x12-brit.sm57 1
 //
 // `module <tipo> <0 ou 1 de bypass>` abre um módulo novo; as linhas `param`
-// e `ir` seguintes pertencem a ele, até o próximo `module`. Linhas em branco
-// e começadas com '#' são ignoradas.
+// e `ir` seguintes pertencem a ele, até o próximo `module`. `item` descreve
+// o agrupamento visual da lista e pode aparecer antes ou depois dos módulos.
+// Linhas em branco e começadas com '#' são ignoradas.
 namespace preset
 {
 // Converte um Preset no seu texto. Sempre termina em '\n'.

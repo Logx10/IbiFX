@@ -234,6 +234,54 @@ void testRigRoundTrips()
     check(lancouPosicaoDesconhecida, "posicao de rig desconhecida lanca");
 }
 
+// O agrupamento visual (linhas "item ...") vai e volta pelo texto, com
+// "-" para módulo cru. Ele não muda os módulos, e um preset sem itens
+// continua carregando com a lista vazia.
+void testChainItemsRoundTrip()
+{
+    std::cout << "os itens da cadeia vao e voltam pelo texto\n";
+
+    ModuleChain chain;
+    buildSampleChain(chain);
+    Preset original = preset::capture("Livre", chain);
+    original.chainItems = {{"stomp.yellow-drive", 2}, {"", 1}};
+
+    const std::string text = preset::serialize(original);
+    check(text.find("item - 1\n") != std::string::npos, "modulo cru vira '-'");
+
+    const Preset restored = preset::deserialize(text);
+    check(restored.chainItems.size() == 2, "dois itens");
+    check(restored.chainItems[0].gearId == "stomp.yellow-drive", "gearId preservado");
+    check(restored.chainItems[0].moduleCount == 2, "quantidade preservada");
+    check(restored.chainItems[1].gearId.empty(), "'-' volta como modulo cru");
+    check(restored.modules.size() == original.modules.size(), "modulos intactos");
+
+    const Preset withoutItems = preset::deserialize("preset Antigo\nmodule Gain 0\nparam gain 1\n");
+    check(withoutItems.chainItems.empty(), "preset sem 'item' carrega sem itens");
+
+    bool lancouSemQuantidade = false;
+    try
+    {
+        preset::deserialize("preset X\nitem amp.brit-800\n");
+    }
+    catch (const std::runtime_error&)
+    {
+        lancouSemQuantidade = true;
+    }
+    check(lancouSemQuantidade, "'item' sem quantidade lanca");
+
+    bool lancouZero = false;
+    try
+    {
+        preset::deserialize("preset X\nitem amp.brit-800 0\n");
+    }
+    catch (const std::runtime_error&)
+    {
+        lancouZero = true;
+    }
+    check(lancouZero, "'item' com quantidade zero lanca");
+}
+
 // Uma linha fora do formato (module/param/ir malformados, ou palavra-chave
 // desconhecida) lança, em vez de ser ignorada.
 void testDeserializeThrowsOnMalformedText()
@@ -330,6 +378,7 @@ int main()
     testApplyThrowsOnUnknownType();
     testSerializeRoundTrip();
     testRigRoundTrips();
+    testChainItemsRoundTrip();
     testDeserializeThrowsOnMalformedText();
     testPresetManagerRoundTripsThroughDisk();
     testLoadMissingFileThrows();

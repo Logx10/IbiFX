@@ -33,6 +33,11 @@ struct CliOptions
     // Onde procurar os cabinets do --cab (--irs PASTA).
     std::string irsDirectory = "irs";
 
+    // Verdadeiro quando pelo menos uma flag da cadeia clássica foi usada.
+    // Permite ao desktop distinguir "nenhuma escolha" (abrir com o rig
+    // inicial simples) de uma configuração explícita do usuário.
+    bool hasExplicitClassicChain = false;
+
     // true se alguma flag de rig foi usada.
     bool usesRig() const;
 };
