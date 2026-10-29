@@ -1,5 +1,7 @@
 #include "ToneStack.h"
 
+#include <cmath>
+
 namespace
 {
 // Componentes do tone stack do Fender '59 Bassman, exatamente como
@@ -12,6 +14,16 @@ constexpr double kR1 = 250e3;
 constexpr double kR2 = 1e6;
 constexpr double kR3 = 25e3;
 constexpr double kR4 = 56e3;
+
+// Curva de um pot logarítmico tipo "A": (b^x - 1)/(b - 1) com b = 81 dá 0
+// no início, 1 no fim e 10% da resistência no meio do curso (81^0,5 = 9,
+// 8/80 = 0,1) — a aproximação usual do audio taper. Ver o header.
+constexpr double kAudioTaperBase = 81.0;
+
+double bassTaper(double knobPosition)
+{
+    return (std::pow(kAudioTaperBase, knobPosition) - 1.0) / (kAudioTaperBase - 1.0);
+}
 }
 
 ToneStack::ToneStack()
@@ -76,7 +88,8 @@ void ToneStack::reset()
 // contínuo (b1..b3, a1..a3) para os coeficientes digitais B0..B3, A0..A3.
 void ToneStack::updateCoefficients()
 {
-    const double l = static_cast<double>(m_parameters[0].value());
+    // Bass passa pela curva do pot; mid e treble são lineares (header).
+    const double l = bassTaper(static_cast<double>(m_parameters[0].value()));
     const double m = static_cast<double>(m_parameters[1].value());
     const double t = static_cast<double>(m_parameters[2].value());
 

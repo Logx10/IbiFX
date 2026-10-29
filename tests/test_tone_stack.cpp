@@ -181,6 +181,32 @@ void testBassBoostsLowFrequencies()
     check(rmsAlto > rmsBaixo, "bass 1.0 deixa mais energia de 80 Hz passar que bass 0.0");
 }
 
+// O pot de bass é logarítmico: com o knob no meio, só ~10% da resistência
+// está no circuito. Com a posição usada como fração linear, o meio do knob
+// ficava a 0,3 dB do máximo em 80 Hz; com a curva certa, a diferença passa
+// de 3 dB — o knob no meio soa realmente "no meio".
+void testBassKnobFollowsAudioTaper()
+{
+    std::cout << "knob de bass segue a curva de pot logaritmico\n";
+
+    auto medirComBass = [](float bassValue) -> float
+    {
+        std::vector<float> sinal = generateSine(80.0, 8000);
+
+        ToneStack toneStack;
+        toneStack.setBass(bassValue);
+        toneStack.setMid(0.5f);
+        toneStack.setTreble(0.5f);
+        toneStack.prepare(kSampleRate, 64);
+        toneStack.process(sinal);
+
+        return rmsOfSecondHalf(sinal);
+    };
+
+    const double meioParaMaximoDb = 20.0 * std::log10(medirComBass(1.0f) / medirComBass(0.5f));
+    check(meioParaMaximoDb > 2.0, "bass 0.5 fica mais de 2 dB abaixo de bass 1.0 em 80 Hz");
+}
+
 // reset() apaga a memória do filtro (3 amostras de entrada, 3 de saída):
 // depois de processar sinal de verdade e resetar, um bloco silencioso tem
 // que sair silencioso — nada de eco numérico do que veio antes.
@@ -246,6 +272,7 @@ int main()
     testStaysStableAcrossControlRange();
     testTrebleBoostsHighFrequencies();
     testBassBoostsLowFrequencies();
+    testBassKnobFollowsAudioTaper();
     testResetClearsFilterHistory();
     testParameterRoundTrip();
     testEmptyBufferDoesNotCrash();

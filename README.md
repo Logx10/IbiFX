@@ -406,7 +406,7 @@ em **Actions**. Ele roda a cada push na `main` ou em uma tag `v*`. Para gerar
 uma build sob demanda, abra **Actions → Build Windows and macOS → Run workflow**.
 
 Cada pacote contém o programa de terminal (`ibifx`), a interface gráfica
-(`ibifx_desktop`), as pastas `presets` e `irs`, o README e a licença. No macOS,
+(`ibifx_desktop`), as pastas `presets`, `irs` e `assets`, o README e a licença. No macOS,
 a interface gráfica é um executável de linha de comando; os pacotes não são
 assinados nem notarizados.
 

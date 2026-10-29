@@ -58,10 +58,21 @@ void addStomps(std::vector<GearModel>& models)
         "Corta o chiado entre as notas. Vai antes de qualquer ganho.",
         {module("NoiseGate", {{"threshold", 0.02f}, {"release", 0.15f}})}));
 
+    // No espírito do Dyna Comp: dois knobs só. Sensitivity é ganho ANTES do
+    // compressor — quanto mais sinal entra, mais passa do threshold e mais
+    // o pedal espreme, como no circuito original. Threshold, ratio, attack
+    // e release ficam fixos (compressão forte, soltando devagar). Output é
+    // o ganho depois, porque o Compressor não repõe o volume que tira: sem
+    // ele, ligar o pedal derrubava a cadeia. 3x devolve o nível de uma
+    // palhetada forte (-12 dBFS) com a Sensitivity no padrão.
     models.push_back(gear("stomp.orange-squeeze", "Orange Squeeze", GearCategory::Stomp, "Dynamics",
         "Compressor de pedal: nivela a palhetada e alonga o sustain.",
-        {module("Compressor", {{"threshold", -24.0f}, {"ratio", 4.0f},
-                               {"attack", 0.005f}, {"release", 0.2f}})}));
+        {module("Gain", {{"gain", 2.0f}}),
+         module("Compressor", {{"threshold", -24.0f}, {"ratio", 8.0f},
+                               {"attack", 0.004f}, {"release", 0.3f}}),
+         module("Gain", {{"gain", 3.0f}})}));
+    models.back().controls = {control("Sensitivity", 0, "gain", 1.0f, 6.0f),
+                              control("Output", 2, "gain", 0.0f, 8.0f)};
 
     models.push_back(gear("stomp.clean-boost", "Clean Boost", GearCategory::Stomp, "Boost",
         "Só volume, sem distorção — empurra o ampli para saturar mais.",
@@ -234,9 +245,19 @@ void addEqualizers(std::vector<GearModel>& models)
         "Remove subgrave e excesso de grave antes ou depois da saturação.",
         {module("HighPass", {{"frequency", 100.0f}})}));
 
+    // O tone stack é passivo: com os knobs no meio ele tira ~8 dB na faixa
+    // da guitarra (~11 dB perto de 1 kHz). Dentro de um ampli, o estágio de
+    // ganho seguinte repõe isso; avulso, a receita precisa do mesmo
+    // estágio, senão inserir o EQ derruba o volume da cadeia. 2,5x (+8 dB)
+    // devolve o nível médio entre 100 Hz e 3 kHz com os knobs no meio.
     models.push_back(gear("eq.tone-stack", "3-Band Tone Stack", GearCategory::Equalizer, "Tone Stack",
         "Equalização passiva de três bandas baseada em circuito de amplificador.",
-        {module("ToneStack", {{"bass", 0.5f}, {"mid", 0.5f}, {"treble", 0.5f}})}));
+        {module("ToneStack", {{"bass", 0.5f}, {"mid", 0.5f}, {"treble", 0.5f}}),
+         module("Gain", {{"gain", 2.5f}})}));
+    models.back().controls = {control("Bass", 0, "bass", 0.0f, 1.0f),
+                              control("Mid", 0, "mid", 0.0f, 1.0f),
+                              control("Treble", 0, "treble", 0.0f, 1.0f),
+                              control("Level", 1, "gain", 0.0f, 6.0f)};
 }
 
 // Um knob por parâmetro do módulo, na faixa e com o rótulo do próprio
