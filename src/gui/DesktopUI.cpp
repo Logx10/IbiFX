@@ -4,6 +4,7 @@
 #include <imgui.h>
 #include <imgui_impl_sdl3.h>
 #include <imgui_impl_sdlrenderer3.h>
+#include <stb_image.h>
 
 #include <algorithm>
 #include <cctype>
@@ -18,6 +19,7 @@
 #include <string>
 #include <utility>
 
+#include "GearSkins.h"
 #include "Preset.h"
 #include "PresetManager.h"
 
@@ -80,7 +82,23 @@ constexpr ImVec4 kAccentColor = kVintageGold;
 constexpr ImVec4 kSurfaceRaised(0.118f, 0.122f, 0.125f, 1.0f);
 constexpr ImVec4 kSurfaceSelected(0.235f, 0.208f, 0.165f, 1.0f);
 
-constexpr const char* kLogoPath = "assets/brand/ibifx-logo.bmp";
+constexpr const char* kLogoPath = "assets/brand/ibifx-logo.png";
+
+// Imagens dos equipamentos (GearSkins.h): assets/gear/<id>/ e as peças
+// comuns em assets/gear/_shared/.
+constexpr const char* kGearAssetsDir = "assets/gear";
+
+// Na imagem do footswitch, o centro da porca fica a 57% da altura: o botão
+// aparece em leve perspectiva, subindo acima dela. É a porca que se alinha
+// com o furo do corpo.
+constexpr float kFootswitchNutCenter = 0.57f;
+
+// O ImGui identifica texturas por ImTextureID; com o backend SDL_Renderer,
+// o id é o próprio ponteiro da SDL_Texture.
+ImTextureRef textureRef(SDL_Texture* texture)
+{
+    return ImTextureRef(static_cast<ImTextureID>(reinterpret_cast<std::uintptr_t>(texture)));
+}
 
 // Unbounded (OFL), sans larga no lugar da Monument Extended da folha da
 // marca. Só para rótulos e nomes; o texto corrido segue na fonte padrão.
@@ -208,7 +226,7 @@ void drawSignalThumbnail(ImDrawList* drawList, ImVec2 origin, float scale, Signa
 // Um item da signal chain: miniatura em cima, nome embaixo. Desenhado na
 // posição atual do cursor, já no tamanho multiplicado por scale.
 bool signalCard(const char* id, const std::string& title, SignalCardKind kind, ImU32 bodyColor,
-                bool selected, float scale)
+                bool selected, float scale, SDL_Texture* thumbnail = nullptr, float thumbnailAspect = 1.0f)
 {
     const ImVec2 origin = ImGui::GetCursorScreenPos();
     const ImVec2 size(kSignalCardWidth * scale, kSignalCardHeight * scale);
@@ -228,7 +246,22 @@ bool signalCard(const char* id, const std::string& title, SignalCardKind kind, I
     drawList->AddRect(origin, end, ImGui::GetColorU32(border), 6.0f * scale, 0, selected ? 2.0f : 1.0f);
 
     const ImVec2 thumbOrigin(origin.x + (size.x - kSignalThumbWidth * scale) * 0.5f, origin.y + 10.0f * scale);
-    drawSignalThumbnail(drawList, thumbOrigin, scale, kind, bodyColor);
+    if (thumbnail != nullptr)
+    {
+        // A imagem do equipamento, na mesma caixa da miniatura vetorial,
+        // mantendo a proporção.
+        const float boxHeight = kSignalThumbHeight * scale;
+        const float imageWidth = std::min(kSignalThumbWidth * scale, boxHeight * thumbnailAspect);
+        const float imageHeight = imageWidth / thumbnailAspect;
+        const ImVec2 imageMin(origin.x + (size.x - imageWidth) * 0.5f,
+                              thumbOrigin.y + (boxHeight - imageHeight) * 0.5f);
+        drawList->AddImage(textureRef(thumbnail), imageMin,
+                           ImVec2(imageMin.x + imageWidth, imageMin.y + imageHeight));
+    }
+    else
+    {
+        drawSignalThumbnail(drawList, thumbOrigin, scale, kind, bodyColor);
+    }
 
     // A fonte encolhe menos que a miniatura, para o nome continuar legível.
     const float fontSize = ImGui::GetFontSize() * std::clamp(scale, 0.75f, 1.0f);
@@ -256,7 +289,10 @@ bool signalCard(const char* id, const std::string& title, SignalCardKind kind, I
 constexpr float kKnobAngleMin = 3.14159265f * 0.75f;
 constexpr float kKnobAngleMax = 3.14159265f * 2.25f;
 
-bool knob(const char* id, float* value, float minValue, float maxValue, float radius)
+// Com texture, desenha a imagem do knob girada em vez do knob vetorial. A
+// imagem tem o ponteiro às 12 horas, que é o meio do curso.
+bool knob(const char* id, float* value, float minValue, float maxValue, float radius,
+          SDL_Texture* texture = nullptr)
 {
     ImGuiIO& io = ImGui::GetIO();
     ImDrawList* drawList = ImGui::GetWindowDrawList();
@@ -281,6 +317,20 @@ bool knob(const char* id, float* value, float minValue, float maxValue, float ra
 
     const float fraction = (maxValue > minValue) ? (*value - minValue) / (maxValue - minValue) : 0.0f;
     const float angle = kKnobAngleMin + fraction * (kKnobAngleMax - kKnobAngleMin);
+
+    if (texture != nullptr)
+    {
+        const float rotation = angle - 3.14159265f * 1.5f;
+        const float cosine = std::cos(rotation);
+        const float sine = std::sin(rotation);
+        auto corner = [&](float dx, float dy) {
+            return ImVec2(center.x + (dx * cosine - dy * sine) * radius,
+                          center.y + (dx * sine + dy * cosine) * radius);
+        };
+        drawList->AddImageQuad(textureRef(texture), corner(-1.0f, -1.0f), corner(1.0f, -1.0f),
+                               corner(1.0f, 1.0f), corner(-1.0f, 1.0f));
+        return changed;
+    }
 
     const ImU32 body = ImGui::GetColorU32(ImGuiCol_FrameBgHovered);
     const ImU32 track = ImGui::GetColorU32(ImGuiCol_FrameBg);
@@ -607,9 +657,10 @@ void drawBrandStripes(ImDrawList* drawList, ImVec2 origin, float height, ImU32 c
 }
 }
 
-DesktopUI::DesktopUI(LiveEngine& engine, std::string irsDirectory)
+DesktopUI::DesktopUI(LiveEngine& engine, std::string irsDirectory, bool developerMode)
     : m_engine(engine)
     , m_irsDirectory(std::move(irsDirectory))
+    , m_developerMode(developerMode)
 {
     m_library.scanImpulseResponses(m_irsDirectory);
 }
@@ -759,17 +810,15 @@ bool DesktopUI::initWindow()
     // O logo é opcional: sem o arquivo (rodando de outra pasta), o
     // cabeçalho cai para o nome em texto. A textura pertence ao renderer,
     // que a libera em SDL_DestroyRenderer().
-    if (SDL_Surface* logo = SDL_LoadBMP(kLogoPath))
-    {
-        m_logoTexture = SDL_CreateTextureFromSurface(m_renderer, logo);
-        if (m_logoTexture != nullptr)
-        {
-            m_logoWidth = static_cast<float>(logo->w);
-            m_logoHeight = static_cast<float>(logo->h);
-            SDL_SetTextureScaleMode(m_logoTexture, SDL_SCALEMODE_LINEAR);
-        }
-        SDL_DestroySurface(logo);
-    }
+    m_logoTexture = loadTexture(kLogoPath, m_logoWidth, m_logoHeight);
+
+    // Peças comuns às skins de equipamento. Sem elas, cada skin ainda
+    // desenha corpo e knobs; só faltam LED e footswitch.
+    const std::string shared = std::string(kGearAssetsDir) + "/_shared/";
+    float ignoredWidth = 0.0f, ignoredHeight = 0.0f;
+    m_ledOnTexture = loadTexture(shared + "led-on.png", ignoredWidth, ignoredHeight);
+    m_ledOffTexture = loadTexture(shared + "led-off.png", ignoredWidth, ignoredHeight);
+    m_footswitchTexture = loadTexture(shared + "footswitch.png", m_footswitchWidth, m_footswitchHeight);
 
     ImGui_ImplSDL3_InitForSDLRenderer(m_window, m_renderer);
     ImGui_ImplSDLRenderer3_Init(m_renderer);
@@ -921,7 +970,7 @@ void DesktopUI::drawPedal(std::size_t moduleIndex, std::size_t firstFlatIndex)
         ImGui::SetCursorScreenPos(ImVec2(cellCenterX - labelSize.x * 0.5f, cellTop));
         ImGui::TextUnformatted(parameter.label().c_str());
 
-        const float knobTop = cellTop + labelSize.y + 4.0f;
+        const float knobTop = cellTop + ImGui::GetTextLineHeight() + 4.0f;
         ImGui::SetCursorScreenPos(ImVec2(cellCenterX - kPedalKnobRadius, knobTop));
 
         float value = m_targets[index];
@@ -1515,8 +1564,13 @@ void DesktopUI::drawGearPanel(std::size_t segmentIndex, const GearModel& model)
     const float footerHeight = isAmp ? 44.0f : kPedalFootswitchAreaHeight;
     const float height = headerHeight + knobsHeight + footerHeight;
 
+    // Os botões (Reset e, no modo desenvolvedor, "+") ficam embaixo do
+    // corpo, como na skin com imagens — no pedal não cabem ao lado do
+    // footswitch.
+    const float buttonsHeight = ImGui::GetFrameHeight() + ImGui::GetStyle().ItemSpacing.y;
+
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
-    ImGui::BeginChild("gear", ImVec2(width, height), ImGuiChildFlags_None,
+    ImGui::BeginChild("gear", ImVec2(width, height + buttonsHeight), ImGuiChildFlags_None,
                       ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
 
     ImDrawList* drawList = ImGui::GetWindowDrawList();
@@ -1567,36 +1621,22 @@ void DesktopUI::drawGearPanel(std::size_t segmentIndex, const GearModel& model)
         ImGui::TextDisabled("%s", model.microphone.c_str());
     }
 
-    // Os dois botões de canto: abrir por dentro e voltar aos valores da
-    // receita. O reset NÃO é resetModule(): isso devolveria cada módulo ao
-    // padrão DELE, e não ao da receita deste equipamento. No ampli ficam no
-    // topo; no pedal, embaixo, ao lado do footswitch — no topo de um corpo
-    // estreito eles cobririam o nome.
-    const float buttonsY = isAmp ? origin.y + 5.0f : bodyMax.y - 30.0f;
-    ImGui::SetCursorScreenPos(ImVec2(origin.x + 6.0f, buttonsY));
-    if (ImGui::SmallButton("+"))
-        m_expandedSegments.insert(segmentIndex);
-    if (ImGui::IsItemHovered())
-        ImGui::SetTooltip("ver os modulos por dentro");
-
-    ImGui::SetCursorScreenPos(ImVec2(bodyMax.x - 30.0f, buttonsY));
-    if (ImGui::SmallButton("R"))
-    {
-        for (std::size_t m = 0; m < model.modules.size(); ++m)
-        {
-            for (const auto& [id, value] : model.modules[m].parameters)
-            {
-                std::size_t parameterIndex = 0, flatIndex = 0;
-                if (flatIndexFor(segment.firstModule + m, id, parameterIndex, flatIndex))
-                {
-                    m_targets[flatIndex] = value;
-                    m_engine.setParameter(segment.firstModule + m, parameterIndex, value);
-                }
-            }
-        }
-    }
+    // Reset (valores de fábrica do equipamento) e, só no modo
+    // desenvolvedor, o "+" que abre os módulos da receita.
+    ImGui::SetCursorScreenPos(ImVec2(origin.x, bodyMax.y + ImGui::GetStyle().ItemSpacing.y));
+    if (ImGui::SmallButton("Reset"))
+        resetGearToRecipe(segmentIndex, model);
     if (ImGui::IsItemHovered())
         ImGui::SetTooltip("voltar aos valores do equipamento");
+
+    if (m_developerMode)
+    {
+        ImGui::SameLine();
+        if (ImGui::SmallButton("+"))
+            m_expandedSegments.insert(segmentIndex);
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("ver os modulos por dentro");
+    }
 
     // Texto escuro sobre a placa dourada do ampli.
     if (isAmp)
@@ -1620,11 +1660,17 @@ void DesktopUI::drawGearPanel(std::size_t segmentIndex, const GearModel& model)
 
         ImGui::PushID(static_cast<int>(c));
 
+        // Um rótulo mais largo que a coluna ("Sensitivity" num pedal de
+        // duas colunas) encolhe até caber, em vez de invadir o vizinho.
+        const float fullLabelWidth = ImGui::CalcTextSize(control.label.c_str()).x;
+        const float labelScale = std::min(1.0f, (cellWidth - 6.0f) / std::max(fullLabelWidth, 1.0f));
+        ImGui::SetWindowFontScale(labelScale);
         const ImVec2 labelSize = ImGui::CalcTextSize(control.label.c_str());
         ImGui::SetCursorScreenPos(ImVec2(cellCenterX - labelSize.x * 0.5f, cellTop));
         ImGui::TextUnformatted(control.label.c_str());
+        ImGui::SetWindowFontScale(1.0f);
 
-        const float knobTop = cellTop + labelSize.y + 4.0f;
+        const float knobTop = cellTop + ImGui::GetTextLineHeight() + 4.0f;
         ImGui::SetCursorScreenPos(ImVec2(cellCenterX - knobRadius, knobTop));
 
         float value = std::clamp(m_targets[flatIndex], control.minValue, control.maxValue);
@@ -1670,14 +1716,208 @@ void DesktopUI::drawGearPanel(std::size_t segmentIndex, const GearModel& model)
         toggle = footswitch(ImVec2(origin.x + width * 0.5f, bodyMax.y - kPedalPadding - kFootswitchRadius), bypassed);
     }
 
+    ImGui::EndChild();
+    ImGui::PopStyleVar();
+
     if (toggle)
+        toggleGearBypass(segmentIndex);
+}
+
+void DesktopUI::resetGearToRecipe(std::size_t segmentIndex, const GearModel& model)
+{
+    // O reset NÃO é resetModule(): isso devolveria cada módulo ao padrão
+    // DELE, e não ao da receita deste equipamento.
+    const ChainItem& segment = m_chainItems[segmentIndex];
+    for (std::size_t m = 0; m < model.modules.size(); ++m)
     {
-        for (std::size_t m = 0; m < segment.moduleCount; ++m)
-            m_engine.setBypassed(segment.firstModule + m, !bypassed);
+        for (const auto& [id, value] : model.modules[m].parameters)
+        {
+            std::size_t parameterIndex = 0, flatIndex = 0;
+            if (flatIndexFor(segment.firstModule + m, id, parameterIndex, flatIndex))
+            {
+                m_targets[flatIndex] = value;
+                m_engine.setParameter(segment.firstModule + m, parameterIndex, value);
+            }
+        }
+    }
+}
+
+void DesktopUI::toggleGearBypass(std::size_t segmentIndex)
+{
+    // Todos os módulos da receita juntos, senão o "pedal" ficaria meio
+    // ligado.
+    const ChainItem& segment = m_chainItems[segmentIndex];
+    const bool bypassed = m_engine.chain().isBypassed(segment.firstModule);
+    for (std::size_t m = 0; m < segment.moduleCount; ++m)
+        m_engine.setBypassed(segment.firstModule + m, !bypassed);
+}
+
+SDL_Texture* DesktopUI::loadTexture(const std::string& path, float& width, float& height) const
+{
+    int imageWidth = 0, imageHeight = 0, channels = 0;
+    unsigned char* pixels = stbi_load(path.c_str(), &imageWidth, &imageHeight, &channels, 4);
+    if (pixels == nullptr)
+        return nullptr;
+
+    SDL_Texture* texture = nullptr;
+    if (SDL_Surface* surface = SDL_CreateSurfaceFrom(imageWidth, imageHeight, SDL_PIXELFORMAT_RGBA32,
+                                                     pixels, imageWidth * 4))
+    {
+        texture = SDL_CreateTextureFromSurface(m_renderer, surface);
+        SDL_DestroySurface(surface);
+    }
+    stbi_image_free(pixels);
+
+    if (texture != nullptr)
+    {
+        SDL_SetTextureScaleMode(texture, SDL_SCALEMODE_LINEAR);
+        width = static_cast<float>(imageWidth);
+        height = static_cast<float>(imageHeight);
+    }
+    return texture;
+}
+
+const DesktopUI::GearTextures* DesktopUI::gearTextures(const GearSkin& skin)
+{
+    // Carrega na primeira vez que o equipamento aparece e guarda inclusive
+    // a falta de imagem, para não tentar ler o disco de novo a cada quadro.
+    auto found = m_gearTextures.find(skin.gearId);
+    if (found == m_gearTextures.end())
+    {
+        const std::string directory = std::string(kGearAssetsDir) + "/" + skin.gearId + "/";
+        GearTextures textures;
+        float knobWidth = 0.0f, knobHeight = 0.0f;
+        textures.body = loadTexture(directory + "body.png", textures.bodyWidth, textures.bodyHeight);
+        textures.knob = loadTexture(directory + "knob.png", knobWidth, knobHeight);
+        found = m_gearTextures.emplace(skin.gearId, textures).first;
+    }
+
+    const GearTextures& textures = found->second;
+    return textures.body != nullptr && textures.knob != nullptr ? &textures : nullptr;
+}
+
+void DesktopUI::drawSkinnedGear(std::size_t segmentIndex, const GearModel& model, const GearSkin& skin,
+                                const GearTextures& textures)
+{
+    const ChainItem& segment = m_chainItems[segmentIndex];
+    const bool bypassed = m_engine.chain().isBypassed(segment.firstModule);
+
+    const float width = skin.displayWidth;
+    const float height = width * textures.bodyHeight / textures.bodyWidth;
+    const float buttonsHeight = ImGui::GetFrameHeight() + ImGui::GetStyle().ItemSpacing.y;
+
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
+    ImGui::BeginChild("gear", ImVec2(width, height + buttonsHeight), ImGuiChildFlags_None,
+                      ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
+
+    ImDrawList* drawList = ImGui::GetWindowDrawList();
+    const ImVec2 origin = ImGui::GetCursorScreenPos();
+    auto at = [&](GearSkin::Spot spot) {
+        return ImVec2(origin.x + spot.x * width, origin.y + spot.y * height);
+    };
+
+    drawList->AddImage(textureRef(textures.body), origin, ImVec2(origin.x + width, origin.y + height));
+
+    const float ledRadius = skin.ledDiameter * width * 0.5f;
+    auto drawLed = [&](GearSkin::Spot spot, bool lit) {
+        SDL_Texture* texture = lit ? m_ledOnTexture : m_ledOffTexture;
+        if (texture == nullptr)
+            return;
+        const ImVec2 center = at(spot);
+        drawList->AddImage(textureRef(texture), ImVec2(center.x - ledRadius, center.y - ledRadius),
+                           ImVec2(center.x + ledRadius, center.y + ledRadius));
+    };
+    drawLed(skin.statusLed, !bypassed);
+    for (const GearSkin::Spot& spot : skin.unlitLeds)
+        drawLed(spot, false);
+
+    const float knobRadius = skin.knobDiameter * width * 0.5f;
+    for (std::size_t c = 0; c < model.controls.size(); ++c)
+    {
+        const GearControl& control = model.controls[c];
+        const GearSkin::Knob* skinKnob = nullptr;
+        for (const GearSkin::Knob& candidate : skin.knobs)
+        {
+            if (control.parameterId == candidate.parameterId)
+                skinKnob = &candidate;
+        }
+        if (skinKnob == nullptr)
+            continue;
+
+        const std::size_t moduleIndex = segment.firstModule + control.moduleOffset;
+        std::size_t parameterIndex = 0, flatIndex = 0;
+        if (!flatIndexFor(moduleIndex, control.parameterId, parameterIndex, flatIndex))
+            continue;
+
+        ImGui::PushID(static_cast<int>(c));
+        const ImVec2 center = at(skinKnob->center);
+        ImGui::SetCursorScreenPos(ImVec2(center.x - knobRadius, center.y - knobRadius));
+
+        float value = std::clamp(m_targets[flatIndex], control.minValue, control.maxValue);
+        if (knob("##knob", &value, control.minValue, control.maxValue, knobRadius, textures.knob))
+        {
+            m_targets[flatIndex] = value;
+            m_engine.setParameter(moduleIndex, parameterIndex, value);
+        }
+
+        // A serigrafia da imagem só tem MIN/MAX; o valor exato aparece ao
+        // passar o mouse, na mesma escala de 0 a 10 do painel vetorial.
+        if (ImGui::IsItemHovered() || ImGui::IsItemActive())
+            ImGui::SetTooltip("%s  %.1f", control.label.c_str(),
+                              static_cast<double>(10.0f * (value - control.minValue)
+                                                  / (control.maxValue - control.minValue)));
+        ImGui::PopID();
+    }
+
+    bool toggle = false;
+    if (skin.hasFootswitch && m_footswitchTexture != nullptr)
+    {
+        const ImVec2 center = at(skin.footswitch);
+        const float switchWidth = skin.footswitchWidth * width;
+        const float switchHeight = switchWidth * m_footswitchHeight / m_footswitchWidth;
+
+        // Ligado: um anel vermelho aceso em volta do footswitch, no lugar
+        // de uma segunda imagem do botão.
+        if (!bypassed)
+        {
+            const float ringRadius = switchWidth * 0.52f;
+            drawList->AddCircleFilled(center, ringRadius + 6.0f,
+                                      ImGui::GetColorU32(ImVec4(1.0f, 0.22f, 0.12f, 0.12f)), 48);
+            drawList->AddCircleFilled(center, ringRadius + 2.0f,
+                                      ImGui::GetColorU32(ImVec4(1.0f, 0.22f, 0.12f, 0.22f)), 48);
+            drawList->AddCircle(center, ringRadius, ImGui::GetColorU32(ImVec4(1.0f, 0.25f, 0.12f, 0.95f)),
+                                48, 2.5f);
+        }
+
+        const ImVec2 imageMin(center.x - switchWidth * 0.5f, center.y - switchHeight * kFootswitchNutCenter);
+        drawList->AddImage(textureRef(m_footswitchTexture), imageMin,
+                           ImVec2(imageMin.x + switchWidth, imageMin.y + switchHeight));
+
+        ImGui::SetCursorScreenPos(ImVec2(center.x - switchWidth * 0.5f, center.y - switchWidth * 0.5f));
+        toggle = ImGui::InvisibleButton("##footswitch", ImVec2(switchWidth, switchWidth));
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip(bypassed ? "ligar" : "desligar (bypass)");
+    }
+
+    ImGui::SetCursorScreenPos(ImVec2(origin.x, origin.y + height + ImGui::GetStyle().ItemSpacing.y));
+    if (ImGui::SmallButton("Reset"))
+        resetGearToRecipe(segmentIndex, model);
+    if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("voltar aos valores do equipamento");
+    if (m_developerMode)
+    {
+        ImGui::SameLine();
+        if (ImGui::SmallButton("+"))
+            m_expandedSegments.insert(segmentIndex);
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("ver os modulos por dentro");
     }
 
     ImGui::EndChild();
     ImGui::PopStyleVar();
+
+    if (toggle)
+        toggleGearBypass(segmentIndex);
 }
 
 void DesktopUI::savePreset(const std::string& name)
@@ -2269,7 +2509,7 @@ void DesktopUI::drawWorkspaceHeader()
         if (m_logoTexture != nullptr)
         {
             const float logoHeight = 52.0f;
-            ImGui::Image(ImTextureRef(reinterpret_cast<ImTextureID>(m_logoTexture)),
+            ImGui::Image(textureRef(m_logoTexture),
                          ImVec2(m_logoWidth * logoHeight / m_logoHeight, logoHeight));
         }
         else
@@ -2460,10 +2700,14 @@ void DesktopUI::drawSignalChain()
         const SignalCardKind kind = model != nullptr ? signalCardKind(model->category)
                                                      : SignalCardKind::Module;
 
+        const GearSkin* skin = model != nullptr ? findGearSkin(model->id) : nullptr;
+        const GearTextures* textures = skin != nullptr ? gearTextures(*skin) : nullptr;
+
         ImGui::SetCursorScreenPos(ImVec2(x, cardTop));
         ImGui::PushID(static_cast<int>(i));
         if (signalCard("##item", title, kind, colorForModuleName(title.c_str(), false),
-                       m_selectedItem == i, scale))
+                       m_selectedItem == i, scale, textures != nullptr ? textures->body : nullptr,
+                       textures != nullptr ? textures->bodyWidth / textures->bodyHeight : 1.0f))
             m_selectedItem = i;
 
         if (ImGui::BeginDragDropSource())
@@ -2510,13 +2754,16 @@ void DesktopUI::drawSelectedEquipmentEditor()
         // Detalhe da marca no canto do editor.
         const ImVec2 windowMin = ImGui::GetWindowPos();
         drawBrandStripes(ImGui::GetWindowDrawList(),
-                         ImVec2(windowMin.x + ImGui::GetWindowWidth() - 150.0f, windowMin.y + 18.0f), 12.0f,
+                         ImVec2(windowMin.x + ImGui::GetWindowWidth() - 180.0f, windowMin.y + 18.0f), 12.0f,
                          ImGui::GetColorU32(ImVec4(kVintageGold.x, kVintageGold.y, kVintageGold.z, 0.55f)));
     }
     bool removeSelected = false;
     if (m_selectedItem < m_chainItems.size())
     {
-        ImGui::SameLine(ImGui::GetWindowContentRegionMax().x - 78.0f);
+        // Alinhado à direita pela largura real do botão; um valor fixo
+        // menor que ele empurrava o conteúdo e abria um scroll horizontal.
+        const float removeWidth = ImGui::CalcTextSize("Remover").x + ImGui::GetStyle().FramePadding.x * 2.0f;
+        ImGui::SameLine(ImGui::GetWindowContentRegionMax().x - removeWidth);
         if (ImGui::SmallButton("Remover"))
             removeSelected = true;
     }
@@ -2553,11 +2800,18 @@ void DesktopUI::drawSelectedEquipmentEditor()
         }
         else
         {
-            const float width = gearPanelWidth(*model);
+            // Com imagens, a skin; sem, o painel vetorial.
+            const GearSkin* skin = findGearSkin(model->id);
+            const GearTextures* textures = skin != nullptr ? gearTextures(*skin) : nullptr;
+
+            const float width = textures != nullptr ? skin->displayWidth : gearPanelWidth(*model);
             if (width < ImGui::GetContentRegionAvail().x)
                 ImGui::SetCursorPosX(ImGui::GetCursorPosX() + (ImGui::GetContentRegionAvail().x - width) * 0.5f);
             ImGui::PushID(static_cast<int>(m_selectedItem));
-            drawGearPanel(m_selectedItem, *model);
+            if (textures != nullptr)
+                drawSkinnedGear(m_selectedItem, *model, *skin, *textures);
+            else
+                drawGearPanel(m_selectedItem, *model);
             ImGui::PopID();
         }
     }

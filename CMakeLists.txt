@@ -287,16 +287,28 @@ if(IBIFX_BUILD_DESKTOP)
 
     target_link_libraries(imgui PUBLIC SDL3::SDL3)
 
+    # stb_image — leitor de PNG para os assets da janela (logo e imagens
+    # dos equipamentos). Vendorizado em third_party/stb, versão 2.30
+    # (commit 013ac3b), domínio público ou MIT. Mesmo esquema do
+    # ibifx_miniaudio: alvo próprio, sem os warnings do IbiFX, include
+    # SYSTEM.
+    add_library(ibifx_stb STATIC
+        src/gui/stb_image_impl.cpp
+    )
+
+    target_include_directories(ibifx_stb SYSTEM PUBLIC third_party/stb)
+
     # A camada de UI desktop, espelhando como ibifx_tui embrulha a
     # PedalboardUI: um alvo próprio, com o nosso rigor de warnings, que
     # depende de ibifx_platform (LiveEngine/AudioDevice) e do imgui.
     add_library(ibifx_gui STATIC
         src/gui/DesktopUI.cpp
+        src/gui/GearSkins.cpp
     )
 
     target_include_directories(ibifx_gui PUBLIC src/gui)
     target_compile_options(ibifx_gui PRIVATE ${IBIFX_WARNINGS})
-    target_link_libraries(ibifx_gui PUBLIC ibifx_platform imgui)
+    target_link_libraries(ibifx_gui PUBLIC ibifx_platform imgui PRIVATE ibifx_stb)
 
     add_executable(ibifx_desktop
         apps/desktop/main.cpp

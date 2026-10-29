@@ -24,6 +24,9 @@
 // --stomp/--amp/--cab/--rack montam um rig da GearLibrary, e a janela abre
 // com ele já ativo no navegador de equipamentos.
 //
+// --dev liga o modo desenvolvedor: cada equipamento ganha o "+" que abre
+// os módulos da receita, para calibrar. Sem ele, só o painel.
+//
 // --preset CAMINHO carrega um preset pronto no lugar das flags acima,
 // igual ao processamento de arquivo. --save-preset não se aplica aqui —
 // salvar faz sentido depois de ajustar os knobs com a janela aberta, não
@@ -32,6 +35,7 @@
 int main(int argc, char** argv)
 {
     bool useNullDevice = false;
+    bool developerMode = false;
     std::vector<std::string> chainArgs;
 
     for (int i = 1; i < argc; ++i)
@@ -40,6 +44,8 @@ int main(int argc, char** argv)
 
         if (arg == "--null")
             useNullDevice = true;
+        else if (arg == "--dev")
+            developerMode = true;
         else
             chainArgs.push_back(arg);
     }
@@ -87,7 +93,7 @@ int main(int argc, char** argv)
                       << "       o som realimenta e vira microfonia. Use fones de ouvido.\n";
         }
 
-        DesktopUI ui(engine, options.irsDirectory);
+        DesktopUI ui(engine, options.irsDirectory, developerMode);
 
         // Com --amp/--stomp..., a janela abre com esse rig ativo no
         // navegador. O --preset vence o rig (ver ChainArgs.h), então aí não.

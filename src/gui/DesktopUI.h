@@ -3,6 +3,7 @@
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
+#include <map>
 #include <mutex>
 #include <set>
 #include <string>
@@ -15,6 +16,7 @@ struct SDL_Window;
 struct SDL_Renderer;
 struct SDL_Texture;
 struct ImFont;
+struct GearSkin;
 
 // DesktopUI — a mesma pedaleira da PedalboardUI, desenhada com Dear ImGui
 // numa janela SDL em vez de caracteres de terminal (Fase 12, AI_GUIDELINES
@@ -48,7 +50,12 @@ class DesktopUI
 public:
     // O engine precisa ter a cadeia montada antes de entrar aqui.
     // irsDirectory: onde o navegador procura cabinets.
-    explicit DesktopUI(LiveEngine& engine, std::string irsDirectory = "irs");
+    //
+    // developerMode (--dev): mostra o "+" que abre um equipamento nos
+    // módulos da receita. Fora dele, o equipamento é só o painel — a
+    // receita é detalhe interno e pode mudar sem quebrar o que a pessoa
+    // ajustou. Módulos avulsos (sem equipamento) aparecem sempre.
+    explicit DesktopUI(LiveEngine& engine, std::string irsDirectory = "irs", bool developerMode = false);
 
     // Avisa que a cadeia do engine JÁ foi montada a partir deste rig (por
     // --amp/--stomp... na linha de comando), para a janela abrir com ele
@@ -151,6 +158,34 @@ private:
     // um footswitch que liga/desliga todos os módulos da receita juntos.
     void drawGearPanel(std::size_t segmentIndex, const GearModel& model);
 
+    // As texturas de um equipamento com skin (GearSkins.h).
+    struct GearTextures
+    {
+        SDL_Texture* body = nullptr;
+        SDL_Texture* knob = nullptr;
+        float bodyWidth = 0.0f;
+        float bodyHeight = 0.0f;
+    };
+
+    // Carregadas na primeira vez que o equipamento aparece. nullptr se
+    // faltar alguma imagem — aí vale o painel vetorial.
+    const GearTextures* gearTextures(const GearSkin& skin);
+
+    // O mesmo equipamento de drawGearPanel(), desenhado com as imagens: o
+    // corpo, os knobs girando sobre os buracos, os LEDs e o footswitch.
+    // Knobs e bypass passam pelos mesmos comandos do motor.
+    void drawSkinnedGear(std::size_t segmentIndex, const GearModel& model, const GearSkin& skin,
+                         const GearTextures& textures);
+
+    // Volta os knobs aos valores da receita / liga ou desliga todos os
+    // módulos do equipamento. Comuns aos dois desenhos.
+    void resetGearToRecipe(std::size_t segmentIndex, const GearModel& model);
+    void toggleGearBypass(std::size_t segmentIndex);
+
+    // Lê um PNG como textura do renderer. nullptr se o arquivo não existir
+    // ou não for um PNG válido.
+    SDL_Texture* loadTexture(const std::string& path, float& width, float& height) const;
+
     // Índice, dentro de m_targets, de um parâmetro de um módulo da cadeia
     // procurado pelo id. Devolve false se o módulo não tiver esse id.
     bool flatIndexFor(std::size_t moduleIndex, const std::string& parameterId,
@@ -212,6 +247,7 @@ private:
 
     LiveEngine& m_engine;
     std::string m_irsDirectory;
+    bool m_developerMode = false;
 
     SDL_Window* m_window = nullptr;
     SDL_Renderer* m_renderer = nullptr;
@@ -220,6 +256,16 @@ private:
     SDL_Texture* m_logoTexture = nullptr;
     float m_logoWidth = 0.0f;
     float m_logoHeight = 0.0f;
+
+    // Imagens dos equipamentos, por gearId (inclui as que faltaram, para
+    // não procurar no disco a cada quadro), e as peças comuns a todos.
+    // Como o logo, pertencem ao renderer.
+    std::map<std::string, GearTextures> m_gearTextures;
+    SDL_Texture* m_ledOnTexture = nullptr;
+    SDL_Texture* m_ledOffTexture = nullptr;
+    SDL_Texture* m_footswitchTexture = nullptr;
+    float m_footswitchWidth = 0.0f;
+    float m_footswitchHeight = 0.0f;
 
     // Fonte dos rótulos da marca (assets/fonts), ou nullptr sem o arquivo.
     ImFont* m_brandFont = nullptr;
