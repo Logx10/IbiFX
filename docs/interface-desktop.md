@@ -10,6 +10,22 @@ recursos que o motor já oferece.
 
 Referência: [página oficial do AmpliTube 5](https://www.ikmultimedia.com/products/amplitube5/).
 
+## Limite entre interface e áudio
+
+O motor (`src/ModuleChain.*` e `src/platform/`) não depende de SDL3, ImGui ou
+`DesktopUI`.
+A dependência aponta no sentido contrário: a interface recebe um `LiveEngine&`
+e chama sua API de controle. Knobs e bypass enviam comandos para filas; o
+callback consome esses comandos e processa a cadeia sem desenhar nada nem
+esperar pela janela. Os medidores são publicados pelo motor em valores
+atômicos, que a interface apenas lê.
+
+Trocar um equipamento muda a estrutura da cadeia. A interface faz isso no
+domínio de controle: para o dispositivo, aplica o rig e religa o áudio. Mudar
+o layout ou o gesto de clique para arrastar não deve colocar operações de UI
+no callback. A pausa que já ocorre nessa troca é um comportamento a avaliar
+se a interação for aprimorada, separadamente do desenho da janela.
+
 ## O que já funciona no IbiFX
 
 | Área | Situação atual |
@@ -48,13 +64,15 @@ funcionando com a nova disposição.
 
 - Busca no navegador e indicação mais clara do equipamento ativo.
 - Arrastar e soltar equipamentos e reordenar a cadeia visualmente. Hoje a
-  troca é por clique e a reordenação usa botões; a operação também reconstrói
-  o rig e reinicia o dispositivo, portanto precisa de um desenho de interação
-  e de áudio próprio.
+  troca é por clique e a reordenação usa botões. O novo gesto pode reutilizar
+  `applyRig()`; é preciso deixar clara a posição de destino e avaliar a pausa
+  de áudio que já ocorre durante a reconstrução do rig.
 - Seleção de entrada e saída de áudio dentro da janela. O dispositivo hoje é
   aberto pelo padrão do sistema.
 - Modos de roteamento em paralelo, mixer de microfones, looper e multitrack
-  exigem trabalho no motor; não são apenas mudanças de interface.
+  exigem novos recursos de áudio. Se forem feitos, a separação entre UI e
+  motor continua: a interface controla esses recursos pela API, sem entrar
+  no callback.
 
 O visual deve usar nomes, ilustrações e componentes próprios do IbiFX. A
 referência é o fluxo de trabalho, não a reprodução de marcas ou imagens de
