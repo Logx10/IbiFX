@@ -318,6 +318,35 @@ void testEmptySignalChainAndUnknownId()
     check(lancou, "id desconhecido lanca");
 }
 
+// Passa um tom pela receita de um equipamento, em blocos do tamanho
+// preparado como o callback faz, e devolve o nível de saída em dB relativo
+// à entrada (RMS da segunda metade, depois do transiente).
+double recipeGainDb(const GearLibrary& library, const std::string& gearId, double frequency, float amplitude)
+{
+    ModuleChain chain;
+    preset::apply(library.buildSignalChain({gearId}, "teste"), chain);
+    chain.prepare(44100.0, 512);
+
+    std::vector<float> signal(22050);
+    for (std::size_t i = 0; i < signal.size(); ++i)
+        signal[i] = amplitude * static_cast<float>(std::sin(2.0 * 3.14159265358979323846 * frequency
+                                                            * static_cast<double>(i) / 44100.0));
+
+    for (std::size_t start = 0; start < signal.size(); start += 512)
+    {
+        std::vector<float> block(signal.begin() + static_cast<std::ptrdiff_t>(start),
+                                 signal.begin() + static_cast<std::ptrdiff_t>(std::min(start + 512, signal.size())));
+        chain.process(block);
+        std::copy(block.begin(), block.end(), signal.begin() + static_cast<std::ptrdiff_t>(start));
+    }
+
+    double sum = 0.0;
+    for (std::size_t i = signal.size() / 2; i < signal.size(); ++i)
+        sum += static_cast<double>(signal[i]) * static_cast<double>(signal[i]);
+    const double rms = std::sqrt(sum / static_cast<double>(signal.size() - signal.size() / 2));
+    return 20.0 * std::log10(rms / (static_cast<double>(amplitude) / std::sqrt(2.0)));
+}
+
 // O tone stack é passivo e perde volume; a receita avulsa repõe com um
 // estágio de ganho, como os amplis. Com os knobs no meio, tons de 250 Hz,
 // 1 kHz e 3 kHz saem a até 4 dB do nível de entrada.
@@ -326,36 +355,28 @@ void testStandaloneToneStackKeepsTheLevel()
     std::cout << "tone stack avulso nao derruba o volume\n";
 
     GearLibrary library;
-    const Preset recipe = library.buildSignalChain({"eq.tone-stack"}, "EQ");
-
     for (const double frequency : {250.0, 1000.0, 3000.0})
     {
-        ModuleChain chain;
-        preset::apply(recipe, chain);
-        chain.prepare(44100.0, 512);
-
-        std::vector<float> signal(8820);
-        for (std::size_t i = 0; i < signal.size(); ++i)
-            signal[i] = 0.5f * static_cast<float>(std::sin(2.0 * 3.14159265358979323846 * frequency
-                                                           * static_cast<double>(i) / 44100.0));
-        // Em blocos do tamanho preparado, como o callback faz.
-        for (std::size_t start = 0; start < signal.size(); start += 512)
-        {
-            std::vector<float> block(signal.begin() + static_cast<std::ptrdiff_t>(start),
-                                     signal.begin() + static_cast<std::ptrdiff_t>(std::min(start + 512, signal.size())));
-            chain.process(block);
-            std::copy(block.begin(), block.end(), signal.begin() + static_cast<std::ptrdiff_t>(start));
-        }
-
-        double sum = 0.0;
-        for (std::size_t i = signal.size() / 2; i < signal.size(); ++i)
-            sum += static_cast<double>(signal[i]) * static_cast<double>(signal[i]);
-        const double rms = std::sqrt(sum / static_cast<double>(signal.size() / 2));
-        const double levelDb = 20.0 * std::log10(rms / (0.5 / std::sqrt(2.0)));
-
+        const double levelDb = recipeGainDb(library, "eq.tone-stack", frequency, 0.5f);
         check(std::fabs(levelDb) < 4.0, "nivel em " + std::to_string(static_cast<int>(frequency))
                                             + " Hz a ate 4 dB da entrada");
     }
+}
+
+// O compressor de pedal nos valores do catálogo: uma palhetada forte
+// (-12 dBFS) sai perto do mesmo nível — o Output repõe o que o compressor
+// tira —, e uma nota fraca (-30 dBFS) sobe bem mais que ela. A distância
+// entre as duas, 18 dB na entrada, encolhe: é o sustain do pedal.
+void testCompressorPedalKeepsTheLevelAndSqueezes()
+{
+    std::cout << "compressor de pedal mantem o volume e espreme a dinamica\n";
+
+    GearLibrary library;
+    const double loudGainDb = recipeGainDb(library, "stomp.orange-squeeze", 440.0, 0.25f);
+    const double softGainDb = recipeGainDb(library, "stomp.orange-squeeze", 440.0, 0.0316f);
+
+    check(std::fabs(loudGainDb) < 3.0, "palhetada forte sai a ate 3 dB da entrada");
+    check(softGainDb - loudGainDb > 9.0, "nota fraca sobe pelo menos 9 dB a mais que a forte");
 }
 
 void testScanFindsCabinetsAndMicrophones()
@@ -531,6 +552,7 @@ int main()
     testSignalChainKeepsAnyOrderAndDuplicates();
     testEmptySignalChainAndUnknownId();
     testStandaloneToneStackKeepsTheLevel();
+    testCompressorPedalKeepsTheLevelAndSqueezes();
     testScanFindsCabinetsAndMicrophones();
     testScanOfMissingDirectoryFindsNothing();
     testInferRigRecoversTheRigOfASavedChain();

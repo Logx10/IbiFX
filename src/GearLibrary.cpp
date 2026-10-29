@@ -58,10 +58,21 @@ void addStomps(std::vector<GearModel>& models)
         "Corta o chiado entre as notas. Vai antes de qualquer ganho.",
         {module("NoiseGate", {{"threshold", 0.02f}, {"release", 0.15f}})}));
 
+    // No espírito do Dyna Comp: dois knobs só. Sensitivity é ganho ANTES do
+    // compressor — quanto mais sinal entra, mais passa do threshold e mais
+    // o pedal espreme, como no circuito original. Threshold, ratio, attack
+    // e release ficam fixos (compressão forte, soltando devagar). Output é
+    // o ganho depois, porque o Compressor não repõe o volume que tira: sem
+    // ele, ligar o pedal derrubava a cadeia. 3x devolve o nível de uma
+    // palhetada forte (-12 dBFS) com a Sensitivity no padrão.
     models.push_back(gear("stomp.orange-squeeze", "Orange Squeeze", GearCategory::Stomp, "Dynamics",
         "Compressor de pedal: nivela a palhetada e alonga o sustain.",
-        {module("Compressor", {{"threshold", -24.0f}, {"ratio", 4.0f},
-                               {"attack", 0.005f}, {"release", 0.2f}})}));
+        {module("Gain", {{"gain", 2.0f}}),
+         module("Compressor", {{"threshold", -24.0f}, {"ratio", 8.0f},
+                               {"attack", 0.004f}, {"release", 0.3f}}),
+         module("Gain", {{"gain", 3.0f}})}));
+    models.back().controls = {control("Sensitivity", 0, "gain", 1.0f, 6.0f),
+                              control("Output", 2, "gain", 0.0f, 8.0f)};
 
     models.push_back(gear("stomp.clean-boost", "Clean Boost", GearCategory::Stomp, "Boost",
         "Só volume, sem distorção — empurra o ampli para saturar mais.",
