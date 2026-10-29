@@ -69,6 +69,10 @@ private:
     bool initWindow();
     void shutdownWindow();
 
+    // Tenta iniciar o audio com a configuracao guardada por run(). Se falhar,
+    // conserva a janela aberta e guarda o motivo para mostrar na interface.
+    bool startAudio();
+
     // Preenche m_targets a partir dos valores atuais de todos os
     // parâmetros da cadeia.
     void captureTargets();
@@ -210,6 +214,7 @@ private:
     AudioDevice::Mode m_mode = AudioDevice::Mode::Null;
     double m_sampleRate = 48000.0;
     int m_blockSize = 128;
+    std::string m_audioStartError;
 
     // presets/*.ibifxpreset encontrados em disco, recarregado após salvar.
     std::vector<std::string> m_presetFiles;

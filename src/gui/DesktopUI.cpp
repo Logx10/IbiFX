@@ -11,6 +11,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <ctime>
+#include <exception>
 #include <filesystem>
 #include <iostream>
 #include <string>
@@ -573,6 +574,26 @@ void DesktopUI::shutdownWindow()
     SDL_Quit();
 }
 
+bool DesktopUI::startAudio()
+{
+    try
+    {
+        if (m_engine.start(m_mode, m_sampleRate, m_blockSize))
+        {
+            m_audioStartError.clear();
+            return true;
+        }
+
+        m_audioStartError = m_engine.lastError();
+    }
+    catch (const std::exception& error)
+    {
+        m_audioStartError = error.what();
+    }
+
+    return false;
+}
+
 void DesktopUI::drawMeter(const char* label, float peakLinear) const
 {
     const float db = amplitudeToDb(peakLinear);
@@ -808,9 +829,9 @@ bool DesktopUI::replaceChain(const Preset& newPreset, std::string& error)
     m_engine.stop();
     preset::apply(newPreset, m_engine.chain());
 
-    if (!m_engine.start(m_mode, m_sampleRate, m_blockSize))
+    if (!startAudio())
     {
-        error = "erro ao religar o motor: " + m_engine.lastError();
+        error = "erro ao religar o motor: " + m_audioStartError;
         return false;
     }
 
@@ -1626,8 +1647,8 @@ void DesktopUI::loadBackingTrack(const std::string& path)
 
     // Religa mesmo se o load falhou — a backing track antiga (ou nenhuma)
     // continua valendo, e o pedalboard não pode ficar mudo por causa disso.
-    if (!m_engine.start(m_mode, m_sampleRate, m_blockSize))
-        m_practiceMessage = "erro ao religar o motor: " + m_engine.lastError();
+    if (!startAudio())
+        m_practiceMessage = "erro ao religar o motor: " + m_audioStartError;
 }
 
 void DesktopUI::importImpulseResponse(const std::string& sourcePath)
@@ -2099,8 +2120,31 @@ void DesktopUI::drawFrame()
     const ImVec4 statusColor = running ? ImVec4(0.3f, 0.85f, 0.4f, 1.0f) : ImVec4(0.6f, 0.6f, 0.65f, 1.0f);
 
     ImGui::TextColored(statusColor, "%s", running ? "tocando" : "parado");
-    ImGui::SameLine();
-    ImGui::Text("   %s   %d Hz", m_engine.deviceName().c_str(), static_cast<int>(m_engine.sampleRate()));
+
+    if (running)
+    {
+        ImGui::SameLine();
+        ImGui::Text("saida: %s   %d Hz", m_engine.deviceName().c_str(),
+                    static_cast<int>(m_engine.sampleRate()));
+
+        const std::string captureDevice = m_engine.captureDeviceName();
+        if (!captureDevice.empty())
+            ImGui::TextDisabled("entrada: %s", captureDevice.c_str());
+    }
+    else
+    {
+        ImGui::SameLine();
+        if (ImGui::Button("Tentar ligar audio") && startAudio())
+            captureTargets();
+
+        if (!m_audioStartError.empty())
+        {
+            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.95f, 0.45f, 0.35f, 1.0f));
+            ImGui::TextWrapped("Audio indisponivel: %s", m_audioStartError.c_str());
+            ImGui::PopStyleColor();
+            ImGui::TextDisabled("Confira os dispositivos padrao e a permissao de microfone.");
+        }
+    }
 
     ImGui::Spacing();
     ImGui::Separator();
@@ -2180,12 +2224,8 @@ int DesktopUI::run(AudioDevice::Mode mode, double sampleRate, int blockSize)
         return 1;
     }
 
-    if (!m_engine.start(mode, sampleRate, blockSize))
-    {
-        std::cerr << "erro: " << m_engine.lastError() << "\n";
-        shutdownWindow();
-        return 1;
-    }
+    if (!startAudio())
+        std::cerr << "erro: " << m_audioStartError << "\n";
 
     captureTargets();
     refreshPresetList();
@@ -2240,5 +2280,5 @@ int DesktopUI::run(AudioDevice::Mode mode, double sampleRate, int blockSize)
     m_engine.stop();
     shutdownWindow();
 
-    return 0;
+    return m_audioStartError.empty() ? 0 : 1;
 }
