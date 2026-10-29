@@ -7,16 +7,17 @@ O código usa nomes genéricos. Só o Tweed '59 (e o tone stack, que é o mesmo
 circuito) tem a referência escrita no código: o Fender '59 Bassman. As demais
 são uma leitura do nome, da cor e do som descrito, marcadas como *inferido*.
 
-As referências indicam estilo e tipo de controle. Os assets devem ser
-ilustrações próprias do IbiFX, sem logos, nomes ou cópias fiéis de
-equipamentos de terceiros (ver `interface-desktop.md`).
+Os equipamentos são homenagens white label aos modelos que serviram de base
+para a modelagem. O asset pode lembrar o original no formato, nas cores e no
+painel, mas não leva logo, nome nem marca do fabricante. O nome exibido é
+sempre o do IbiFX (Green Screamer, Brit 800...).
 
 ## Pedais (Stomp)
 
 | Nome no IbiFX | Id | Provável referência | Knobs |
 |---|---|---|---|
-| Noise Gate | `stomp.gate` | Boss NS-2 / ISP Decimator *(inferido)* | Threshold, Release |
-| Orange Squeeze | `stomp.orange-squeeze` | MXR Dyna Comp (compressor laranja) *(inferido)* | Threshold, Ratio, Attack, Release |
+| Noise Gate | `stomp.gate` | Boss NS-2 (o Decay dele = nosso Release; sem o knob Mode) *(inferido)* | Threshold, Release |
+| Orange Squeeze | `stomp.orange-squeeze` | MXR Dyna Comp (a versão laranja dos anos 70/80) | Sensitivity, Output |
 | Clean Boost | `stomp.clean-boost` | MXR Micro Amp / booster limpo *(inferido)* | Gain |
 | Green Screamer | `stomp.green-screamer` | Ibanez Tube Screamer (TS808/TS9) *(inferido)* | Drive, Low Cut, Level |
 | Yellow Drive | `stomp.yellow-drive` | Boss SD-1 pela cor; o som (simétrico, transparente) lembra um overdrive transparente *(inferido)* | Drive, Level |

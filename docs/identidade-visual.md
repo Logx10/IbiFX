@@ -5,13 +5,10 @@ aparece na interface desktop.
 
 ## Logo
 
-O logo em script fica em `assets/brand/`:
+O logo em script fica em `assets/brand/ibifx-logo.png`, com fundo
+transparente, lido pelo `stb_image` (`third_party/stb`).
 
-- `ibifx-logo.png`: fonte, com fundo transparente;
-- `ibifx-logo.bmp`: a mesma imagem em BMP 32 bits, carregada pelo desktop
-  com `SDL_LoadBMP` (o SDL3 não lê PNG sem biblioteca extra).
-
-O app procura o BMP em `assets/brand/` a partir do diretório de trabalho, como
+O app procura o arquivo em `assets/brand/` a partir do diretório de trabalho, como
 já faz com `presets` e `irs`. Se o arquivo não existir, o cabeçalho mostra o
 nome em texto. O pacote do CI copia a pasta `assets`.
 
@@ -42,6 +39,13 @@ indicador de gravação.
 O arquivo fica em `assets/fonts/Unbounded-SemiBold.ttf`, com a licença em
 `assets/fonts/Unbounded-OFL.txt`. Se o arquivo não existir, o app usa a fonte
 padrão em todos os lugares.
+
+## Equipamentos
+
+Os equipamentos são homenagens white label aos modelos que inspiraram a
+modelagem. O visual pode lembrar o original (formato, cor, disposição dos
+knobs), mas nunca leva logo, nome ou marca do fabricante; o nome exibido é o
+do catálogo do IbiFX. A lista está em `assets-equipamentos.md`.
 
 ## Elementos
 
