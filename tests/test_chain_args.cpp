@@ -66,6 +66,18 @@ void testNoRigFlagsMeansNoRig()
     check(!parseSettings(std::vector<std::string>{"--gain", "2"}).usesRig(), "so flags classicas");
 }
 
+void testClassicFlagsAreMarkedExplicit()
+{
+    std::cout << "flags classicas marcam uma escolha explicita\n";
+
+    check(!parseSettings(std::vector<std::string>{}).hasExplicitClassicChain, "sem flags");
+    check(!parseSettings(std::vector<std::string>{"--irs", "x"}).hasExplicitClassicChain, "--irs nao conta");
+    check(!parseSettings(std::vector<std::string>{"--amp", "brit-800"}).hasExplicitClassicChain,
+          "flag de rig nao conta");
+    check(parseSettings(std::vector<std::string>{"--gain", "2"}).hasExplicitClassicChain, "--gain conta");
+    check(parseSettings(std::vector<std::string>{"--no-reverb"}).hasExplicitClassicChain, "--no-reverb conta");
+}
+
 void testRigFlagWithoutValueThrows()
 {
     std::cout << "flag de rig sem valor lanca\n";
@@ -156,6 +168,7 @@ int main()
 
     testRigFlagsAreParsedInOrder();
     testNoRigFlagsMeansNoRig();
+    testClassicFlagsAreMarkedExplicit();
     testRigFlagWithoutValueThrows();
     testShortAndFullIdsResolve();
     testUnknownIdThrows();

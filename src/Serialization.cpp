@@ -42,6 +42,11 @@ std::string serialize(const Preset& p)
     for (const std::string& id : p.rig.rack)
         out << "rig rack " << id << '\n';
 
+    // gearId "-" representa um módulo cru, sem modelo no catálogo.
+    for (const Preset::ChainItemState& item : p.chainItems)
+        out << "item " << (item.gearId.empty() ? "-" : item.gearId) << ' '
+            << item.moduleCount << '\n';
+
     for (const Preset::ModuleState& state : p.modules)
     {
         out << "module " << state.type << ' ' << (state.bypassed ? 1 : 0) << '\n';
@@ -117,6 +122,19 @@ Preset deserialize(const std::string& text)
             state.bypassed = (bypassed != 0);
             result.modules.push_back(std::move(state));
             current = &result.modules.back();
+        }
+        else if (keyword == "item")
+        {
+            std::string gearId;
+            std::size_t moduleCount = 0;
+
+            if (!(lineStream >> gearId >> moduleCount) || moduleCount == 0)
+                throw std::runtime_error("preset malformado: 'item' precisa de id e quantidade positiva");
+
+            Preset::ChainItemState item;
+            item.gearId = gearId == "-" ? std::string{} : gearId;
+            item.moduleCount = moduleCount;
+            result.chainItems.push_back(std::move(item));
         }
         else if (keyword == "ir")
         {
