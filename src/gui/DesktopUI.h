@@ -291,6 +291,7 @@ private:
 
     // presets/*.ibifxpreset encontrados em disco, recarregado após salvar.
     std::vector<std::string> m_presetFiles;
+    std::map<std::string, std::string> m_presetNames;
 
     // Buffer de texto do campo "nome do preset" — ImGui::InputText precisa
     // de um buffer de tamanho fixo, não de um std::string.

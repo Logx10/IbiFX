@@ -56,7 +56,11 @@ void addStomps(std::vector<GearModel>& models)
 {
     models.push_back(gear("stomp.gate", "Noise Gate", GearCategory::Stomp, "Dynamics",
         "Corta o chiado entre as notas. Vai antes de qualquer ganho.",
-        {module("NoiseGate", {{"threshold", 0.02f}, {"release", 0.15f}})}));
+        {module("NoiseGate", {{"threshold", 0.005f}, {"release", 0.15f}})}));
+    // A faixa total do parâmetro vai até 0.3 para casos extremos, mas esse
+    // painel concentra o knob nos níveis baixos usados por uma DI passiva.
+    models.back().controls = {control("Threshold", 0, "threshold", 0.0f, 0.05f),
+                              control("Release", 0, "release", 0.01f, 1.0f)};
 
     // No espírito do Dyna Comp: dois knobs só. Sensitivity é ganho ANTES do
     // compressor — quanto mais sinal entra, mais passa do threshold e mais
@@ -116,6 +120,10 @@ void addStomps(std::vector<GearModel>& models)
     models.push_back(gear("stomp.blue-chorus", "Blue Chorus", GearCategory::Stomp, "Modulation",
         "Chorus clássico dos anos 80: uma cópia levemente desafinada que ondula junto com o som.",
         {module("Chorus", {{"rate", 0.8f}, {"depth", 0.5f}, {"mix", 0.5f}})}));
+
+    models.push_back(gear("stomp.rotovibe", "Rotovibe", GearCategory::Stomp, "Modulation",
+        "Vibe de quatro estágios: prancha controla a velocidade; alterna Chorus e Vibrato.",
+        {module("Rotovibe", {{"position", 0.35f}, {"intensity", 0.7f}, {"mode", 0.0f}})}));
 
     models.push_back(gear("stomp.analog-echo", "Analog Echo", GearCategory::Stomp, "Delay",
         "Delay de pedal escuro e curto para base e solos.",

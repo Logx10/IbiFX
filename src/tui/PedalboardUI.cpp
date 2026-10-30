@@ -61,6 +61,10 @@ std::string formatValue(const Parameter& parameter, float value)
     {
         out << std::setprecision(0) << value * 1000.0f << " ms";
     }
+    else if (parameter.id() == "threshold" && parameter.maxValue() <= 0.3f && parameter.minValue() >= 0.0f)
+    {
+        out << std::setprecision(3) << value;
+    }
     else
     {
         out << std::setprecision(2) << value;

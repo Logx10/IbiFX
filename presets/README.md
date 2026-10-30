@@ -10,6 +10,7 @@ O CLI também lê e grava arquivos aqui, se você apontar pra cá:
 ./build/ibifx_desktop --preset presets/meu-som.ibifxpreset
 ```
 
-Os arquivos desta pasta **não são versionados** — só este README é, pelo
-mesmo motivo de `audio/README.md`: são experimentação pessoal, não
-pertencem ao histórico do código.
+Os arquivos salvos diretamente nesta pasta **não são versionados**: são
+experimentação pessoal. Os presets em `presets/factory/` vêm com o projeto,
+aparecem na mesma lista da janela e são versionados. Salvar pela janela
+continua criando arquivos pessoais aqui, sem sobrescrever os de fábrica.

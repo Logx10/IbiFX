@@ -1,5 +1,6 @@
 #include "PresetManager.h"
 
+#include <filesystem>
 #include <fstream>
 #include <sstream>
 #include <stdexcept>
@@ -31,6 +32,32 @@ Preset load(const std::string& path)
     std::ostringstream buffer;
     buffer << in.rdbuf();
 
-    return deserialize(buffer.str());
+    Preset loaded = deserialize(buffer.str());
+
+    // Uma IR relativa normalmente é escrita a partir da raiz do projeto
+    // (irs/...). Ao abrir o preset de outra pasta, procure-a ao lado do
+    // preset e nos diretórios acima. Caminhos absolutos continuam intactos.
+    namespace fs = std::filesystem;
+    for (auto& module : loaded.modules)
+    {
+        if (module.irPath.empty() || fs::path(module.irPath).is_absolute()
+            || fs::exists(module.irPath))
+            continue;
+
+        for (fs::path directory = fs::absolute(path).parent_path(); !directory.empty();
+             directory = directory.parent_path())
+        {
+            const fs::path candidate = directory / module.irPath;
+            if (fs::exists(candidate))
+            {
+                module.irPath = candidate.lexically_normal().string();
+                break;
+            }
+            if (directory == directory.root_path())
+                break;
+        }
+    }
+
+    return loaded;
 }
 }

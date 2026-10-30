@@ -440,6 +440,8 @@ std::string formatValue(const Parameter& parameter, float value)
         std::snprintf(buffer, sizeof(buffer), "%.2f Hz", static_cast<double>(value));
     else if (parameter.id() == "time")
         std::snprintf(buffer, sizeof(buffer), "%.0f ms", static_cast<double>(value) * 1000.0);
+    else if (parameter.id() == "threshold" && parameter.maxValue() <= 0.3f && parameter.minValue() >= 0.0f)
+        std::snprintf(buffer, sizeof(buffer), "%.3f", static_cast<double>(value));
     else
         std::snprintf(buffer, sizeof(buffer), "%.2f", static_cast<double>(value));
 
@@ -1005,16 +1007,30 @@ void DesktopUI::drawPedal(std::size_t moduleIndex, std::size_t firstFlatIndex)
 void DesktopUI::refreshPresetList()
 {
     m_presetFiles.clear();
-
-    std::error_code error;
-
-    if (!std::filesystem::exists(kPresetsDir, error))
-        return;
-
-    for (const auto& entry : std::filesystem::directory_iterator(kPresetsDir, error))
+    m_presetNames.clear();
+    for (const std::filesystem::path& directory : {std::filesystem::path(kPresetsDir),
+                                                   std::filesystem::path(kPresetsDir) / "factory"})
     {
-        if (entry.is_regular_file() && entry.path().extension() == ".ibifxpreset")
-            m_presetFiles.push_back(entry.path().string());
+        std::error_code error;
+        if (!std::filesystem::is_directory(directory, error))
+            continue;
+
+        for (const auto& entry : std::filesystem::directory_iterator(directory, error))
+        {
+            if (entry.is_regular_file() && entry.path().extension() == ".ibifxpreset")
+            {
+                const std::string path = entry.path().string();
+                m_presetFiles.push_back(path);
+                try
+                {
+                    m_presetNames[path] = preset::load(path).name;
+                }
+                catch (const std::exception&)
+                {
+                    m_presetNames[path] = entry.path().stem().string();
+                }
+            }
+        }
     }
 
     std::sort(m_presetFiles.begin(), m_presetFiles.end());
@@ -1671,10 +1687,32 @@ void DesktopUI::drawGearPanel(std::size_t segmentIndex, const GearModel& model)
         ImGui::SetWindowFontScale(1.0f);
 
         const float knobTop = cellTop + ImGui::GetTextLineHeight() + 4.0f;
-        ImGui::SetCursorScreenPos(ImVec2(cellCenterX - knobRadius, knobTop));
-
         float value = std::clamp(m_targets[flatIndex], control.minValue, control.maxValue);
-        if (knob("##knob", &value, control.minValue, control.maxValue, knobRadius))
+        bool changed = false;
+        if (model.id == "stomp.rotovibe" && control.parameterId == "position")
+        {
+            ImGui::SetCursorScreenPos(ImVec2(cellCenterX - 14.0f, knobTop));
+            changed = ImGui::VSliderFloat("##treadle", ImVec2(28.0f, knobRadius * 2.0f),
+                                          &value, control.minValue, control.maxValue, "");
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("Prancha: velocidade do efeito");
+        }
+        else if (model.id == "stomp.rotovibe" && control.parameterId == "mode")
+        {
+            const char* mode = value >= 0.5f ? "Vibrato" : "Chorus";
+            ImGui::SetCursorScreenPos(ImVec2(cellCenterX - 35.0f, knobTop));
+            if (ImGui::Button(mode, ImVec2(70.0f, knobRadius * 2.0f)))
+            {
+                value = value >= 0.5f ? 0.0f : 1.0f;
+                changed = true;
+            }
+        }
+        else
+        {
+            ImGui::SetCursorScreenPos(ImVec2(cellCenterX - knobRadius, knobTop));
+            changed = knob("##knob", &value, control.minValue, control.maxValue, knobRadius);
+        }
+        if (changed)
         {
             m_targets[flatIndex] = value;
             m_engine.setParameter(moduleIndex, parameterIndex, value);
@@ -1683,8 +1721,14 @@ void DesktopUI::drawGearPanel(std::size_t segmentIndex, const GearModel& model)
         // Escala de 0 a 10, como a serigrafia de um ampli de verdade — o
         // valor interno (drive 2.8, ganho 0.2...) não diz nada a quem toca.
         char scale[16];
-        std::snprintf(scale, sizeof(scale), "%.1f",
-                      static_cast<double>(10.0f * (value - control.minValue) / (control.maxValue - control.minValue)));
+        if (model.id == "stomp.rotovibe" && control.parameterId == "mode")
+            std::snprintf(scale, sizeof(scale), "%s", value >= 0.5f ? "Vib" : "Cho");
+        else if (model.id == "stomp.rotovibe" && control.parameterId == "position")
+            std::snprintf(scale, sizeof(scale), "%.1f Hz",
+                          0.3 * std::pow(7.0 / 0.3, static_cast<double>(value)));
+        else
+            std::snprintf(scale, sizeof(scale), "%.1f",
+                          static_cast<double>(10.0f * (value - control.minValue) / (control.maxValue - control.minValue)));
         const ImVec2 scaleSize = ImGui::CalcTextSize(scale);
         ImGui::SetCursorScreenPos(ImVec2(cellCenterX - scaleSize.x * 0.5f, knobTop + knobRadius * 2.0f + 4.0f));
         ImGui::TextUnformatted(scale);
@@ -2013,7 +2057,9 @@ void DesktopUI::drawPresetPanel(bool showHeader)
     {
         for (const std::string& path : m_presetFiles)
         {
-            const std::string label = std::filesystem::path(path).stem().string();
+            const bool isFactory = std::filesystem::path(path).parent_path().filename() == "factory";
+            const std::string label = (isFactory ? "Fábrica · " : "")
+                                      + m_presetNames.at(path) + "##" + path;
             const bool isCurrent = (path == m_currentPresetPath);
 
             // O preset em uso fica marcado, não só mais uma linha igual

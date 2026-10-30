@@ -94,16 +94,27 @@ desktop.ini
 audio/*
 !audio/README.md
 
+# Samples de referência fornecidos localmente para testar presets. Podem ter
+# licença própria e não entram no repositório público.
+assets/samples/
+
 # Presets salvos pela janela desktop ou pelo CLI. A pasta e o README dela
 # ficam versionados; os presets em si são experimentação pessoal, não
 # pertencem ao histórico do código.
 presets/*
 !presets/README.md
+!presets/factory/
+presets/factory/*
+!presets/factory/*.ibifxpreset
+!presets/factory/README.md
 
 # Impulse responses de cabinet (GearLibrary). A pasta e o README dela ficam
 # versionados; os .wav não — cada pacote de IR tem sua própria licença.
 irs/*
 !irs/README.md
+!irs/Factory/
+irs/Factory/*
+!irs/Factory/*.wav
 
 # Gravações feitas pela janela desktop (gravador e modo prática). Áudio
 # pessoal, não código.
