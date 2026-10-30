@@ -31,25 +31,20 @@
 // uma backing track estéreo é reduzida à média dos canais no load(), para
 // poder ser somada ao mesmo buffer mono de todo o resto.
 //
-// SEM RESAMPLE
-// O arquivo precisa estar no MESMO sample rate em que o motor está
-// rodando — load() lança se não estiver. Reamostrar é um projeto à parte
-// (qualidade do filtro, custo de CPU), e nenhuma outra parte do IbiFX faz
-// isso hoje (nem o processamento de arquivo, nem o Cabinet); seria
-// inconsistente a backing track ser a exceção silenciosa que muda o pitch
-// de quem esquecer de exportar na taxa certa.
+// A conversão de sample rate acontece ao carregar a faixa ou mudar a taxa
+// do motor, fora da thread de áudio. A cópia original fica guardada para
+// evitar conversões sucessivas quando o dispositivo de áudio muda.
 class BackingTrackPlayer
 {
 public:
     BackingTrackPlayer() = default;
 
-    // Define o sample rate do motor, usado para conferir contra o do
-    // arquivo em load().
+    // Define o sample rate do motor e reconverte uma faixa já carregada
+    // quando necessário. Chamar apenas com o áudio parado.
     void prepare(double sampleRate);
 
-    // Lê um .wav e guarda como mono. Lança std::runtime_error se o arquivo
-    // não puder ser lido (mensagem de wav::read) ou se o sample rate dele
-    // não bater com o do motor (ver o comentário da classe sobre resample).
+    // Lê um .wav, reduz a mono e converte à taxa do motor. Lança se o arquivo
+    // não puder ser lido. Chamar apenas com o áudio parado.
     void load(const std::string& path);
 
     bool isLoaded() const;
@@ -69,6 +64,8 @@ public:
 
 private:
     double m_sampleRate = 48000.0;
+    double m_fileSampleRate = 0.0;
+    std::vector<float> m_originalSamples;
     std::vector<float> m_samples;
     // Atômico: a interface muda o volume com o áudio rodando.
     std::atomic<float> m_volume{1.0f};

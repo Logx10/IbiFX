@@ -1,11 +1,21 @@
 #include "BackingTrackPlayer.h"
 
 #include <stdexcept>
+#include <utility>
 
+#include "Resampler.h"
 #include "WavFile.h"
 
 void BackingTrackPlayer::prepare(double sampleRate)
 {
+    if (sampleRate <= 0.0)
+        throw std::invalid_argument("sample rate da backing track precisa ser positivo");
+
+    if (sampleRate == m_sampleRate)
+        return;
+
+    if (!m_originalSamples.empty())
+        m_samples = resample(m_originalSamples, m_fileSampleRate, sampleRate);
     m_sampleRate = sampleRate;
 }
 
@@ -15,34 +25,31 @@ void BackingTrackPlayer::load(const std::string& path)
     // for um .wav válido, ou usar um formato de amostra fora do suportado.
     const WavFile file = wav::read(path);
 
-    if (file.sampleRate != m_sampleRate)
-    {
-        throw std::runtime_error(
-            "backing track '" + path + "' esta em " + std::to_string(static_cast<int>(file.sampleRate)) +
-            " Hz, mas o motor esta rodando em " + std::to_string(static_cast<int>(m_sampleRate)) +
-            " Hz -- sem reamostragem, os dois precisam ser iguais");
-    }
-
     // Reduz a mono pela média dos canais — mesma operação de IRLoader.cpp,
     // escrita de novo aqui em vez de reaproveitada: são só duas ocorrências
     // até agora, e a regra do projeto (AI_GUIDELINES §55) é esperar a
     // terceira antes de extrair um nome genérico pras duas.
-    m_samples.assign(file.frameCount(), 0.0f);
+    std::vector<float> mono(file.frameCount(), 0.0f);
 
     for (const auto& channel : file.channels)
     {
-        for (std::size_t i = 0; i < m_samples.size(); ++i)
+        for (std::size_t i = 0; i < mono.size(); ++i)
         {
-            m_samples[i] += channel[i];
+            mono[i] += channel[i];
         }
     }
 
     const float channelCountInverse = 1.0f / static_cast<float>(file.channelCount());
 
-    for (float& sample : m_samples)
+    for (float& sample : mono)
     {
         sample *= channelCountInverse;
     }
+
+    std::vector<float> converted = resample(mono, file.sampleRate, m_sampleRate);
+    m_fileSampleRate = file.sampleRate;
+    m_originalSamples = std::move(mono);
+    m_samples = std::move(converted);
 }
 
 bool BackingTrackPlayer::isLoaded() const

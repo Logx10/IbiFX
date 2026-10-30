@@ -368,6 +368,7 @@ private:
     float m_metronomeVolume = 0.5f;
     float m_backingVolume = 1.0f;
     bool m_loopOn = false;
+    bool m_loopASet = false;
     std::uint64_t m_loopStart = 0;
     std::uint64_t m_loopEnd = 0;
 

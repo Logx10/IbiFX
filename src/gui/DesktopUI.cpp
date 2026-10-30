@@ -470,6 +470,16 @@ std::string formatClock(double seconds)
     return buffer;
 }
 
+// A e B podem estar dentro do mesmo segundo em um trecho curto.
+std::string formatClockTenths(double seconds)
+{
+    const int tenths = std::max(0, static_cast<int>(seconds * 10.0));
+    char buffer[20];
+    std::snprintf(buffer, sizeof(buffer), "%02d:%02d.%01d",
+                  tenths / 600, (tenths / 10) % 60, tenths % 10);
+    return buffer;
+}
+
 // "20261006-142530": prefixo de arquivo de gravação. Ordena em ordem
 // cronológica e nunca repete entre duas gravações separadas por um
 // segundo ou mais.
@@ -2083,16 +2093,18 @@ void DesktopUI::drawPresetPanel(bool showHeader)
 void DesktopUI::refreshBackingTrackList()
 {
     m_backingFiles.clear();
-
-    std::error_code error;
-
-    if (!std::filesystem::exists(kAudioDir, error))
-        return;
-
-    for (const auto& entry : std::filesystem::directory_iterator(kAudioDir, error))
+    for (const std::filesystem::path& directory : {std::filesystem::path(kAudioDir),
+                                                   std::filesystem::path("assets/samples")})
     {
-        if (entry.is_regular_file() && entry.path().extension() == ".wav")
-            m_backingFiles.push_back(entry.path().string());
+        std::error_code error;
+        if (!std::filesystem::is_directory(directory, error))
+            continue;
+
+        for (const auto& entry : std::filesystem::directory_iterator(directory, error))
+        {
+            if (entry.is_regular_file() && entry.path().extension() == ".wav")
+                m_backingFiles.push_back(entry.path().string());
+        }
     }
 
     std::sort(m_backingFiles.begin(), m_backingFiles.end());
@@ -2107,8 +2119,16 @@ void DesktopUI::loadBackingTrack(const std::string& path)
     try
     {
         m_engine.practiceSession().loadBackingTrack(path);
+        m_engine.practiceSession().stop();
+        m_engine.practiceSession().seek(0);
+        m_engine.practiceSession().setLoopEnabled(false);
+        m_engine.practiceSession().setLoop(0, 0);
+        m_loopOn = false;
+        m_loopASet = false;
+        m_loopStart = 0;
+        m_loopEnd = 0;
         m_backingTrackPath = path;
-        m_practiceMessage = "backing track: " + std::filesystem::path(path).filename().string();
+        m_practiceMessage = "faixa carregada: toque, marque A e depois B para repetir um trecho";
     }
     catch (const std::exception& error)
     {
@@ -2410,7 +2430,7 @@ void DesktopUI::drawPracticePanel()
     ImGui::SameLine();
 
     if (ImGui::Button("Inicio"))
-        session.seek(m_loopOn ? m_loopStart : 0);
+        session.seek(0);
 
     ImGui::SameLine();
 
@@ -2438,9 +2458,10 @@ void DesktopUI::drawPracticePanel()
 
     // --- Backing track ---
     const std::string currentName = m_backingTrackPath.empty()
-        ? std::string("(nenhuma backing track)")
+        ? std::string("Escolha uma faixa WAV")
         : std::filesystem::path(m_backingTrackPath).filename().string();
 
+    ImGui::TextUnformatted("Faixa para praticar");
     ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x * 0.55f);
 
     if (ImGui::BeginCombo("##backing", currentName.c_str()))
@@ -2450,11 +2471,14 @@ void DesktopUI::drawPracticePanel()
         refreshBackingTrackList();
 
         if (m_backingFiles.empty())
-            ImGui::TextDisabled("coloque arquivos .wav em %s/", kAudioDir);
+            ImGui::TextDisabled("coloque arquivos .wav em audio/ ou assets/samples/");
 
         for (const std::string& path : m_backingFiles)
         {
-            const std::string label = std::filesystem::path(path).filename().string();
+            const std::filesystem::path file(path);
+            const std::string label = (file.parent_path() == std::filesystem::path("assets/samples")
+                                           ? "Samples · " : "Audio · ")
+                                      + file.filename().string() + "##" + path;
 
             if (ImGui::Selectable(label.c_str(), path == m_backingTrackPath))
                 loadBackingTrack(path);
@@ -2469,38 +2493,81 @@ void DesktopUI::drawPracticePanel()
     if (ImGui::SliderFloat("##backingVolume", &m_backingVolume, 0.0f, 1.0f, "faixa %.2f"))
         session.setBackingTrackVolume(m_backingVolume);
 
-    // --- Loop A/B ---
-    if (ImGui::Checkbox("Loop", &m_loopOn))
-        session.setLoopEnabled(m_loopOn);
+    // --- Repetição de um trecho da faixa (não é gravação de guitarra) ---
+    ImGui::Spacing();
+    ImGui::Separator();
+    ImGui::TextUnformatted("Repetir um trecho da faixa");
+    ImGui::TextWrapped("Toque ou clique na linha do tempo. Marque A no inicio e B no fim; a repeticao liga sozinha.");
 
-    ImGui::SameLine();
-
-    if (ImGui::Button("A"))
+    const bool hasTrack = session.hasBackingTrack();
+    const std::uint64_t current = session.positionSamples();
+    const bool canMarkStart = hasTrack && current < session.backingTrackLengthSamples();
+    ImGui::BeginDisabled(!canMarkStart);
+    if (ImGui::Button("1. Marcar inicio (A)"))
     {
-        m_loopStart = session.positionSamples();
+        m_loopStart = std::min(current, session.backingTrackLengthSamples());
+        m_loopEnd = m_loopStart;
+        m_loopASet = true;
+        m_loopOn = false;
+        session.setLoopEnabled(false);
         session.setLoop(m_loopStart, m_loopEnd);
     }
-
-    if (ImGui::IsItemHovered())
-        ImGui::SetTooltip("marca o inicio do loop na posicao atual");
+    ImGui::EndDisabled();
 
     ImGui::SameLine();
-
-    if (ImGui::Button("B"))
+    const bool canMarkEnd = hasTrack && m_loopASet && current > m_loopStart
+                            && current <= session.backingTrackLengthSamples();
+    ImGui::BeginDisabled(!canMarkEnd);
+    if (ImGui::Button("2. Marcar fim (B)"))
     {
-        m_loopEnd = session.positionSamples();
+        m_loopEnd = current;
         session.setLoop(m_loopStart, m_loopEnd);
+        session.setLoopEnabled(true);
+        m_loopOn = true;
+        session.seek(m_loopStart);
     }
+    ImGui::EndDisabled();
 
-    if (ImGui::IsItemHovered())
-        ImGui::SetTooltip("marca o fim do loop na posicao atual");
-
-    ImGui::SameLine();
-
-    if (m_loopEnd > m_loopStart)
-        ImGui::Text("%s - %s", formatClock(toSeconds(m_loopStart)).c_str(), formatClock(toSeconds(m_loopEnd)).c_str());
+    const bool hasRange = m_loopASet && m_loopEnd > m_loopStart;
+    if (m_loopASet)
+    {
+        if (hasRange)
+            ImGui::Text("A %s   →   B %s", formatClockTenths(toSeconds(m_loopStart)).c_str(),
+                        formatClockTenths(toSeconds(m_loopEnd)).c_str());
+        else
+            ImGui::Text("A %s   |   avance a faixa e marque B",
+                        formatClockTenths(toSeconds(m_loopStart)).c_str());
+    }
     else
-        ImGui::TextDisabled("marque A e B tocando");
+        ImGui::TextDisabled("Nenhum trecho marcado.");
+
+    ImGui::BeginDisabled(!hasRange);
+    if (ImGui::Checkbox("Repetir trecho", &m_loopOn))
+    {
+        session.setLoopEnabled(m_loopOn);
+        if (m_loopOn)
+            session.seek(m_loopStart);
+    }
+    ImGui::EndDisabled();
+
+    if (m_loopASet)
+    {
+        ImGui::SameLine();
+        if (ImGui::Button("Ir para A"))
+            session.seek(m_loopStart);
+        ImGui::SameLine();
+        if (ImGui::Button("Limpar trecho"))
+        {
+            m_loopOn = false;
+            m_loopASet = false;
+            m_loopStart = 0;
+            m_loopEnd = 0;
+            session.setLoopEnabled(false);
+            session.setLoop(0, 0);
+        }
+    }
+    if (!hasTrack)
+        ImGui::TextDisabled("Escolha uma faixa WAV acima para usar o loop.");
 
     // --- Gravação da sessão ---
     if (!session.isRecording())
@@ -2904,11 +2971,13 @@ void DesktopUI::drawPracticeTimeline()
 
     ImGui::TextUnformatted("Timeline de pratica");
     ImGui::SameLine();
-    ImGui::TextDisabled("backing track, loop A/B e agulha");
+    ImGui::TextDisabled("clique na faixa para escolher onde marcar A e B");
 
     const ImVec2 origin = ImGui::GetCursorScreenPos();
     const ImVec2 size(ImGui::GetContentRegionAvail().x, 106.0f);
     ImGui::InvisibleButton("##timeline", size);
+    if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("Clique para mover a posicao; depois use Marcar inicio (A) ou Marcar fim (B).");
     ImDrawList* drawList = ImGui::GetWindowDrawList();
     const ImVec2 end(origin.x + size.x, origin.y + size.y);
 
@@ -2933,13 +3002,26 @@ void DesktopUI::drawPracticeTimeline()
         drawList->AddLine(ImVec2(playheadX, origin.y + 18.0f), ImVec2(playheadX, end.y - 10.0f),
                           ImGui::GetColorU32(kAccentColor), 2.0f);
 
-        if (m_loopEnd > m_loopStart)
+        if (m_loopASet)
         {
             const float loopA = std::clamp(static_cast<float>(m_loopStart) / static_cast<float>(length), 0.0f, 1.0f);
-            const float loopB = std::clamp(static_cast<float>(m_loopEnd) / static_cast<float>(length), 0.0f, 1.0f);
-            drawList->AddRectFilled(ImVec2(laneLeft + (laneRight - laneLeft) * loopA, origin.y + 76.0f),
-                                    ImVec2(laneLeft + (laneRight - laneLeft) * loopB, origin.y + 88.0f),
-                                    ImGui::GetColorU32(kAccentColor), 3.0f);
+            const float pointA = laneLeft + (laneRight - laneLeft) * loopA;
+            if (m_loopEnd > m_loopStart)
+            {
+                const float loopB = std::clamp(static_cast<float>(m_loopEnd) / static_cast<float>(length), 0.0f, 1.0f);
+                const float pointB = laneLeft + (laneRight - laneLeft) * loopB;
+                drawList->AddRectFilled(ImVec2(pointA, origin.y + 76.0f),
+                                        ImVec2(pointB, origin.y + 88.0f),
+                                        ImGui::GetColorU32(kAccentColor), 3.0f);
+                drawList->AddLine(ImVec2(pointB, origin.y + 69.0f), ImVec2(pointB, origin.y + 97.0f),
+                                  ImGui::GetColorU32(kAccentColor), 2.0f);
+                drawList->AddText(ImVec2(pointB + 3.0f, origin.y + 88.0f),
+                                  ImGui::GetColorU32(kAccentColor), "B");
+            }
+            drawList->AddLine(ImVec2(pointA, origin.y + 69.0f), ImVec2(pointA, origin.y + 97.0f),
+                              ImGui::GetColorU32(kAccentColor), 2.0f);
+            drawList->AddText(ImVec2(pointA + 3.0f, origin.y + 88.0f),
+                              ImGui::GetColorU32(kAccentColor), "A");
         }
 
         if (ImGui::IsItemClicked())
