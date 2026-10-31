@@ -1,4 +1,5 @@
 #include <exception>
+#include <filesystem>
 #include <iostream>
 #include <string>
 #include <vector>
@@ -32,8 +33,39 @@
 // salvar faz sentido depois de ajustar os knobs com a janela aberta, não
 // antes dela existir; isso fica para quando a Fase 12 ganhar um seletor
 // de preset na própria UI.
+namespace
+{
+// presets/, irs/, audio/ e recordings/ são relativos ao diretório de
+// trabalho. Aberto com duplo clique em build-release/, o exe nasceria sem
+// nenhum deles; então, se o diretório atual não tem presets/, sobe a partir
+// da pasta do exe até achar a raiz do projeto e passa a trabalhar nela.
+void enterProjectRoot(const char* exePath)
+{
+    namespace fs = std::filesystem;
+    std::error_code error;
+
+    if (fs::is_directory("presets", error))
+        return;
+
+    for (fs::path dir = fs::absolute(exePath, error).parent_path();
+         !dir.empty(); dir = dir.parent_path())
+    {
+        if (fs::is_directory(dir / "presets", error))
+        {
+            fs::current_path(dir, error);
+            return;
+        }
+
+        if (dir == dir.root_path())
+            return;
+    }
+}
+} // namespace
+
 int main(int argc, char** argv)
 {
+    enterProjectRoot(argv[0]);
+
     bool useNullDevice = false;
     bool developerMode = false;
     std::vector<std::string> chainArgs;
