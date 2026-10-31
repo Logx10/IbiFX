@@ -154,6 +154,7 @@ add_library(ibifx_core STATIC
     src/Parameter.cpp
     src/Delay.cpp
     src/Chorus.cpp
+    src/Rotovibe.cpp
     src/SmoothedValue.cpp
     src/WavFile.cpp
     src/offline.cpp
@@ -227,6 +228,16 @@ add_executable(ibifx
 target_compile_options(ibifx PRIVATE ${IBIFX_WARNINGS})
 # ibifx_platform ja arrasta ibifx_core como dependencia PUBLIC.
 target_link_libraries(ibifx PRIVATE ibifx_tui)
+
+# Gera quatro trechos curtos para ouvir o Rotovibe sem instrumento conectado.
+add_executable(ibifx_rotovibe_preview tools/rotovibe_preview.cpp)
+target_compile_options(ibifx_rotovibe_preview PRIVATE ${IBIFX_WARNINGS})
+target_link_libraries(ibifx_rotovibe_preview PRIVATE ibifx_core)
+
+# Recria os seis presets versionados a partir das receitas da GearLibrary.
+add_executable(ibifx_factory_presets tools/generate_factory_presets.cpp)
+target_compile_options(ibifx_factory_presets PRIVATE ${IBIFX_WARNINGS})
+target_link_libraries(ibifx_factory_presets PRIVATE ibifx_core)
 
 # O frontend desktop (Fase 12, AI_GUIDELINES §36) — Dear ImGui + SDL3, a
 # escolha registrada em docs/adr/0001-portabilidade-desktop-e-web.md: é a

@@ -375,7 +375,7 @@ void printUsage(const char* program)
               << "                            --ui e --ui-demo tambem aceitam as opcoes de cadeia\n"
               << "\n"
               << "opcoes de cadeia (processamento de arquivo, --live, --ui e --ui-demo):\n"
-              << "  --gate-threshold N  piso do noise gate      (0 a 0.3,  padrao 0.02)\n"
+              << "  --gate-threshold N  piso do noise gate      (0 a 0.3,  padrao 0.005)\n"
               << "  --gate-release N    tempo pra fechar (s)    (0.01 a 1, padrao 0.15)\n"
               << "  --comp-threshold N  piso do compressor (dB) (-60 a 0,  padrao -20)\n"
               << "  --comp-ratio N      taxa de compressao      (1 a 20,   padrao 4.0)\n"

@@ -18,6 +18,7 @@
 #include "Preamp.h"
 #include "PowerAmp.h"
 #include "Reverb.h"
+#include "Rotovibe.h"
 #include "SoftClipper.h"
 #include "ToneStack.h"
 
@@ -39,6 +40,7 @@ std::unique_ptr<AudioModule> createModule(const std::string& type)
     if (type == "Delay") return std::make_unique<Delay>();
     if (type == "Reverb") return std::make_unique<Reverb>();
     if (type == "Chorus") return std::make_unique<Chorus>();
+    if (type == "Rotovibe") return std::make_unique<Rotovibe>();
     if (type == "Preamp") return std::make_unique<Preamp>();
     if (type == "ToneStack") return std::make_unique<ToneStack>();
     if (type == "PowerAmp") return std::make_unique<PowerAmp>();

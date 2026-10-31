@@ -26,6 +26,12 @@ forma direta, sem FFT, e o custo cresce com o tamanho da IR.
 Os `.wav` desta pasta **não são versionados**, só este README, porque
 cada pacote de IR tem a sua própria licença.
 
+A exceção são as IRs sintéticas e originais em `irs/Factory/`: elas vêm com
+o IbiFX para que os presets de fábrica funcionem sem download. São filtros
+genéricos criados por `tools/generate_factory_irs.py`, não capturas de
+um gabinete ou microfone real. Você pode substituir o cabinet do preset
+por uma IR sua para chegar mais perto do timbre desejado.
+
 ## Exemplo: Celestion Cenzo Townshend Mix
 
 A Celestion disponibiliza esse mix para [download no site oficial](https://www.celestionplus.com/free-download/).

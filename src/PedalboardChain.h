@@ -20,7 +20,7 @@
 // a diferença entre entrada e saída ficar óbvia, não para soar bonito.
 struct ChainSettings
 {
-    float gateThreshold = 0.02f;
+    float gateThreshold = 0.005f;
     float gateRelease = 0.15f;
     float compThreshold = -20.0f;
     float compRatio = 4.0f;

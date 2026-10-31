@@ -107,6 +107,19 @@ suavização sem alterar nenhum dos testes já existentes.
 
 ## Processando um arquivo
 
+### Rotovibe
+
+O catálogo inclui `stomp.rotovibe`, um efeito de vibe com quatro filtros de fase.
+No desktop, adicione o pedal pela categoria **Modulation**. A prancha vertical
+controla a velocidade (0,3 a 7 Hz), **Intensity** controla a varredura e a
+chave **Mode** alterna entre **Chorus** (sinal direto + filtrado) e **Vibrato**
+(somente filtrado). Os três controles são parâmetros do módulo e ficam salvos
+no preset; `position` pode receber um MIDI CC pelo mapeamento de parâmetros.
+
+No terminal, o pedal pode ser incluído em um rig com `--stomp rotovibe`.
+O algoritmo é uma interpretação digital do efeito, sem modelagem exata do
+circuito do pedal físico.
+
 O executável aceita arquivos `.wav`. Para gerar um sinal de teste e ouvi-lo
 passando pela cadeia:
 

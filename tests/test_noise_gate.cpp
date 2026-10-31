@@ -101,7 +101,7 @@ void testGateClosesFollowingReleaseCurve()
     gate.process(abrindo);
     check(std::fabs(abrindo.back() - 0.5f) < 1e-4f, "gate abriu antes do teste de release");
 
-    // Sinal fraco, abaixo do threshold padrão (0.02). A entrada não pode ser
+    // Sinal fraco, abaixo do threshold padrão (0.005). A entrada não pode ser
     // 0 (a saída seria sempre 0 e não revelaria o gain), nem alta o
     // bastante para o gate continuar interpretando como sinal — 0.001 fica
     // bem abaixo do threshold e ainda deixa o gain visível na saída.
@@ -178,7 +178,7 @@ void testThresholdAndReleaseRoundTrip()
 
     NoiseGate gate;
 
-    checkClose(gate.threshold(), 0.02f, "threshold padrao e 0.02");
+    checkClose(gate.threshold(), 0.005f, "threshold padrao e 0.005");
     checkClose(gate.release(), 0.15f, "release padrao e 0.15");
 
     gate.setThreshold(0.1f);
@@ -186,6 +186,35 @@ void testThresholdAndReleaseRoundTrip()
 
     checkClose(gate.threshold(), 0.1f, "threshold vira 0.1");
     checkClose(gate.release(), 0.3f, "release vira 0.3");
+}
+
+// Uma palhetada leve pode chegar com pico de apenas 0.01 antes do ganho.
+// O envelope retificado fica abaixo do pico, então o antigo threshold 0.02
+// mantinha o gate fechado mesmo depois de a nota estabilizar.
+void testQuietNoteOpensWithDefaultThreshold()
+{
+    std::cout << "nota suave abre o gate no valor padrao\n";
+
+    constexpr double sampleRate = 48000.0;
+    constexpr double twoPi = 6.283185307179586;
+    std::vector<float> input(static_cast<std::size_t>(sampleRate * 0.2));
+    for (std::size_t i = 0; i < input.size(); ++i)
+        input[i] = 0.01f * std::sin(twoPi * 220.0 * static_cast<double>(i) / sampleRate);
+
+    NoiseGate gate;
+    gate.prepare(sampleRate, 128);
+    auto output = input;
+    gate.process(output);
+
+    double inputEnergy = 0.0;
+    double outputEnergy = 0.0;
+    for (std::size_t i = input.size() / 2; i < input.size(); ++i)
+    {
+        inputEnergy += static_cast<double>(input[i]) * input[i];
+        outputEnergy += static_cast<double>(output[i]) * output[i];
+    }
+    check(outputEnergy > 0.9 * inputEnergy,
+          "nota de pico 0.01 passa sem exigir uma palhetada forte");
 }
 
 // Buffer vazio não pode quebrar.
@@ -212,6 +241,7 @@ int main()
     testExactlyAtThresholdDoesNotOpen();
     testResetClosesTheGate();
     testThresholdAndReleaseRoundTrip();
+    testQuietNoteOpensWithDefaultThreshold();
     testEmptyBufferDoesNotCrash();
 
     return reportResults();

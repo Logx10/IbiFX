@@ -15,8 +15,8 @@ void PracticeSession::prepare(double sampleRate)
 
 void PracticeSession::loadBackingTrack(const std::string& path)
 {
-    // BackingTrackPlayer::load() já lança se o sample rate do arquivo não
-    // bater com o que prepare() informou — nada a duplicar aqui.
+    // BackingTrackPlayer::load() reduz a mono e converte à taxa do motor,
+    // fora da thread de áudio.
     m_backingTrack.load(path);
 }
 

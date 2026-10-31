@@ -214,29 +214,31 @@ void testVolumeScalesAmplitude()
     removeIfExists(path);
 }
 
-// Sample rate do arquivo diferente do motor lança, em vez de tocar
-// silenciosamente em pitch errado.
-void testMismatchedSampleRateThrows()
+// Um WAV de 44,1 kHz precisa tocar com a mesma duração num motor de 48 kHz.
+// A conversão também precisa ser refeita da fonte original se o dispositivo
+// trocar de taxa depois que a faixa já foi carregada.
+void testMismatchedSampleRateResamples()
 {
-    std::cout << "sample rate incompativel lanca\n";
+    std::cout << "sample rate diferente e convertido sem mudar a duracao\n";
 
-    const auto path = writeMonoFile("outrarate.wav", 44100.0, {0.1f, 0.2f});
+    const auto path = writeMonoFile("outrarate.wav", 44100.0,
+                                     std::vector<float>(4410, 0.25f));
 
     BackingTrackPlayer player;
     player.prepare(48000.0);
+    player.load(path.string());
 
-    bool lancou = false;
-    try
-    {
-        player.load(path.string());
-    }
-    catch (const std::runtime_error&)
-    {
-        lancou = true;
-    }
+    check(player.isLoaded(), "faixa carregada");
+    check(player.lengthSamples() == 4800, "0,1 s virou 4800 amostras");
+    checkClose(static_cast<float>(player.lengthSeconds()), 0.1f, "duracao preservada");
 
-    check(lancou, "sample rate incompativel lanca runtime_error");
-    check(!player.isLoaded(), "nada foi carregado");
+    std::vector<float> middle(1, 0.0f);
+    player.process(middle, 2400);
+    checkCloseWav(middle[0], 0.25f, "amplitude preservada no meio da faixa");
+
+    player.prepare(44100.0);
+    check(player.lengthSamples() == 4410, "mudanca de taxa usa a fonte original");
+    checkClose(static_cast<float>(player.lengthSeconds()), 0.1f, "duracao continua igual");
 
     removeIfExists(path);
 }
@@ -274,7 +276,7 @@ int main()
     testProcessPastEndIsSilent();
     testStereoFileIsAveragedToMono();
     testVolumeScalesAmplitude();
-    testMismatchedSampleRateThrows();
+    testMismatchedSampleRateResamples();
     testMissingFileThrows();
 
     return reportResults();

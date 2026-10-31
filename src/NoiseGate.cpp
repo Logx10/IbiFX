@@ -25,10 +25,10 @@ constexpr float kEnvelopeSeconds = 0.005f;
 
 NoiseGate::NoiseGate()
 {
-    // 0.02 de amplitude (~-34 dB) é um piso conservador: alto o bastante
-    // para cortar chiado de captador e hum de rede, baixo o bastante para
-    // não engolir o final de uma nota dedilhada suavemente.
-    m_parameters.emplace_back("threshold", "Threshold", 0.0f, 0.3f, 0.02f);
+    // -46 dBFS de amplitude é um ponto de partida mais permissivo para
+    // captadores passivos e palhetadas leves. O ruído da entrada varia:
+    // ajuste o threshold acima do piso real do seu instrumento, se preciso.
+    m_parameters.emplace_back("threshold", "Threshold", 0.0f, 0.3f, 0.005f);
 
     // 150 ms é rápido o bastante para não deixar o ruído ecoar por muito
     // tempo depois que a nota para, devagar o bastante para a cauda de uma
