@@ -339,6 +339,45 @@ void addAmps(std::vector<GearModel>& models)
          module("PowerAmp", {{"drive", 1.2f}, {"sag", 0.2f}}),
          module("Gain", {{"gain", 0.2f}})}));
 
+    // --- Os dois Marshall do John Frusciante ---
+    // De Californication a Stadium Arcadium ele dividia a guitarra entre
+    // os dois, cada um no seu par de 4x12: o Major para o corpo limpo e
+    // largo, o Silver Jubilee para a sujeira.
+
+    // No espírito do Major 200 W: o circuito de um Plexi com muito mais
+    // headroom (válvulas KT88 e um transformador enorme). Pouco ganho de
+    // preamp, power amp folgado e quase sem sag — limpo alto e firme, que
+    // só abre quando a guitarra (ou um DS-2) empurra. Master calibrado para
+    // a palhetada média sair no nível do American Clean (~-11 dBFS).
+    models.push_back(gear("amp.brit-200", "Brit 200", GearCategory::Amp, "Clean",
+        "Plexi de 200 W: limpo grande e firme, quebra só quando empurrado.",
+        {module("HighPass", {{"frequency", 90.0f}}),
+         module("Gain", {{"gain", 1.5f}}),
+         module("Preamp", {{"drive", 1.0f}, {"interstage", 10000.0f}}),
+         module("ToneStack", {{"bass", 0.4f}, {"mid", 0.6f}, {"treble", 0.65f}}),
+         module("Gain", {{"gain", 2.0f}}),
+         module("PowerAmp", {{"drive", 0.8f}, {"sag", 0.15f}, {"presence", 0.4f}}),
+         module("Gain", {{"gain", 1.1f}})}));
+
+    // No espírito do Silver Jubilee 2555: três estágios de preamp e, entre
+    // eles, a rede de clipagem que define o ampli — dois LEDs vermelhos e
+    // diodos de silício montados para clipar ASSIMETRICAMENTE (harmônicos
+    // pares, como num overdrive). Sem ela o Jubilee seria um ampli limpo:
+    // quase toda a saturação do preamp vem dos diodos. Aqui ela é um
+    // AsymmetricClipper depois do Preamp. Mais escuro e comprimido no médio
+    // que o JCM800 (o Brit 800) da mesma época. Master calibrado para o
+    // nível dos outros Brit (~-14,5 dBFS).
+    models.push_back(gear("amp.brit-silver", "Brit Silver", GearCategory::Amp, "Crunch",
+        "Crunch denso de clipagem por LED: médio comprimido e agressivo, mais escuro que o 800.",
+        {module("HighPass", {{"frequency", 100.0f}}),
+         module("Gain", {{"gain", 2.0f}}),
+         module("Preamp", {{"drive", 1.6f}, {"interstage", 8000.0f}}),
+         module("AsymmetricClipper", {{"drive", 3.0f}, {"bias", 0.25f}}),
+         module("ToneStack", {{"bass", 0.5f}, {"mid", 0.65f}, {"treble", 0.55f}}),
+         module("Gain", {{"gain", 2.0f}}),
+         module("PowerAmp", {{"drive", 1.5f}, {"sag", 0.3f}, {"presence", 0.5f}}),
+         module("Gain", {{"gain", 0.26f}})}));
+
     // Todos os amplis têm o mesmo painel — como o de um ampli real: Gain,
     // Bass, Middle, Treble, Sag e Master. Os knobs acham o módulo pelo TIPO
     // (o Preamp, o ToneStack, o PowerAmp, o último Gain como master), não

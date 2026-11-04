@@ -39,13 +39,15 @@ sempre o do IbiFX (Green Screamer, Brit 800...).
 
 ## Amps
 
-Todos os amps têm o mesmo painel; só os dois Brit têm Presence.
+Todos os amps têm o mesmo painel; só os Brit têm Presence.
 
 | Nome no IbiFX | Id | Provável referência | Knobs |
 |---|---|---|---|
 | American Clean | `amp.american-clean` | Fender Twin Reverb *(inferido)* | Gain, Bass, Middle, Treble, Sag, Master |
 | Tweed '59 | `amp.tweed-59` | Fender '59 Bassman | Gain, Bass, Middle, Treble, Sag, Master |
 | Brit Plexi | `amp.brit-plexi` | Marshall 1959 Super Lead "Plexi" *(inferido)* | Gain, Bass, Middle, Treble, Presence, Sag, Master |
+| Brit 200 | `amp.brit-200` | Marshall Major 200 W (rig do John Frusciante): Plexi com muito headroom | Gain, Bass, Middle, Treble, Presence, Sag, Master |
+| Brit Silver | `amp.brit-silver` | Marshall Silver Jubilee 2555 (rig do John Frusciante): clipagem assimétrica por LED/diodo entre os estágios do preamp | Gain, Bass, Middle, Treble, Presence, Sag, Master |
 | Brit 800 | `amp.brit-800` | Marshall JCM800 2203 *(inferido)* | Gain, Bass, Middle, Treble, Presence, Sag, Master |
 | Modern Hi-Gain | `amp.modern-hi-gain` | Mesa Dual Rectifier / EVH 5150 *(inferido)* | Gain, Bass, Middle, Treble, Sag, Master |
 

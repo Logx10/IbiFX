@@ -573,7 +573,7 @@ void testOnlyBritAmpsHavePresence()
         for (const GearControl& control : amp->controls)
             hasPresence = hasPresence || control.parameterId == "presence";
 
-        const bool isBrit = (amp->id == "amp.brit-plexi" || amp->id == "amp.brit-800");
+        const bool isBrit = amp->id.rfind("amp.brit-", 0) == 0;
         check(hasPresence == isBrit, amp->id + (isBrit ? " tem Presence" : " nao tem Presence"));
     }
 }
