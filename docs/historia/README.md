@@ -11,3 +11,4 @@ Os branches são empilhados, cada um sai do anterior:
 
 1. [Pedais](pedais.md) — branch `pedais`
 2. [Amps](amps.md) — branch `amps`
+3. [IR (gabinetes)](ir.md) — branch `ir`
