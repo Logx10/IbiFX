@@ -50,6 +50,29 @@ GearModel gear(std::string id,
     return model;
 }
 
+// Posição do primeiro módulo do tipo type na receita. Só para os amplis do
+// próprio catálogo, que sempre têm os módulos procurados.
+std::size_t moduleIndex(const GearModel& model, const std::string& type)
+{
+    for (std::size_t i = 0; i < model.modules.size(); ++i)
+    {
+        if (model.modules[i].type == type)
+            return i;
+    }
+    throw std::logic_error("receita " + model.id + " sem modulo " + type);
+}
+
+// A receita define este parâmetro explicitamente?
+bool recipeSets(const Preset::ModuleState& state, const std::string& parameterId)
+{
+    for (const auto& parameter : state.parameters)
+    {
+        if (parameter.first == parameterId)
+            return true;
+    }
+    return false;
+}
+
 // Os pedais: cada um é a curva de saturação (ou o efeito) que mais se parece
 // com o circuito original, mais o filtro e o volume em volta dela.
 void addStomps(std::vector<GearModel>& models)
@@ -316,30 +339,39 @@ void addAmps(std::vector<GearModel>& models)
          module("PowerAmp", {{"drive", 1.2f}, {"sag", 0.2f}}),
          module("Gain", {{"gain", 0.2f}})}));
 
-    // Todos os amplis têm a mesma estrutura, então o mesmo painel — como
-    // o de um ampli real: Gain, Bass, Middle, Treble, Sag e Master. O teto
-    // do Master é 2,5x o volume calibrado da receita, para o padrão cair
-    // perto do "4" na escala de 0 a 10.
+    // Todos os amplis têm o mesmo painel — como o de um ampli real: Gain,
+    // Bass, Middle, Treble, Sag e Master. Os knobs acham o módulo pelo TIPO
+    // (o Preamp, o ToneStack, o PowerAmp, o último Gain como master), não
+    // pela posição: o Silver Jubilee tem um estágio de clipagem a mais no
+    // meio, e o painel dele tem que continuar funcionando. O teto do Master
+    // é 2,5x o volume calibrado da receita, para o padrão cair perto do
+    // "4" na escala de 0 a 10.
     //
-    // Os Brit ganham Presence entre Treble e Sag, onde ele fica num painel
-    // Marshall de verdade. Os outros não: o knob não existe nos amplis que
-    // eles lembram, e a receita deles deixa o presence em 0 (neutro).
+    // Presence aparece entre Treble e Sag, onde ele fica num painel
+    // Marshall de verdade, nos amplis cuja receita define presence. Os
+    // outros deixam o presence em 0 (neutro), e o knob não existe nos
+    // amplis que eles lembram.
     for (GearModel& model : models)
     {
         if (model.category != GearCategory::Amp)
             continue;
 
-        const float master = model.modules[6].parameters[0].second;
-        model.controls = {control("Gain", 2, "drive", 0.1f, 5.0f),
-                          control("Bass", 3, "bass", 0.0f, 1.0f),
-                          control("Middle", 3, "mid", 0.0f, 1.0f),
-                          control("Treble", 3, "treble", 0.0f, 1.0f)};
+        const std::size_t preamp = moduleIndex(model, "Preamp");
+        const std::size_t toneStack = moduleIndex(model, "ToneStack");
+        const std::size_t powerAmp = moduleIndex(model, "PowerAmp");
+        const std::size_t masterGain = model.modules.size() - 1;
 
-        if (model.id == "amp.brit-plexi" || model.id == "amp.brit-800")
-            model.controls.push_back(control("Presence", 5, "presence", 0.0f, 1.0f));
+        const float master = model.modules[masterGain].parameters[0].second;
+        model.controls = {control("Gain", preamp, "drive", 0.1f, 5.0f),
+                          control("Bass", toneStack, "bass", 0.0f, 1.0f),
+                          control("Middle", toneStack, "mid", 0.0f, 1.0f),
+                          control("Treble", toneStack, "treble", 0.0f, 1.0f)};
 
-        model.controls.push_back(control("Sag", 5, "sag", 0.0f, 1.0f));
-        model.controls.push_back(control("Master", 6, "gain", 0.0f, master * 2.5f));
+        if (recipeSets(model.modules[powerAmp], "presence"))
+            model.controls.push_back(control("Presence", powerAmp, "presence", 0.0f, 1.0f));
+
+        model.controls.push_back(control("Sag", powerAmp, "sag", 0.0f, 1.0f));
+        model.controls.push_back(control("Master", masterGain, "gain", 0.0f, master * 2.5f));
     }
 }
 
