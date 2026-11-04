@@ -135,6 +135,83 @@ void addStomps(std::vector<GearModel>& models)
     models.back().controls = {control("Fuzz", 0, "gain", 1.0f, 8.0f),
                               control("Bias", 1, "bias", 0.0f, 0.9f)};
 
+    // --- O rig do John Frusciante ---
+    // Os pedais que aparecem nos boards dele de Blood Sugar a Stadium
+    // Arcadium e que dá para montar com os módulos que já existem. Os
+    // números de frequência vêm de medições publicadas de cada circuito —
+    // ver docs/assets-equipamentos.md. Ficaram de fora o wah (WH-10), o
+    // flanger (Electric Mistress) e o phaser (Phase 90): pedem filtro
+    // varrido ou realimentação de modulação, módulos que ainda não existem.
+
+    // No espírito do DS-2 Turbo Distortion, a distorção que está em todas
+    // as fases dele. Clipagem dura (diodos) depois do ganho, como o DS-1.
+    // O knob Turbo é o modo II medido: +10 dB estreitos perto de 900 Hz
+    // (a banda de 800 do GraphicEQ) — em 0 é o modo I, em 10 o modo II. O
+    // corte de ~10 dB em 2,5 kHz que acompanha o modo II e o agudo mais
+    // contido que o do DS-1 ficam fixos no mesmo EQ; o Tone mexe no 6,4k.
+    models.push_back(gear("stomp.orange-turbo", "Orange Turbo", GearCategory::Stomp, "Distortion",
+        "Distorção de solo com modo Turbo: médio saliente em 900 Hz que faz a nota furar a mistura.",
+        {module("HighPass", {{"frequency", 100.0f}}),
+         module("Gain", {{"gain", 6.0f}}),
+         module("Clipper", {{"threshold", 0.25f}}),
+         module("GraphicEQ", {{"band800", 10.0f}, {"band3200", -8.0f}, {"band6400", -8.0f}}),
+         module("Gain", {{"gain", 0.5f}})}));
+    models.back().controls = {control("Dist", 1, "gain", 1.0f, 8.0f),
+                              control("Tone", 3, "band6400", -15.0f, 6.0f),
+                              control("Level", 4, "gain", 0.0f, 3.0f),
+                              control("Turbo", 3, "band800", 0.0f, 10.0f)};
+
+    // No espírito do Big Muff russo ("Green Russian") do board de
+    // Californication. Dois estágios de clipagem suave em cascata — o
+    // sustain enorme vem daí —, com o agudo aparado entre eles como os
+    // capacitores Miller do circuito fazem (~1,2 kHz). Depois, o corte de
+    // médios do tone stack em 1 kHz, mais raso que o dos Muffs americanos
+    // (~6 dB contra ~13 dB), e o grave cheio característico da versão russa.
+    models.push_back(gear("stomp.green-siberian", "Green Siberian", GearCategory::Stomp, "Fuzz",
+        "Fuzz de sustain longo e grave gordo, com médio levemente cavado.",
+        {module("Gain", {{"gain", 3.0f}}),
+         module("SoftClipper", {{"drive", 4.0f}}),
+         module("GraphicEQ", {{"band3200", -6.0f}, {"band6400", -12.0f}}),
+         module("SoftClipper", {{"drive", 3.0f}}),
+         module("GraphicEQ", {{"band400", -3.0f}, {"band800", -6.0f},
+                              {"band1600", -4.0f}, {"band3200", -4.0f}, {"band6400", -12.0f}}),
+         module("Gain", {{"gain", 0.3f}})}));
+    models.back().controls = {control("Sustain", 0, "gain", 1.0f, 8.0f),
+                              control("Tone", 4, "band3200", -15.0f, 8.0f),
+                              control("Volume", 5, "gain", 0.0f, 3.0f)};
+
+    // No espírito do Fuzzrite do board de Stadium Arcadium. Dois estágios
+    // de transistor com o Depth misturando as saídas — fora de fase, então
+    // a mistura cancela parte da fundamental e sobram os harmônicos: o som
+    // fino, rasgado, "de mosquito". Aqui: o capacitor pequeno de entrada
+    // (HighPass alto), uma clipagem bem assimétrica (transistor faminto) e
+    // o Depth como drive dela. O bias é na escala da ENTRADA, por isso o
+    // ganho antes: sem ele, bias 0.6 deixava a palhetada inteira presa no
+    // teto da tanh e o pedal saía mudo. Menos saturado que um Big Muff, mais
+    // rosnado que o Round Fuzz.
+    models.push_back(gear("stomp.bakersfield-fuzz", "Bakersfield Fuzz", GearCategory::Stomp, "Fuzz",
+        "Fuzz dos anos 60, fino e rasgado: mais rosnado que saturado.",
+        {module("HighPass", {{"frequency", 300.0f}}),
+         module("Gain", {{"gain", 3.0f}}),
+         module("AsymmetricClipper", {{"drive", 8.0f}, {"bias", 0.3f}}),
+         module("GraphicEQ", {{"band1600", 3.0f}, {"band3200", 2.0f}}),
+         module("Gain", {{"gain", 0.5f}})}));
+    models.back().controls = {control("Depth", 2, "drive", 1.0f, 30.0f),
+                              control("Volume", 4, "gain", 0.0f, 3.0f)};
+
+    // No espírito do CE-1 Chorus Ensemble (Californication, Stadium
+    // Arcadium): chorus lento e largo, metade seco metade molhado — o modo
+    // chorus do original sai mono com a mistura fixa em 50%.
+    models.push_back(gear("stomp.ensemble-chorus", "Ensemble Chorus", GearCategory::Stomp, "Modulation",
+        "Chorus lento e largo dos anos 70, para limpos com brilho.",
+        {module("Chorus", {{"rate", 0.5f}, {"depth", 0.65f}, {"mix", 0.5f}})}));
+
+    // No espírito do Holy Grail (By the Way, Stadium Arcadium) no modo hall:
+    // cauda longa e escura, por baixo do som.
+    models.push_back(gear("stomp.chapel-reverb", "Chapel Reverb", GearCategory::Stomp, "Reverb",
+        "Reverb de pedal com cauda longa e escura, no modo hall.",
+        {module("Reverb", {{"decay", 0.8f}, {"damping", 0.45f}, {"mix", 0.3f}})}));
+
     // Um módulo só: os oito knobs (sete bandas + Level) saem automáticos das
     // faixas do próprio GraphicEQ. Tudo em 0 dB é o pedal flat.
     models.push_back(gear("stomp.seven-band", "Seven Band EQ", GearCategory::Stomp, "EQ",

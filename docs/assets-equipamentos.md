@@ -24,6 +24,11 @@ sempre o do IbiFX (Green Screamer, Brit 800...).
 | Yellow Drive | `stomp.yellow-drive` | Boss SD-1 pela cor; o som (simétrico, transparente) lembra um overdrive transparente *(inferido)* | Drive, Level |
 | Black Rodent | `stomp.black-rodent` | ProCo RAT *(inferido)* | Distortion, Low Cut, Level |
 | Round Fuzz | `stomp.round-fuzz` | Dallas Arbiter Fuzz Face *(inferido)* | Fuzz, Bias |
+| Orange Turbo | `stomp.orange-turbo` | Boss DS-2 Turbo Distortion (rig do John Frusciante). Turbo II medido: +10 dB em ~900 Hz e -10 dB em ~2,5 kHz | Dist, Tone, Level, Turbo |
+| Green Siberian | `stomp.green-siberian` | Electro-Harmonix Big Muff Pi russo "Green Russian" (rig de Californication). Dois estágios de clipagem e corte de médios raso em 1 kHz | Sustain, Tone, Volume |
+| Bakersfield Fuzz | `stomp.bakersfield-fuzz` | Mosrite Fuzzrite (rig de Stadium Arcadium). Dois transistores; Depth mistura os estágios fora de fase | Depth, Volume |
+| Ensemble Chorus | `stomp.ensemble-chorus` | Boss CE-1 Chorus Ensemble (rig do John Frusciante) | Rate, Depth, Mix |
+| Chapel Reverb | `stomp.chapel-reverb` | Electro-Harmonix Holy Grail, modo hall (By the Way, Stadium Arcadium) | Decay, Damping, Mix |
 | Seven Band EQ | `stomp.seven-band` | Boss GE-7 (mesmas 7 bandas, ±15 dB e Level) *(inferido)* | 100, 200, 400, 800, 1.6k, 3.2k, 6.4k, Level |
 | Blue Chorus | `stomp.blue-chorus` | Boss CE-2 (chorus dos anos 80) *(inferido)* | Rate, Depth, Mix |
 | Analog Echo | `stomp.analog-echo` | Boss DM-2 / MXR Carbon Copy *(inferido)* | Time, Feedback, Mix |

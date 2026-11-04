@@ -396,6 +396,29 @@ void testMetalCompressorEvensTheChugs()
     check(softGainDb - loudGainDb > 9.0, "nota fraca sobe pelo menos 9 dB a mais que a forte");
 }
 
+// Os drives do rig do Frusciante com os knobs no padrão: ligar o pedal com
+// uma palhetada forte (-12 dBFS) não muda o volume MÉDIO em mais de 3 dB,
+// tirando a média de uma nota grave, uma média e uma aguda. Nota a nota
+// eles não são planos de propósito — o Turbo sobe ~10 dB perto de 900 Hz,
+// o Siberian é escuro —, então o volume de uma nota só não diria nada.
+void testFruscianteDrivesKeepTheLevel()
+{
+    std::cout << "drives do rig do Frusciante mantem o volume medio\n";
+
+    GearLibrary library;
+    for (const char* id : {"stomp.orange-turbo", "stomp.green-siberian", "stomp.bakersfield-fuzz"})
+    {
+        double sumDb = 0.0;
+        for (double frequency : {110.0, 330.0, 880.0})
+        {
+            const double gainDb = recipeGainDb(library, id, frequency, 0.25f);
+            std::cout << "    " << id << " " << frequency << " Hz: " << gainDb << " dB\n";
+            sumDb += gainDb;
+        }
+        check(std::fabs(sumDb / 3.0) < 3.0, std::string(id) + ": media a ate 3 dB da entrada");
+    }
+}
+
 void testScanFindsCabinetsAndMicrophones()
 {
     std::cout << "scan encontra cabinets (pastas) e microfones (.wav)\n";
@@ -571,6 +594,7 @@ int main()
     testStandaloneToneStackKeepsTheLevel();
     testCompressorPedalKeepsTheLevelAndSqueezes();
     testMetalCompressorEvensTheChugs();
+    testFruscianteDrivesKeepTheLevel();
     testScanFindsCabinetsAndMicrophones();
     testScanOfMissingDirectoryFindsNothing();
     testInferRigRecoversTheRigOfASavedChain();
