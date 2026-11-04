@@ -14,6 +14,10 @@ void Cabinet::loadImpulseResponseFile(const std::string& path)
 {
     ImpulseResponse ir = readImpulseResponse(path);
 
+    // Na taxa original, antes de qualquer conversão: a conversão já
+    // preserva a resposta em frequência, volume incluído.
+    normalizeImpulseResponseLevel(ir.samples, ir.sampleRate);
+
     m_originalIr = std::move(ir.samples);
     m_irSampleRate = ir.sampleRate;
     m_irPath = path;

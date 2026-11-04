@@ -77,9 +77,11 @@ private:
     ConvolutionEngine m_engine;
     std::string m_irPath;
 
-    // A IR como veio do arquivo, e a taxa dela. Guardada para poder
-    // reconverter se o motor for preparado de novo em outra taxa — converter
-    // a partir de uma IR já convertida acumularia erro.
+    // A IR como veio do arquivo (só com o volume normalizado, ver
+    // normalizeImpulseResponseLevel() em IRLoader.h), e a taxa dela.
+    // Guardada para poder reconverter se o motor for preparado de novo em
+    // outra taxa — converter a partir de uma IR já convertida acumularia
+    // erro.
     std::vector<float> m_originalIr;
     double m_irSampleRate = 0.0;
 
