@@ -264,6 +264,9 @@ void testIrIsConvertedToTheEngineRate()
     }
 
     // A IR convertida tem 480 taps: um impulso só gera saída até ali.
+    // "Nada" é abaixo de 1e-6, não zero exato: depois dos primeiros 128
+    // taps a convolução passa pela FFT, que deixa resíduo de arredondamento
+    // do float (~1e-8) onde a conta direta dava 0.
     std::vector<float> buffer(600, 0.0f);
     buffer[0] = 1.0f;
     loadedFirst.reset();
@@ -273,8 +276,8 @@ void testIrIsConvertedToTheEngineRate()
     for (std::size_t i = 480; i < buffer.size(); ++i)
         tail = std::max(tail, std::fabs(buffer[i]));
 
-    check(std::fabs(buffer[470]) > 0.0f, "ainda ha IR perto do fim convertido (480)");
-    check(tail == 0.0f, "e nada depois dele");
+    check(std::fabs(buffer[470]) > 1e-6f, "ainda ha IR perto do fim convertido (480)");
+    check(tail < 1e-6f, "e nada depois dele");
 
     removeIfExists(path);
 }

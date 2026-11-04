@@ -149,6 +149,7 @@ add_library(ibifx_core STATIC
     src/Resampler.cpp
     src/Oversampler.cpp
     src/ConvolutionEngine.cpp
+    src/Fft.cpp
     src/Cabinet.cpp
     src/ModuleChain.cpp
     src/AudioModule.cpp

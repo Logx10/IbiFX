@@ -23,9 +23,9 @@
 // da sala e o microfone que captou tudo — a etapa final antes do sinal
 // virar uma gravação.
 //
-// A MATEMÁTICA VIVE EM ConvolutionEngine — ver o comentário lá, incluindo o
-// custo computacional conhecido desta primeira versão (convolução direta,
-// não FFT).
+// A MATEMÁTICA VIVE EM ConvolutionEngine — ver o comentário lá: conta
+// direta nos primeiros taps e FFT no resto, para IRs longas não pesarem na
+// thread de áudio.
 //
 // mix PADRÃO EM 1.0, DIFERENTE DE Delay/Reverb
 // Delay e Reverb normalmente se misturam com o sinal seco. Um cabinet sim
