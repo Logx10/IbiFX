@@ -78,6 +78,26 @@ void addStomps(std::vector<GearModel>& models)
     models.back().controls = {control("Sensitivity", 0, "gain", 1.0f, 6.0f),
                               control("Output", 2, "gain", 0.0f, 8.0f)};
 
+    // Compressor de metal, para ir antes de um ampli high gain. Difere do
+    // Orange Squeeze em três pontos: ataque no mínimo (1 ms), para pegar a
+    // palhetada em vez de deixá-la passar; release curto, para soltar entre
+    // um chug e outro de um riff rápido em vez de afundar o próximo; e ratio
+    // alto, que deixa os palm mutes e as notas abertas no mesmo volume. O
+    // Blend (mix do Compressor) devolve parte do sinal seco: sem ele, o
+    // ataque rápido apagaria a definição da palhetada. Pouco seco já basta:
+    // com 22 dB de redução numa palhetada forte, 10% de seco é quase tanto
+    // volume quanto os 90% comprimidos — em 0.8 a palhetada forte já
+    // passava 4 dB da entrada e a nivelação caía para 7 dB.
+    models.push_back(gear("stomp.iron-clamp", "Iron Clamp", GearCategory::Stomp, "Dynamics",
+        "Compressor de metal: ataque rápido e ratio alto para riffs tight, com Blend para manter a palhetada.",
+        {module("Gain", {{"gain", 2.0f}}),
+         module("Compressor", {{"threshold", -30.0f}, {"ratio", 12.0f},
+                               {"attack", 0.001f}, {"release", 0.08f}, {"mix", 0.9f}}),
+         module("Gain", {{"gain", 3.0f}})}));
+    models.back().controls = {control("Sensitivity", 0, "gain", 1.0f, 6.0f),
+                              control("Blend", 1, "mix", 0.0f, 1.0f),
+                              control("Output", 2, "gain", 0.0f, 8.0f)};
+
     models.push_back(gear("stomp.clean-boost", "Clean Boost", GearCategory::Stomp, "Boost",
         "Só volume, sem distorção — empurra o ampli para saturar mais.",
         {module("Gain", {{"gain", 2.0f}})}));

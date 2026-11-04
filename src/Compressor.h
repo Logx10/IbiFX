@@ -55,6 +55,17 @@
 //   suave existe em compressores profissionais para a transição não ser
 //   perceptível, mas é uma curva a mais para aprender depois de a mais
 //   simples estar funcionando e compreendida.
+//
+// MIX: COMPRESSÃO PARALELA
+// O mix mistura o sinal comprimido com o sinal seco, sem compressão:
+//
+//     saida = seco + mix * (comprimido - seco)
+//
+// Com mix = 1.0 (o padrão) só sai o comprimido, como antes deste
+// parâmetro existir. Abaixo disso, o seco devolve o que um ataque rápido
+// esmaga: a primeira fração de milissegundo da palhetada. É o truque de
+// compressor de metal — o caminho comprimido segura os chugs num volume só,
+// o seco mantém cada palhetada definida em vez de virar uma massa.
 class Compressor : public AudioModule
 {
 public:
@@ -76,6 +87,11 @@ public:
     // Segundos até o detector de nível reagir a uma QUEDA de volume.
     void setRelease(float seconds);
     float release() const;
+
+    // Quanto do sinal comprimido vai pra saída. 1.0 = só comprimido,
+    // 0.0 = só o seco (o compressor não faz nada).
+    void setMix(float newMix);
+    float mix() const;
 
     const char* name() const override;
 

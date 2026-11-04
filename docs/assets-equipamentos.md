@@ -18,6 +18,7 @@ sempre o do IbiFX (Green Screamer, Brit 800...).
 |---|---|---|---|
 | Noise Gate | `stomp.gate` | Boss NS-2 (o Decay dele = nosso Release; sem o knob Mode) *(inferido)* | Threshold, Release |
 | Orange Squeeze | `stomp.orange-squeeze` | MXR Dyna Comp (a versão laranja dos anos 70/80) | Sensitivity, Output |
+| Iron Clamp | `stomp.iron-clamp` | Original do IbiFX, no espírito dos compressores com blend usados antes de ampli high gain (Keeley Compressor Plus, Wampler Ego) *(inferido)* | Sensitivity, Blend, Output |
 | Clean Boost | `stomp.clean-boost` | MXR Micro Amp / booster limpo *(inferido)* | Gain |
 | Green Screamer | `stomp.green-screamer` | Ibanez Tube Screamer (TS808/TS9) *(inferido)* | Drive, Low Cut, Level |
 | Yellow Drive | `stomp.yellow-drive` | Boss SD-1 pela cor; o som (simétrico, transparente) lembra um overdrive transparente *(inferido)* | Drive, Level |

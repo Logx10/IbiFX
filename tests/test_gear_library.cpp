@@ -379,6 +379,23 @@ void testCompressorPedalKeepsTheLevelAndSqueezes()
     check(softGainDb - loudGainDb > 9.0, "nota fraca sobe pelo menos 9 dB a mais que a forte");
 }
 
+// O compressor de metal num Mi grave (82 Hz), a nota dos chugs: palhetada
+// forte (-12 dBFS) sai perto do nível de entrada, e uma nota fraca
+// (-30 dBFS) sobe bem mais — mesmo com o Blend devolvendo parte do seco.
+// Em Blend 1.0 (só comprimido) a distância entre as duas encolhe ainda mais.
+void testMetalCompressorEvensTheChugs()
+{
+    std::cout << "compressor de metal nivela os chugs no Mi grave\n";
+
+    GearLibrary library;
+    const double loudGainDb = recipeGainDb(library, "stomp.iron-clamp", 82.4, 0.25f);
+    const double softGainDb = recipeGainDb(library, "stomp.iron-clamp", 82.4, 0.0316f);
+
+    std::cout << "    forte " << loudGainDb << " dB, fraca " << softGainDb << " dB\n";
+    check(std::fabs(loudGainDb) < 3.0, "palhetada forte sai a ate 3 dB da entrada");
+    check(softGainDb - loudGainDb > 9.0, "nota fraca sobe pelo menos 9 dB a mais que a forte");
+}
+
 void testScanFindsCabinetsAndMicrophones()
 {
     std::cout << "scan encontra cabinets (pastas) e microfones (.wav)\n";
@@ -553,6 +570,7 @@ int main()
     testEmptySignalChainAndUnknownId();
     testStandaloneToneStackKeepsTheLevel();
     testCompressorPedalKeepsTheLevelAndSqueezes();
+    testMetalCompressorEvensTheChugs();
     testScanFindsCabinetsAndMicrophones();
     testScanOfMissingDirectoryFindsNothing();
     testInferRigRecoversTheRigOfASavedChain();

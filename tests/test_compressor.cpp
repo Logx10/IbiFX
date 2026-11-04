@@ -69,6 +69,35 @@ void testKnownCompressionValue()
     check(std::fabs(buffer.back() - esperado) < 1e-4f, "amostra final bate com a formula calculada a mao");
 }
 
+// Mix 0.5 é a média exata entre o seco e o comprimido — a mesma conta do
+// teste acima, misturada com a entrada. Mix 0.0 devolve o seco intacto.
+void testMixBlendsDryAndCompressed()
+{
+    std::cout << "mix mistura o seco com o comprimido\n";
+
+    std::vector<float> metade(500, 0.5f);
+    std::vector<float> seco(500, 0.5f);
+
+    Compressor compressorMetade;
+    compressorMetade.setMix(0.5f);
+    compressorMetade.prepare(1000.0, 64);
+    compressorMetade.process(metade);
+
+    Compressor compressorSeco;
+    compressorSeco.setMix(0.0f);
+    compressorSeco.prepare(1000.0, 64);
+    compressorSeco.process(seco);
+
+    const float envelopeDb = 20.0f * std::log10(0.5f);
+    const float excessDb = envelopeDb - (-20.0f);
+    const float reductionDb = excessDb - excessDb / 4.0f;
+    const float comprimido = 0.5f * std::pow(10.0f, -reductionDb / 20.0f);
+
+    check(std::fabs(metade.back() - (0.5f + comprimido) / 2.0f) < 1e-4f,
+          "mix 0.5 sai na media entre 0.5 e o comprimido");
+    checkClose(seco.back(), 0.5f, "mix 0.0 devolve o sinal seco");
+}
+
 // Ratio maior comprime mais, para o mesmo sinal — prova de que o parâmetro
 // realmente afeta o resultado, e na direção certa.
 void testHigherRatioCompressesMore()
@@ -121,16 +150,19 @@ void testParameterRoundTrip()
     checkClose(compressor.ratio(), 4.0f, "ratio padrao e 4.0");
     checkClose(compressor.attack(), 0.01f, "attack padrao e 0.01s");
     checkClose(compressor.release(), 0.15f, "release padrao e 0.15s");
+    checkClose(compressor.mix(), 1.0f, "mix padrao e 1.0 (so comprimido)");
 
     compressor.setThreshold(-30.0f);
     compressor.setRatio(8.0f);
     compressor.setAttack(0.005f);
     compressor.setRelease(0.3f);
+    compressor.setMix(0.6f);
 
     checkClose(compressor.threshold(), -30.0f, "threshold vira -30");
     checkClose(compressor.ratio(), 8.0f, "ratio vira 8.0");
     checkClose(compressor.attack(), 0.005f, "attack vira 0.005");
     checkClose(compressor.release(), 0.3f, "release vira 0.3");
+    checkClose(compressor.mix(), 0.6f, "mix vira 0.6");
 }
 
 // Buffer vazio não pode quebrar.
@@ -153,6 +185,7 @@ int main()
     testSignalBelowThresholdIsNotCompressed();
     testRatioOneMeansNoCompression();
     testKnownCompressionValue();
+    testMixBlendsDryAndCompressed();
     testHigherRatioCompressesMore();
     testSilenceStaysSilent();
     testParameterRoundTrip();
