@@ -137,11 +137,10 @@ void addStomps(std::vector<GearModel>& models)
 
     // --- O rig do John Frusciante ---
     // Os pedais que aparecem nos boards dele de Blood Sugar a Stadium
-    // Arcadium e que dá para montar com os módulos que já existem. Os
-    // números de frequência vêm de medições publicadas de cada circuito —
-    // ver docs/assets-equipamentos.md. Ficaram de fora o wah (WH-10), o
-    // flanger (Electric Mistress) e o phaser (Phase 90): pedem filtro
-    // varrido ou realimentação de modulação, módulos que ainda não existem.
+    // Arcadium. Os números de frequência vêm de medições publicadas de cada
+    // circuito — ver docs/assets-equipamentos.md. O wah, o phaser e o
+    // flanger usam os módulos Wah, Phaser e Flanger, cada um com os números
+    // do pedal dele no header.
 
     // No espírito do DS-2 Turbo Distortion, a distorção que está em todas
     // as fases dele. Clipagem dura (diodos) depois do ganho, como o DS-1.
@@ -198,6 +197,28 @@ void addStomps(std::vector<GearModel>& models)
          module("Gain", {{"gain", 0.5f}})}));
     models.back().controls = {control("Depth", 2, "drive", 1.0f, 30.0f),
                               control("Volume", 4, "gain", 0.0f, 3.0f)};
+
+    // No espírito do Ibanez WH-10, o wah dele desde o fim dos anos 80:
+    // 350 Hz a 2,2 kHz, pico largo de filtro com amplificador operacional
+    // (Q 3), não o pico espetado do indutor de um Cry Baby. Um módulo só:
+    // o painel (Pedal, Resonance) sai das faixas do próprio Wah.
+    models.push_back(gear("stomp.chrome-wah", "Chrome Wah", GearCategory::Stomp, "Filter",
+        "Wah de pico largo e quente, menos espetado que o clássico de indutor.",
+        {module("Wah", {{"position", 0.5f}, {"resonance", 3.0f}})}));
+
+    // No espírito do MXR Phase 90 "script" (sem realimentação), do board
+    // de Californication: quatro all-pass, dois vales. Feedback em ~0,4
+    // vira o "block logo", mais ressonante.
+    models.push_back(gear("stomp.orange-swirl", "Orange Swirl", GearCategory::Stomp, "Modulation",
+        "Phaser de quatro estágios, um knob só: o rodamoinho clássico dos anos 70.",
+        {module("Phaser", {{"rate", 0.5f}, {"feedback", 0.0f}})}));
+
+    // No espírito do Electric Mistress (Stadium Arcadium, o brilho
+    // "líquido" de Snow): flanger de pente curto com realimentação. Rate,
+    // Range e Color são os três knobs do original.
+    models.push_back(gear("stomp.silver-siren", "Silver Siren", GearCategory::Stomp, "Modulation",
+        "Flanger de pente varrendo devagar, metálico e líquido.",
+        {module("Flanger", {{"rate", 0.3f}, {"range", 0.7f}, {"color", 0.5f}})}));
 
     // No espírito do CE-1 Chorus Ensemble (Californication, Stadium
     // Arcadium): chorus lento e largo, metade seco metade molhado — o modo

@@ -29,6 +29,9 @@ sempre o do IbiFX (Green Screamer, Brit 800...).
 | Bakersfield Fuzz | `stomp.bakersfield-fuzz` | Mosrite Fuzzrite (rig de Stadium Arcadium). Dois transistores; Depth mistura os estágios fora de fase | Depth, Volume |
 | Ensemble Chorus | `stomp.ensemble-chorus` | Boss CE-1 Chorus Ensemble (rig do John Frusciante) | Rate, Depth, Mix |
 | Chapel Reverb | `stomp.chapel-reverb` | Electro-Harmonix Holy Grail, modo hall (By the Way, Stadium Arcadium) | Decay, Damping, Mix |
+| Chrome Wah | `stomp.chrome-wah` | Ibanez WH-10 (rig do John Frusciante): 350 Hz a 2,2 kHz, pico largo | Pedal, Resonance |
+| Orange Swirl | `stomp.orange-swirl` | MXR Phase 90 "script" (rig de Californication): 4 estágios all-pass, vales a partir de 58/340 Hz | Speed, Feedback |
+| Silver Siren | `stomp.silver-siren` | Electro-Harmonix Electric Mistress (rig de Stadium Arcadium): atraso de 0,8 a 6 ms, LFO triangular | Rate, Range, Color |
 | Seven Band EQ | `stomp.seven-band` | Boss GE-7 (mesmas 7 bandas, ±15 dB e Level) *(inferido)* | 100, 200, 400, 800, 1.6k, 3.2k, 6.4k, Level |
 | Blue Chorus | `stomp.blue-chorus` | Boss CE-2 (chorus dos anos 80) *(inferido)* | Rate, Depth, Mix |
 | Analog Echo | `stomp.analog-echo` | Boss DM-2 / MXR Carbon Copy *(inferido)* | Time, Feedback, Mix |

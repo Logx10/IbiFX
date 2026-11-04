@@ -11,17 +11,20 @@
 #include "Clipper.h"
 #include "Compressor.h"
 #include "Delay.h"
+#include "Flanger.h"
 #include "GainProcessor.h"
 #include "GraphicEQ.h"
 #include "HighPassFilter.h"
 #include "Limiter.h"
 #include "NoiseGate.h"
+#include "Phaser.h"
 #include "Preamp.h"
 #include "PowerAmp.h"
 #include "Reverb.h"
 #include "Rotovibe.h"
 #include "SoftClipper.h"
 #include "ToneStack.h"
+#include "Wah.h"
 
 namespace
 {
@@ -42,6 +45,9 @@ std::unique_ptr<AudioModule> createModule(const std::string& type)
     if (type == "Reverb") return std::make_unique<Reverb>();
     if (type == "Chorus") return std::make_unique<Chorus>();
     if (type == "Rotovibe") return std::make_unique<Rotovibe>();
+    if (type == "Wah") return std::make_unique<Wah>();
+    if (type == "Phaser") return std::make_unique<Phaser>();
+    if (type == "Flanger") return std::make_unique<Flanger>();
     if (type == "Preamp") return std::make_unique<Preamp>();
     if (type == "ToneStack") return std::make_unique<ToneStack>();
     if (type == "GraphicEQ") return std::make_unique<GraphicEQ>();

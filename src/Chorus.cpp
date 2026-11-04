@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <cmath>
 
+#include "Interpolation.h"
+
 namespace
 {
 constexpr double kTwoPi = 6.283185307179586;
@@ -13,21 +15,10 @@ constexpr double kTwoPi = 6.283185307179586;
 constexpr double kBaseDelay = 0.005;
 constexpr double kMaxSweep = 0.007;
 
-// Vizinhas que a interpolação de Hermite lê além da amostra de base: uma
-// antes e duas depois. É a folga que o buffer precisa ter.
+// Vizinhas que a interpolação de Hermite (Interpolation.h) lê além da
+// amostra de base: uma antes e duas depois. É a folga que o buffer precisa
+// ter.
 constexpr std::size_t kInterpolationMargin = 4;
-
-// Interpolação de Hermite de 4 pontos (forma de Catmull-Rom): o valor entre
-// y0 e y1, a uma fração t de y0, usando ym1 e y2 para estimar a inclinação
-// em cada ponta.
-float hermite(float ym1, float y0, float y1, float y2, float t)
-{
-    const float c0 = y0;
-    const float c1 = 0.5f * (y1 - ym1);
-    const float c2 = ym1 - 2.5f * y0 + 2.0f * y1 - 0.5f * y2;
-    const float c3 = 0.5f * (y2 - ym1) + 1.5f * (y0 - y1);
-    return ((c3 * t + c2) * t + c1) * t + c0;
-}
 }
 
 Chorus::Chorus()

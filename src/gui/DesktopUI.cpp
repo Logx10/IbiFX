@@ -22,9 +22,18 @@
 #include "GearSkins.h"
 #include "Preset.h"
 #include "PresetManager.h"
+#include "Wah.h"
 
 namespace
 {
+// Controles que são um pedal de pé, não um knob: a prancha do Rotovibe e
+// o pedal do wah. Ganham um slider vertical, que é como o pé os move.
+bool isTreadle(const GearModel& model, const GearControl& control)
+{
+    return control.parameterId == "position"
+        && (model.id == "stomp.rotovibe" || model.id == "stomp.chrome-wah");
+}
+
 // Onde os presets salvos pela janela vivem, relativo ao diretório de
 // trabalho — mesma convenção de audio/ no CLI.
 constexpr const char* kPresetsDir = "presets";
@@ -1699,13 +1708,14 @@ void DesktopUI::drawGearPanel(std::size_t segmentIndex, const GearModel& model)
         const float knobTop = cellTop + ImGui::GetTextLineHeight() + 4.0f;
         float value = std::clamp(m_targets[flatIndex], control.minValue, control.maxValue);
         bool changed = false;
-        if (model.id == "stomp.rotovibe" && control.parameterId == "position")
+        if (isTreadle(model, control))
         {
             ImGui::SetCursorScreenPos(ImVec2(cellCenterX - 14.0f, knobTop));
             changed = ImGui::VSliderFloat("##treadle", ImVec2(28.0f, knobRadius * 2.0f),
                                           &value, control.minValue, control.maxValue, "");
             if (ImGui::IsItemHovered())
-                ImGui::SetTooltip("Prancha: velocidade do efeito");
+                ImGui::SetTooltip(model.id == "stomp.chrome-wah" ? "Pedal: calcanhar grave, ponta aguda"
+                                                                 : "Prancha: velocidade do efeito");
         }
         else if (model.id == "stomp.rotovibe" && control.parameterId == "mode")
         {
@@ -1736,6 +1746,8 @@ void DesktopUI::drawGearPanel(std::size_t segmentIndex, const GearModel& model)
         else if (model.id == "stomp.rotovibe" && control.parameterId == "position")
             std::snprintf(scale, sizeof(scale), "%.1f Hz",
                           0.3 * std::pow(7.0 / 0.3, static_cast<double>(value)));
+        else if (model.id == "stomp.chrome-wah" && control.parameterId == "position")
+            std::snprintf(scale, sizeof(scale), "%.0f Hz", static_cast<double>(Wah::centerFrequency(value)));
         else
             std::snprintf(scale, sizeof(scale), "%.1f",
                           static_cast<double>(10.0f * (value - control.minValue) / (control.maxValue - control.minValue)));

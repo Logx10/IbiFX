@@ -156,6 +156,9 @@ add_library(ibifx_core STATIC
     src/Delay.cpp
     src/Chorus.cpp
     src/Rotovibe.cpp
+    src/Wah.cpp
+    src/Phaser.cpp
+    src/Flanger.cpp
     src/SmoothedValue.cpp
     src/WavFile.cpp
     src/offline.cpp
