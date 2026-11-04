@@ -326,6 +326,30 @@ private:
     };
     std::vector<ChainItem> m_chainItems;
 
+    // Um trecho de caminhos paralelos na cadeia (ParallelMarker.h), em
+    // índices de m_chainItems: o marcador que abre cada caminho (o Split e
+    // cada Branch, em ordem) e o Merge que fecha o trecho.
+    struct ParallelSection
+    {
+        std::vector<std::size_t> heads;
+        std::size_t merge = 0;
+
+        // Itens do caminho lane: de depois do marcador dele até o próximo
+        // marcador, sem incluir nenhum dos dois.
+        std::size_t laneBegin(std::size_t lane) const;
+        std::size_t laneEnd(std::size_t lane) const;
+    };
+
+    // Os trechos bem formados da cadeia atual: Split, Branches e Merge, sem
+    // Split dentro de Split. Um trecho malformado (o motor também o trata
+    // de forma degradada, ver ModuleChain.h) não entra: é desenhado em
+    // linha, como qualquer item.
+    std::vector<ParallelSection> parallelSections() const;
+
+    // Quantos amps em paralelo a GUI deixa montar, como no AmpliTube. O
+    // motor aceitaria mais; o limite é de interface e de CPU.
+    static constexpr std::size_t kMaxLanes = 3;
+
     enum class Workspace
     {
         Pedalboard,

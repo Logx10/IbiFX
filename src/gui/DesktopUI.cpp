@@ -74,6 +74,8 @@ constexpr float kSignalCardWidth = 84.0f;
 constexpr float kSignalCardHeight = 86.0f;
 constexpr float kSignalSlotWidth = 22.0f;
 constexpr float kSignalMinScale = 0.35f;
+// Espaço vertical entre dois caminhos paralelos empilhados.
+constexpr float kSignalLaneGap = 12.0f;
 
 // A miniatura é desenhada numa caixa de 42 x 48 em escala 1.
 constexpr float kSignalThumbWidth = 42.0f;
@@ -1197,21 +1199,142 @@ Preset DesktopUI::captureCurrentPreset(const std::string& name) const
     return captured;
 }
 
+std::size_t DesktopUI::ParallelSection::laneBegin(std::size_t lane) const
+{
+    return heads[lane] + 1;
+}
+
+std::size_t DesktopUI::ParallelSection::laneEnd(std::size_t lane) const
+{
+    return lane + 1 < heads.size() ? heads[lane + 1] : merge;
+}
+
+std::vector<DesktopUI::ParallelSection> DesktopUI::parallelSections() const
+{
+    // Um marcador é reconhecido pelo módulo, não pelo id do catálogo: um
+    // preset salvo à mão pode ter o Split como módulo cru.
+    const ModuleChain& chain = m_engine.chain();
+    auto markerName = [&](const ChainItem& item) -> std::string {
+        if (item.moduleCount != 1 || item.firstModule >= chain.size())
+            return {};
+        const std::string name = chain.moduleAt(item.firstModule).name();
+        return (name == "Split" || name == "Branch" || name == "Merge") ? name : std::string();
+    };
+
+    std::vector<ParallelSection> sections;
+    ParallelSection open;
+    bool isOpen = false;
+
+    for (std::size_t i = 0; i < m_chainItems.size(); ++i)
+    {
+        const std::string name = markerName(m_chainItems[i]);
+        if (name == "Split")
+        {
+            // Um Split dentro de outro desfaz o trecho aberto: sem
+            // aninhamento.
+            open = {};
+            open.heads.push_back(i);
+            isOpen = true;
+        }
+        else if (name == "Branch" && isOpen)
+        {
+            open.heads.push_back(i);
+        }
+        else if (name == "Merge" && isOpen)
+        {
+            open.merge = i;
+            sections.push_back(open);
+            isOpen = false;
+        }
+    }
+    return sections;
+}
+
 void DesktopUI::insertGearAt(const std::string& gearId, std::size_t itemIndex)
 {
     const GearModel* model = m_library.find(gearId);
     if (model == nullptr || itemIndex > m_chainItems.size())
         return;
 
-    Preset edited = captureCurrentPreset("Cadeia");
-    std::size_t moduleIndex = 0;
-    for (std::size_t i = 0; i < itemIndex; ++i)
-        moduleIndex += edited.chainItems[i].moduleCount;
+    // O trecho paralelo em que o ponto de inserção cai, se cair num:
+    // depois do Split e até o Merge (inclusive — inserir NO índice do Merge
+    // é inserir no fim do último caminho).
+    const std::vector<ParallelSection> sections = parallelSections();
+    const ParallelSection* inside = nullptr;
+    for (const ParallelSection& section : sections)
+    {
+        if (itemIndex > section.heads.front() && itemIndex <= section.merge)
+            inside = &section;
+    }
 
-    edited.modules.insert(edited.modules.begin() + static_cast<std::ptrdiff_t>(moduleIndex),
-                          model->modules.begin(), model->modules.end());
-    edited.chainItems.insert(edited.chainItems.begin() + static_cast<std::ptrdiff_t>(itemIndex),
-                             {model->id, model->modules.size()});
+    // O Split já vem montado com um segundo caminho e o Merge: sozinho ele
+    // não faz nada, e montar as três peças à mão seria só trabalho.
+    std::vector<const GearModel*> toInsert = {model};
+    if (gearId == "route.split")
+    {
+        if (inside != nullptr)
+        {
+            m_rigMessage = "nao da para abrir um Split dentro de outro";
+            return;
+        }
+        toInsert = {model, m_library.find("route.branch"), m_library.find("route.merge")};
+    }
+    else if (gearId == "route.branch")
+    {
+        if (inside == nullptr)
+        {
+            m_rigMessage = "um caminho so entra dentro de um Split";
+            return;
+        }
+        if (inside->heads.size() >= kMaxLanes)
+        {
+            m_rigMessage = "no maximo " + std::to_string(kMaxLanes) + " caminhos em paralelo";
+            return;
+        }
+    }
+    else if (gearId == "route.merge")
+    {
+        m_rigMessage = "o Merge ja vem com o Split";
+        return;
+    }
+
+    Preset edited = captureCurrentPreset("Cadeia");
+    auto firstModuleOf = [&edited](std::size_t item) {
+        std::size_t index = 0;
+        for (std::size_t i = 0; i < item; ++i)
+            index += edited.chainItems[i].moduleCount;
+        return index;
+    };
+
+    // Um caminho vazio passa o sinal seco, e somar a guitarra crua ao amp
+    // soa mal. Por isso o equipamento que entra num caminho vazio e mudo
+    // liga o caminho — o caminho novo começa mudo (abaixo) e acende sozinho
+    // quando recebe o primeiro amp.
+    if (inside != nullptr && gearId != "route.branch")
+    {
+        for (std::size_t lane = 0; lane < inside->heads.size(); ++lane)
+        {
+            if (itemIndex >= inside->laneBegin(lane) && itemIndex <= inside->laneEnd(lane)
+                && inside->laneBegin(lane) == inside->laneEnd(lane))
+                edited.modules[firstModuleOf(inside->heads[lane])].bypassed = false;
+        }
+    }
+
+    std::size_t moduleIndex = firstModuleOf(itemIndex);
+    for (std::size_t k = 0; k < toInsert.size(); ++k)
+    {
+        const GearModel* piece = toInsert[k];
+        edited.modules.insert(edited.modules.begin() + static_cast<std::ptrdiff_t>(moduleIndex),
+                              piece->modules.begin(), piece->modules.end());
+        edited.chainItems.insert(edited.chainItems.begin() + static_cast<std::ptrdiff_t>(itemIndex + k),
+                                 {piece->id, piece->modules.size()});
+
+        // Caminho novo nasce mudo, vazio — ver acima.
+        if (piece->id == "route.branch")
+            edited.modules[moduleIndex].bypassed = true;
+
+        moduleIndex += piece->modules.size();
+    }
     edited.rig = {};
 
     std::string error;
@@ -1226,6 +1349,8 @@ void DesktopUI::insertGearAt(const std::string& gearId, std::size_t itemIndex)
     m_currentPresetName.clear();
     m_currentPresetPath.clear();
     m_rigMessage = model->name + " inserido na cadeia";
+    if (gearId == "route.split" || gearId == "route.branch")
+        m_rigMessage += ": o caminho novo comeca mudo e liga quando receber um amp";
 }
 
 void DesktopUI::removeChainItem(std::size_t itemIndex)
@@ -1233,15 +1358,42 @@ void DesktopUI::removeChainItem(std::size_t itemIndex)
     if (itemIndex >= m_chainItems.size())
         return;
 
+    // Normalmente sai um item só. Marcadores levam junto o que eles
+    // estruturam: o Split remove o trecho paralelo inteiro, um Branch
+    // remove o caminho dele. Tirar só o marcador deixaria amps que estavam
+    // em paralelo ligados em série.
+    std::size_t first = itemIndex;
+    std::size_t last = itemIndex + 1;
+    for (const ParallelSection& section : parallelSections())
+    {
+        if (itemIndex == section.merge)
+        {
+            m_rigMessage = "para tirar os caminhos paralelos, remova o Split";
+            return;
+        }
+        if (itemIndex == section.heads.front())
+        {
+            last = section.merge + 1;
+        }
+        for (std::size_t lane = 1; lane < section.heads.size(); ++lane)
+        {
+            if (itemIndex == section.heads[lane])
+                last = section.laneEnd(lane);
+        }
+    }
+
     Preset edited = captureCurrentPreset("Cadeia");
     std::size_t moduleIndex = 0;
-    for (std::size_t i = 0; i < itemIndex; ++i)
+    for (std::size_t i = 0; i < first; ++i)
         moduleIndex += edited.chainItems[i].moduleCount;
-    const std::size_t count = edited.chainItems[itemIndex].moduleCount;
+    std::size_t count = 0;
+    for (std::size_t i = first; i < last; ++i)
+        count += edited.chainItems[i].moduleCount;
 
     edited.modules.erase(edited.modules.begin() + static_cast<std::ptrdiff_t>(moduleIndex),
                          edited.modules.begin() + static_cast<std::ptrdiff_t>(moduleIndex + count));
-    edited.chainItems.erase(edited.chainItems.begin() + static_cast<std::ptrdiff_t>(itemIndex));
+    edited.chainItems.erase(edited.chainItems.begin() + static_cast<std::ptrdiff_t>(first),
+                            edited.chainItems.begin() + static_cast<std::ptrdiff_t>(last));
     edited.rig = {};
 
     std::string error;
@@ -1253,10 +1405,10 @@ void DesktopUI::removeChainItem(std::size_t itemIndex)
 
     adoptChainLayout(edited);
     if (!m_chainItems.empty())
-        m_selectedItem = std::min(itemIndex, m_chainItems.size() - 1);
+        m_selectedItem = std::min(first, m_chainItems.size() - 1);
     m_currentPresetName.clear();
     m_currentPresetPath.clear();
-    m_rigMessage = "item removido da cadeia";
+    m_rigMessage = last - first > 1 ? "itens removidos da cadeia" : "item removido da cadeia";
 }
 
 void DesktopUI::moveChainItem(std::size_t from, std::size_t insertionIndex)
@@ -1264,6 +1416,16 @@ void DesktopUI::moveChainItem(std::size_t from, std::size_t insertionIndex)
     if (from >= m_chainItems.size() || insertionIndex > m_chainItems.size()
         || insertionIndex == from || insertionIndex == from + 1)
         return;
+
+    // Marcadores de caminho não se movem sozinhos: arrastar só o Merge para
+    // fora do lugar desmontaria o trecho. A GUI nem oferece o arraste deles
+    // (ver drawSignalChain()); isto cobre qualquer outro chamador.
+    for (const ParallelSection& section : parallelSections())
+    {
+        if (from == section.merge
+            || std::find(section.heads.begin(), section.heads.end(), from) != section.heads.end())
+            return;
+    }
 
     Preset edited = captureCurrentPreset("Cadeia");
     std::size_t moduleFrom = 0;
@@ -1326,11 +1488,11 @@ void DesktopUI::drawGearBrowser()
 
     constexpr GearCategory kCategories[] = {GearCategory::Stomp, GearCategory::Amp,
                                             GearCategory::Cabinet, GearCategory::Rack,
-                                            GearCategory::Equalizer};
-    constexpr const char* kLabels[] = {"Pedais", "Amp", "Cab", "Rack", "EQ"};
-    constexpr float kWidths[] = {62.0f, 46.0f, 46.0f, 50.0f, 40.0f};
+                                            GearCategory::Equalizer, GearCategory::Routing};
+    constexpr const char* kLabels[] = {"Pedais", "Amp", "Cab", "Rack", "EQ", "Rota"};
+    constexpr float kWidths[] = {62.0f, 46.0f, 46.0f, 50.0f, 40.0f, 46.0f};
 
-    for (int i = 0; i < 5; ++i)
+    for (int i = 0; i < 6; ++i)
     {
         if (i > 0)
             ImGui::SameLine();
@@ -1728,6 +1890,17 @@ void DesktopUI::drawGearPanel(std::size_t segmentIndex, const GearModel& model)
                 changed = true;
             }
         }
+        else if (control.parameterId == "invert")
+        {
+            // A fase de um caminho paralelo é liga/desliga, não um knob.
+            const char* phase = value >= 0.5f ? "Invertida" : "Normal";
+            ImGui::SetCursorScreenPos(ImVec2(cellCenterX - 35.0f, knobTop));
+            if (ImGui::Button(phase, ImVec2(70.0f, knobRadius * 2.0f)))
+            {
+                value = value >= 0.5f ? 0.0f : 1.0f;
+                changed = true;
+            }
+        }
         else
         {
             ImGui::SetCursorScreenPos(ImVec2(cellCenterX - knobRadius, knobTop));
@@ -1744,6 +1917,8 @@ void DesktopUI::drawGearPanel(std::size_t segmentIndex, const GearModel& model)
         char scale[16];
         if (model.id == "stomp.rotovibe" && control.parameterId == "mode")
             std::snprintf(scale, sizeof(scale), "%s", value >= 0.5f ? "Vib" : "Cho");
+        else if (control.parameterId == "invert")
+            std::snprintf(scale, sizeof(scale), "%s", value >= 0.5f ? "180" : "0");
         else if (model.id == "stomp.rotovibe" && control.parameterId == "position")
             std::snprintf(scale, sizeof(scale), "%.1f Hz",
                           0.3 * std::pow(7.0 / 0.3, static_cast<double>(value)));
@@ -2734,52 +2909,97 @@ void DesktopUI::drawSignalChain()
     if (m_selectedItem >= m_chainItems.size())
         m_selectedItem = m_chainItems.empty() ? kNoSelection : 0;
 
+    // Trechos paralelos (Split ... Merge) são desenhados empilhados: uma
+    // coluna com o marcador de cada caminho, os caminhos um embaixo do
+    // outro, e o Merge de volta na linha principal. A faixa cresce para
+    // caber o trecho com mais caminhos.
+    const std::vector<ParallelSection> sections = parallelSections();
+    std::size_t maxLanes = 1;
+    for (const ParallelSection& section : sections)
+        maxLanes = std::max(maxLanes, section.heads.size());
+
+    auto longestLane = [](const ParallelSection& section) {
+        std::size_t longest = 0;
+        for (std::size_t lane = 0; lane < section.heads.size(); ++lane)
+            longest = std::max(longest, section.laneEnd(lane) - section.laneBegin(lane));
+        return longest;
+    };
+
+    const float laneStep = kSignalCardHeight + kSignalLaneGap;
+    const float chainHeight = kSignalChainHeight + static_cast<float>(maxLanes - 1) * laneStep;
+
     ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 8.0f);
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(16.0f, 10.0f));
-    ImGui::BeginChild("##signalChain", ImVec2(0.0f, kSignalChainHeight), ImGuiChildFlags_Borders,
+    ImGui::BeginChild("##signalChain", ImVec2(0.0f, chainHeight), ImGuiChildFlags_Borders,
                       ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
 
     trackedCaps("Signal chain", kVintageGold, m_brandFont);
     ImGui::SameLine();
     ImGui::TextDisabled("%s", m_currentPresetName.empty() ? "sem preset" : m_currentPresetName.c_str());
 
+    // Colunas da linha: um item comum ocupa uma; um trecho paralelo ocupa
+    // a dos marcadores, a do caminho mais longo e a do Merge.
+    float columns = 0.0f;
+    {
+        std::size_t s = 0;
+        for (std::size_t i = 0; i < m_chainItems.size();)
+        {
+            if (s < sections.size() && sections[s].heads.front() == i)
+            {
+                columns += 2.0f + static_cast<float>(longestLane(sections[s]));
+                i = sections[s].merge + 1;
+                ++s;
+            }
+            else
+            {
+                columns += 1.0f;
+                ++i;
+            }
+        }
+    }
+
     // Tudo na linha é posicionado à mão: IN, slots de inserção, cards e
-    // OUT. A escala sai da largura disponível, para nunca precisar de
-    // scroll horizontal; quanto mais itens, menores as miniaturas.
+    // OUT. A escala sai da largura e da altura disponíveis, para nunca
+    // precisar de scroll; quanto mais itens, menores as miniaturas.
     const float inWidth = ImGui::CalcTextSize("IN").x + 8.0f;
     const float outWidth = ImGui::CalcTextSize("OUT").x + 8.0f;
     const float available = ImGui::GetContentRegionAvail().x - inWidth - outWidth;
-    const float itemCount = static_cast<float>(m_chainItems.size());
-    const float naturalWidth = itemCount * kSignalCardWidth + (itemCount + 1.0f) * kSignalSlotWidth;
-    const float scale = std::clamp(available / naturalWidth, kSignalMinScale, 1.0f);
+    const float naturalWidth = columns * kSignalCardWidth + (columns + 1.0f) * kSignalSlotWidth;
+    const float rowHeight = ImGui::GetContentRegionAvail().y;
+    const float naturalHeight = kSignalCardHeight + static_cast<float>(maxLanes - 1) * laneStep;
+    const float scale = std::clamp(std::min(available / naturalWidth, rowHeight / naturalHeight),
+                                   kSignalMinScale, 1.0f);
 
     const float cardWidth = kSignalCardWidth * scale;
     const float cardHeight = kSignalCardHeight * scale;
     const float slotWidth = kSignalSlotWidth * scale;
 
     const ImVec2 rowStart = ImGui::GetCursorScreenPos();
-    const float rowHeight = ImGui::GetContentRegionAvail().y;
-    const float cardTop = rowStart.y + std::max(0.0f, (rowHeight - cardHeight) * 0.5f);
+    const float mainTop = rowStart.y + std::max(0.0f, (rowHeight - cardHeight) * 0.5f);
     // O cabo passa na altura do meio da miniatura.
-    const float wireY = cardTop + (10.0f + kSignalThumbHeight * 0.5f) * scale;
+    auto wireYFor = [&](float top) { return top + (10.0f + kSignalThumbHeight * 0.5f) * scale; };
+    const float mainWire = wireYFor(mainTop);
     const float rowEnd = rowStart.x + inWidth + naturalWidth * scale + outWidth;
 
     ImDrawList* drawList = ImGui::GetWindowDrawList();
     const ImU32 wireColor = ImGui::GetColorU32(ImGuiCol_TextDisabled);
-    drawList->AddLine(ImVec2(rowStart.x + inWidth - 4.0f, wireY), ImVec2(rowEnd - outWidth + 4.0f, wireY),
-                      wireColor, 1.0f);
+    auto wire = [&](float x0, float y0, float x1, float y1) {
+        drawList->AddLine(ImVec2(x0, y0), ImVec2(x1, y1), wireColor, 1.0f);
+    };
 
     const float textHeight = ImGui::GetTextLineHeight();
-    drawList->AddText(ImVec2(rowStart.x, wireY - textHeight * 0.5f), wireColor, "IN");
-    drawList->AddText(ImVec2(rowEnd - outWidth + 8.0f, wireY - textHeight * 0.5f), wireColor, "OUT");
+    drawList->AddText(ImVec2(rowStart.x, mainWire - textHeight * 0.5f), wireColor, "IN");
+    drawList->AddText(ImVec2(rowEnd - outWidth + 8.0f, mainWire - textHeight * 0.5f), wireColor, "OUT");
 
     std::string droppedGearId;
     std::size_t dropIndex = kNoSelection;
     std::size_t draggedItem = kNoSelection;
-    float x = rowStart.x + inWidth;
 
-    auto drawDropSlot = [&](std::size_t insertionIndex) {
-        ImGui::SetCursorScreenPos(ImVec2(x, cardTop));
+    // Um ponto de inserção: soltar aqui insere no índice insertionIndex da
+    // lista plana. Dentro de um caminho é o mesmo índice — o caminho é só
+    // uma faixa da lista.
+    auto drawDropSlot = [&](std::size_t insertionIndex, float x, float top) {
+        ImGui::SetCursorScreenPos(ImVec2(x, top));
         ImGui::PushID(static_cast<int>(insertionIndex));
 
         ImGui::InvisibleButton("##insert", ImVec2(slotWidth, cardHeight));
@@ -2789,7 +3009,7 @@ void DesktopUI::drawSignalChain()
         if (hovered)
         {
             const float centerX = x + slotWidth * 0.5f;
-            drawList->AddLine(ImVec2(centerX, cardTop + 4.0f), ImVec2(centerX, cardTop + cardHeight - 4.0f),
+            drawList->AddLine(ImVec2(centerX, top + 4.0f), ImVec2(centerX, top + cardHeight - 4.0f),
                               ImGui::GetColorU32(kAccentColor), 2.0f);
         }
 
@@ -2812,13 +3032,11 @@ void DesktopUI::drawSignalChain()
         }
 
         ImGui::PopID();
-        x += slotWidth;
     };
 
-    drawDropSlot(0);
-
-    for (std::size_t i = 0; i < m_chainItems.size(); ++i)
-    {
+    // Marcadores de caminho não oferecem arraste: mover só o Merge
+    // desmontaria o trecho (ver moveChainItem()).
+    auto drawCard = [&](std::size_t i, float x, float top, bool draggable) {
         const ChainItem& item = m_chainItems[i];
         const GearModel* model = item.gearId.empty() ? nullptr : m_library.find(item.gearId);
         const char* rawName = item.firstModule < chain.size() ? chain.moduleAt(item.firstModule).name() : "Modulo";
@@ -2829,29 +3047,99 @@ void DesktopUI::drawSignalChain()
         const GearSkin* skin = model != nullptr ? findGearSkin(model->id) : nullptr;
         const GearTextures* textures = skin != nullptr ? gearTextures(*skin) : nullptr;
 
-        ImGui::SetCursorScreenPos(ImVec2(x, cardTop));
+        ImGui::SetCursorScreenPos(ImVec2(x, top));
         ImGui::PushID(static_cast<int>(i));
         if (signalCard("##item", title, kind, colorForModuleName(title.c_str(), false),
                        m_selectedItem == i, scale, textures != nullptr ? textures->body : nullptr,
                        textures != nullptr ? textures->bodyWidth / textures->bodyHeight : 1.0f))
             m_selectedItem = i;
 
-        if (ImGui::BeginDragDropSource())
+        if (draggable && ImGui::BeginDragDropSource())
         {
             ImGui::SetDragDropPayload(kChainItemDragPayload, &i, sizeof(i));
             ImGui::Text("Mover %s", title.c_str());
             ImGui::EndDragDropSource();
         }
         ImGui::PopID();
-        x += cardWidth;
+    };
 
-        drawDropSlot(i + 1);
+    float x = rowStart.x + inWidth;
+    // De onde o próximo pedaço do cabo principal parte.
+    float mainWireFrom = x - 4.0f;
+    drawDropSlot(0, x, mainTop);
+    x += slotWidth;
+
+    std::size_t s = 0;
+    for (std::size_t i = 0; i < m_chainItems.size();)
+    {
+        if (s < sections.size() && sections[s].heads.front() == i)
+        {
+            const ParallelSection& section = sections[s];
+            const std::size_t lanes = section.heads.size();
+            const float sectionX = x;
+            const float mergeX = sectionX + static_cast<float>(1 + longestLane(section)) * (cardWidth + slotWidth);
+            const float splitJoinX = sectionX - slotWidth * 0.5f;
+            const float mergeJoinX = mergeX - slotWidth * 0.5f;
+
+            // O cabo principal chega no ponto de divisão; dali, uma vertical
+            // abre os caminhos, e outra os junta antes do Merge.
+            wire(mainWireFrom, mainWire, splitJoinX, mainWire);
+
+            float firstLaneWire = mainWire;
+            float lastLaneWire = mainWire;
+            for (std::size_t lane = 0; lane < lanes; ++lane)
+            {
+                const float offset = static_cast<float>(lane) - static_cast<float>(lanes - 1) * 0.5f;
+                const float top = mainTop + offset * laneStep * scale;
+                const float laneWire = wireYFor(top);
+                if (lane == 0)
+                    firstLaneWire = laneWire;
+                lastLaneWire = laneWire;
+
+                wire(splitJoinX, laneWire, mergeJoinX, laneWire);
+
+                float laneX = sectionX;
+                drawCard(section.heads[lane], laneX, top, false);
+                laneX += cardWidth;
+                drawDropSlot(section.laneBegin(lane), laneX, top);
+                laneX += slotWidth;
+
+                for (std::size_t k = section.laneBegin(lane); k < section.laneEnd(lane); ++k)
+                {
+                    drawCard(k, laneX, top, true);
+                    laneX += cardWidth;
+                    drawDropSlot(k + 1, laneX, top);
+                    laneX += slotWidth;
+                }
+            }
+            wire(splitJoinX, firstLaneWire, splitJoinX, lastLaneWire);
+            wire(mergeJoinX, firstLaneWire, mergeJoinX, lastLaneWire);
+            wire(mergeJoinX, mainWire, mergeX, mainWire);
+
+            drawCard(section.merge, mergeX, mainTop, false);
+            x = mergeX + cardWidth;
+            mainWireFrom = x;
+            drawDropSlot(section.merge + 1, x, mainTop);
+            x += slotWidth;
+
+            i = section.merge + 1;
+            ++s;
+            continue;
+        }
+
+        drawCard(i, x, mainTop, true);
+        x += cardWidth;
+        drawDropSlot(i + 1, x, mainTop);
+        x += slotWidth;
+        ++i;
     }
+
+    wire(mainWireFrom, mainWire, rowEnd - outWidth + 4.0f, mainWire);
 
     if (m_chainItems.empty())
     {
         const char* hint = "Cadeia vazia: arraste um equipamento da biblioteca para cá.";
-        drawList->AddText(ImVec2(rowStart.x + inWidth + slotWidth + 12.0f, wireY - textHeight - 6.0f),
+        drawList->AddText(ImVec2(rowStart.x + inWidth + slotWidth + 12.0f, mainWire - textHeight - 6.0f),
                           wireColor, hint);
     }
 
