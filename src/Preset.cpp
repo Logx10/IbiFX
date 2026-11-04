@@ -12,6 +12,7 @@
 #include "Compressor.h"
 #include "Delay.h"
 #include "GainProcessor.h"
+#include "GraphicEQ.h"
 #include "HighPassFilter.h"
 #include "Limiter.h"
 #include "NoiseGate.h"
@@ -43,6 +44,7 @@ std::unique_ptr<AudioModule> createModule(const std::string& type)
     if (type == "Rotovibe") return std::make_unique<Rotovibe>();
     if (type == "Preamp") return std::make_unique<Preamp>();
     if (type == "ToneStack") return std::make_unique<ToneStack>();
+    if (type == "GraphicEQ") return std::make_unique<GraphicEQ>();
     if (type == "PowerAmp") return std::make_unique<PowerAmp>();
     if (type == "Cabinet") return std::make_unique<Cabinet>();
     if (type == "Limiter") return std::make_unique<Limiter>();

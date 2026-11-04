@@ -24,6 +24,7 @@ sempre o do IbiFX (Green Screamer, Brit 800...).
 | Yellow Drive | `stomp.yellow-drive` | Boss SD-1 pela cor; o som (simétrico, transparente) lembra um overdrive transparente *(inferido)* | Drive, Level |
 | Black Rodent | `stomp.black-rodent` | ProCo RAT *(inferido)* | Distortion, Low Cut, Level |
 | Round Fuzz | `stomp.round-fuzz` | Dallas Arbiter Fuzz Face *(inferido)* | Fuzz, Bias |
+| Seven Band EQ | `stomp.seven-band` | Boss GE-7 (mesmas 7 bandas, ±15 dB e Level) *(inferido)* | 100, 200, 400, 800, 1.6k, 3.2k, 6.4k, Level |
 | Blue Chorus | `stomp.blue-chorus` | Boss CE-2 (chorus dos anos 80) *(inferido)* | Rate, Depth, Mix |
 | Analog Echo | `stomp.analog-echo` | Boss DM-2 / MXR Carbon Copy *(inferido)* | Time, Feedback, Mix |
 | Spring Room | `stomp.spring-room` | Reverb de mola de amplificador *(inferido)* | Decay, Damping, Mix |

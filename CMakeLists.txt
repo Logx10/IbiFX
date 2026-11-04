@@ -141,6 +141,7 @@ add_library(ibifx_core STATIC
     src/Reverb.cpp
     src/AsymmetricClipper.cpp
     src/ToneStack.cpp
+    src/GraphicEQ.cpp
     src/Preamp.cpp
     src/PowerAmp.cpp
     src/Tuner.cpp

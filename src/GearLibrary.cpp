@@ -135,6 +135,12 @@ void addStomps(std::vector<GearModel>& models)
     models.back().controls = {control("Fuzz", 0, "gain", 1.0f, 8.0f),
                               control("Bias", 1, "bias", 0.0f, 0.9f)};
 
+    // Um módulo só: os oito knobs (sete bandas + Level) saem automáticos das
+    // faixas do próprio GraphicEQ. Tudo em 0 dB é o pedal flat.
+    models.push_back(gear("stomp.seven-band", "Seven Band EQ", GearCategory::Stomp, "EQ",
+        "EQ gráfico de 7 bandas, 100 Hz a 6,4 kHz: esculpe o médio antes ou depois do ampli.",
+        {module("GraphicEQ")}));
+
     // Um módulo só: o painel (Rate, Depth, Mix) sai automático das faixas
     // do próprio Chorus — ver o construtor de GearLibrary.
     models.push_back(gear("stomp.blue-chorus", "Blue Chorus", GearCategory::Stomp, "Modulation",

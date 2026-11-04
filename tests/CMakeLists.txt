@@ -211,6 +211,13 @@ add_executable(test_rotovibe
 target_compile_options(test_rotovibe PRIVATE ${IBIFX_WARNINGS})
 target_link_libraries(test_rotovibe PRIVATE ibifx_core)
 
+add_executable(test_graphic_eq
+    test_graphic_eq.cpp
+)
+
+target_compile_options(test_graphic_eq PRIVATE ${IBIFX_WARNINGS})
+target_link_libraries(test_graphic_eq PRIVATE ibifx_core)
+
 add_executable(test_factory_presets test_factory_presets.cpp)
 target_compile_options(test_factory_presets PRIVATE ${IBIFX_WARNINGS})
 target_compile_definitions(test_factory_presets PRIVATE IBIFX_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
@@ -349,6 +356,7 @@ add_test(NAME convolution_engine COMMAND test_convolution_engine)
 add_test(NAME ir_loader COMMAND test_ir_loader)
 add_test(NAME chorus COMMAND test_chorus)
 add_test(NAME rotovibe COMMAND test_rotovibe)
+add_test(NAME graphic_eq COMMAND test_graphic_eq)
 add_test(NAME factory_presets COMMAND test_factory_presets)
 add_test(NAME oversampler COMMAND test_oversampler)
 add_test(NAME resampler COMMAND test_resampler)
