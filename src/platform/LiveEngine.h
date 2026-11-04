@@ -7,6 +7,7 @@
 
 #include "AudioDevice.h"
 #include "ModuleChain.h"
+#include "PickupSimulator.h"
 #include "PracticeSession.h"
 #include "ReampRecorder.h"
 #include "Tuner.h"
@@ -136,6 +137,11 @@ public:
     bool isTunerMuted() const;
     const Tuner& tuner() const;
 
+    // Simulacao de captador global, antes da cadeia. Pode mudar com o audio
+    // ligado; a thread de audio suaviza a troca. Nao altera o sinal seco.
+    void setPickupMode(PickupSimulator::Mode mode);
+    PickupSimulator::Mode pickupMode() const;
+
 private:
     // Prepara cadeia, gravador, prática e afinador numa taxa. Só com o
     // dispositivo parado — ver start().
@@ -149,6 +155,7 @@ private:
     ReampRecorder m_reampRecorder;
     PracticeSession m_practiceSession;
     Tuner m_tuner;
+    PickupSimulator m_pickupSimulator;
 
     std::atomic<bool> m_tunerEnabled{false};
     std::atomic<bool> m_tunerMuted{false};

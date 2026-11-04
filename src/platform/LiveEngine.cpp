@@ -63,6 +63,7 @@ bool LiveEngine::start(AudioDevice::Mode mode, double sampleRate, int blockSize)
 
 void LiveEngine::prepareAll(double sampleRate, int blockSize)
 {
+    m_pickupSimulator.prepare(sampleRate);
     m_chain.prepare(sampleRate, blockSize);
     m_chain.reset();
     m_reampRecorder.prepare(sampleRate);
@@ -93,6 +94,16 @@ bool LiveEngine::isTunerMuted() const
 const Tuner& LiveEngine::tuner() const
 {
     return m_tuner;
+}
+
+void LiveEngine::setPickupMode(PickupSimulator::Mode mode)
+{
+    m_pickupSimulator.setMode(mode);
+}
+
+PickupSimulator::Mode LiveEngine::pickupMode() const
+{
+    return m_pickupSimulator.mode();
 }
 
 ReampRecorder& LiveEngine::reampRecorder()
@@ -285,6 +296,10 @@ void LiveEngine::processBlock(float* output,
     }
 
     m_tunerWasEnabled = tuning;
+
+    // Molda a captacao antes do primeiro pedal/ampli. A copia seca para o
+    // afinador e o reamp ja foi feita, portanto continua sendo a DI real.
+    m_pickupSimulator.process(m_monoBuffer);
 
     // A cadeia modifica m_monoBuffer NO LUGAR — é por isso que o sinal seco
     // precisa ter sido copiado ANTES desta linha. Depois dela, m_monoBuffer

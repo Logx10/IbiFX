@@ -56,7 +56,7 @@ constexpr float kFootswitchRadius = 20.0f;
 // Largura do navegador de equipamentos, à direita.
 constexpr float kBrowserWidth = 330.0f;
 
-constexpr float kWorkspaceHeaderHeight = 120.0f;
+constexpr float kWorkspaceHeaderHeight = 150.0f;
 // Tamanhos da signal chain em escala 1. Quando a cadeia não cabe na
 // largura, tudo encolhe pelo mesmo fator (até kSignalMinScale) em vez de
 // abrir um scroll horizontal.
@@ -2707,6 +2707,15 @@ void DesktopUI::drawWorkspaceHeader()
 
         drawMeter("IN", m_engine.inputPeak());
         drawMeter("OUT", m_engine.outputPeak());
+
+        int pickupMode = static_cast<int>(m_engine.pickupMode());
+        ImGui::SetNextItemWidth(205.0f);
+        if (ImGui::Combo("Captador", &pickupMode,
+                         "Original\0Single -> Humbucker\0Humbucker -> Single\0"))
+            m_engine.setPickupMode(static_cast<PickupSimulator::Mode>(pickupMode));
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Simulacao global da entrada, antes dos efeitos.\n"
+                              "O afinador e a DI seca recebem o sinal original.");
 
         ImGui::EndTable();
     }
