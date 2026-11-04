@@ -17,6 +17,7 @@
 #include "HighPassFilter.h"
 #include "Limiter.h"
 #include "NoiseGate.h"
+#include "ParallelMarker.h"
 #include "Phaser.h"
 #include "Preamp.h"
 #include "PowerAmp.h"
@@ -48,6 +49,9 @@ std::unique_ptr<AudioModule> createModule(const std::string& type)
     if (type == "Wah") return std::make_unique<Wah>();
     if (type == "Phaser") return std::make_unique<Phaser>();
     if (type == "Flanger") return std::make_unique<Flanger>();
+    if (type == "Split") return std::make_unique<ParallelMarker>(ParallelMarker::Kind::Split);
+    if (type == "Branch") return std::make_unique<ParallelMarker>(ParallelMarker::Kind::Branch);
+    if (type == "Merge") return std::make_unique<ParallelMarker>(ParallelMarker::Kind::Merge);
     if (type == "Preamp") return std::make_unique<Preamp>();
     if (type == "ToneStack") return std::make_unique<ToneStack>();
     if (type == "GraphicEQ") return std::make_unique<GraphicEQ>();

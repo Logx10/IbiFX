@@ -232,6 +232,13 @@ add_executable(test_flanger
 target_compile_options(test_flanger PRIVATE ${IBIFX_WARNINGS})
 target_link_libraries(test_flanger PRIVATE ibifx_core)
 
+add_executable(test_parallel_routing
+    test_parallel_routing.cpp
+)
+
+target_compile_options(test_parallel_routing PRIVATE ${IBIFX_WARNINGS})
+target_link_libraries(test_parallel_routing PRIVATE ibifx_core)
+
 add_executable(test_fft
     test_fft.cpp
 )
@@ -386,6 +393,7 @@ add_test(NAME chorus COMMAND test_chorus)
 add_test(NAME rotovibe COMMAND test_rotovibe)
 add_test(NAME graphic_eq COMMAND test_graphic_eq)
 add_test(NAME fft COMMAND test_fft)
+add_test(NAME parallel_routing COMMAND test_parallel_routing)
 add_test(NAME flanger COMMAND test_flanger)
 add_test(NAME phaser COMMAND test_phaser)
 add_test(NAME wah COMMAND test_wah)

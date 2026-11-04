@@ -152,6 +152,7 @@ add_library(ibifx_core STATIC
     src/Fft.cpp
     src/Cabinet.cpp
     src/ModuleChain.cpp
+    src/ParallelMarker.cpp
     src/AudioModule.cpp
     src/Parameter.cpp
     src/Delay.cpp
