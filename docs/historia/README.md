@@ -10,3 +10,4 @@ Os branches são empilhados, cada um sai do anterior:
     main -> pedais -> amps -> ir -> motor -> ui
 
 1. [Pedais](pedais.md) — branch `pedais`
+2. [Amps](amps.md) — branch `amps`
