@@ -463,6 +463,25 @@ void addEqualizers(std::vector<GearModel>& models)
                               control("Level", 1, "gain", 0.0f, 6.0f)};
 }
 
+// Os marcadores de caminhos paralelos, para até três amps com as suas
+// caixas, como no AmpliTube. Na GUI, inserir o Split já traz um caminho
+// extra e o Merge; "Caminho" acrescenta o terceiro. Level e Phase de cada
+// caminho saem automáticos dos parâmetros do ParallelMarker.
+void addRouting(std::vector<GearModel>& models)
+{
+    models.push_back(gear("route.split", "Split", GearCategory::Routing, "Routing",
+        "Divide o sinal em caminhos paralelos — um amp com a sua caixa em cada. Controla o caminho A.",
+        {module("Split")}));
+
+    models.push_back(gear("route.branch", "Caminho", GearCategory::Routing, "Routing",
+        "Começa mais um caminho paralelo dentro de um Split, com Level e Phase próprios.",
+        {module("Branch")}));
+
+    models.push_back(gear("route.merge", "Merge", GearCategory::Routing, "Routing",
+        "Junta os caminhos paralelos: o que vem depois recebe a soma.",
+        {module("Merge")}));
+}
+
 // Um knob por parâmetro do módulo, na faixa e com o rótulo do próprio
 // Parameter. Constrói o módulo de verdade (via preset::apply) para ler
 // essas faixas, em vez de copiá-las à mão para cá e deixá-las divergir.
@@ -520,6 +539,7 @@ const char* gearCategoryName(GearCategory category)
     case GearCategory::Cabinet: return "Cabinet";
     case GearCategory::Rack: return "Rack";
     case GearCategory::Equalizer: return "EQ";
+    case GearCategory::Routing: return "Routing";
     }
     return "?";
 }
@@ -530,6 +550,7 @@ GearLibrary::GearLibrary()
     addAmps(m_models);
     addRack(m_models);
     addEqualizers(m_models);
+    addRouting(m_models);
 
     for (GearModel& model : m_models)
     {
@@ -778,8 +799,10 @@ bool parseRig(const std::vector<GearModel>& catalog, const std::vector<Preset::M
             next = RigStage::Rack;
             break;
         case GearCategory::Equalizer:
-            // O Rig legado não tinha EQ livre. Presets novos usam
-            // Preset::chainItems e não passam por esta inferência.
+        case GearCategory::Routing:
+            // O Rig legado não tinha EQ livre nem caminhos paralelos.
+            // Presets novos usam Preset::chainItems e não passam por esta
+            // inferência.
             continue;
         }
 
@@ -802,6 +825,7 @@ bool parseRig(const std::vector<GearModel>& catalog, const std::vector<Preset::M
         case GearCategory::Cabinet: rig.cabinet = model.id; break;
         case GearCategory::Rack: rig.rack.push_back(model.id); break;
         case GearCategory::Equalizer: break;
+        case GearCategory::Routing: break;
         }
 
         if (parseRig(catalog, modules, position + model.modules.size(), candidate.next, rig))
@@ -815,6 +839,7 @@ bool parseRig(const std::vector<GearModel>& catalog, const std::vector<Preset::M
         case GearCategory::Cabinet: rig.cabinet.clear(); break;
         case GearCategory::Rack: rig.rack.pop_back(); break;
         case GearCategory::Equalizer: break;
+        case GearCategory::Routing: break;
         }
     }
 

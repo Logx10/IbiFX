@@ -143,7 +143,9 @@ void testEveryControlPointsToARealParameter()
 
     for (const GearModel& model : library.models())
     {
-        if (model.controls.empty())
+        // O Merge é a única exceção: só junta os caminhos, não tem o que
+        // ajustar (o volume de cada caminho mora no marcador que o abre).
+        if (model.controls.empty() && model.id != "route.merge")
             everyModelHasControls = false;
 
         Preset single;

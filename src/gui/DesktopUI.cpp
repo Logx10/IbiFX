@@ -149,6 +149,7 @@ SignalCardKind signalCardKind(GearCategory category)
     case GearCategory::Cabinet: return SignalCardKind::Cabinet;
     case GearCategory::Rack: return SignalCardKind::Rack;
     case GearCategory::Equalizer: return SignalCardKind::Rack;
+    case GearCategory::Routing: return SignalCardKind::Module;
     }
     return SignalCardKind::Module;
 }
