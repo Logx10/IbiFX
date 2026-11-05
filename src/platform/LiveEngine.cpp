@@ -67,6 +67,7 @@ void LiveEngine::prepareAll(double sampleRate, int blockSize)
     m_chain.reset();
     m_reampRecorder.prepare(sampleRate);
     m_practiceSession.prepare(sampleRate);
+    m_diLooper.prepare(sampleRate);
     m_tuner.prepare(sampleRate, blockSize);
 }
 
@@ -103,6 +104,11 @@ ReampRecorder& LiveEngine::reampRecorder()
 PracticeSession& LiveEngine::practiceSession()
 {
     return m_practiceSession;
+}
+
+DiLooper& LiveEngine::diLooper()
+{
+    return m_diLooper;
 }
 
 void LiveEngine::stop()
@@ -242,21 +248,11 @@ void LiveEngine::processBlock(float* output,
 
     // Desintercala: pega o primeiro canal de entrada. Uma guitarra entrega um
     // sinal só, e é dele que a cadeia mono precisa.
-    float entrada = 0.0f;
-
     if (input != nullptr)
     {
         for (std::size_t frame = 0; frame < frames; ++frame)
         {
-            const float sample = input[frame * channelCount];
-            m_monoBuffer[frame] = sample;
-
-            if (capturingDry)
-            {
-                m_dryBuffer[frame] = sample;
-            }
-
-            entrada = std::max(entrada, std::fabs(sample));
+            m_monoBuffer[frame] = input[frame * channelCount];
         }
     }
     else
@@ -264,11 +260,22 @@ void LiveEngine::processBlock(float* output,
         // Sem entrada, alimentamos silêncio. Um delay com eco pendente ainda
         // devolve som, e é assim que se ouve a cauda de um efeito.
         std::fill(m_monoBuffer.begin(), m_monoBuffer.end(), 0.0f);
+    }
 
-        if (capturingDry)
-        {
-            std::fill(m_dryBuffer.begin(), m_dryBuffer.begin() + static_cast<std::ptrdiff_t>(frames), 0.0f);
-        }
+    // O loop de DI grava a entrada ou a SUBSTITUI pelo take, antes de
+    // qualquer outra coisa: daqui em diante, "a entrada" é o que ele deixou
+    // em m_monoBuffer — inclusive para o afinador, o reamp e o medidor.
+    m_diLooper.process(m_monoBuffer.data(), frames);
+
+    float entrada = 0.0f;
+    for (std::size_t frame = 0; frame < frames; ++frame)
+    {
+        entrada = std::max(entrada, std::fabs(m_monoBuffer[frame]));
+    }
+
+    if (capturingDry)
+    {
+        std::copy(m_monoBuffer.begin(), m_monoBuffer.end(), m_dryBuffer.begin());
     }
 
     // O afinador lê o sinal seco e não o altera (process() é passthrough).

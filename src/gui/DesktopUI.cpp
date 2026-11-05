@@ -21,6 +21,7 @@
 
 #include "GearSkins.h"
 #include "Preset.h"
+#include "DiLooper.h"
 #include "PresetManager.h"
 #include "Wah.h"
 
@@ -76,6 +77,8 @@ constexpr float kSignalSlotWidth = 22.0f;
 constexpr float kSignalMinScale = 0.35f;
 // Espaço vertical entre dois caminhos paralelos empilhados.
 constexpr float kSignalLaneGap = 12.0f;
+// Altura da barra do loop de DI, entre o editor e a cadeia.
+constexpr float kDiLoopStripHeight = 44.0f;
 
 // A miniatura é desenhada numa caixa de 42 x 48 em escala 1.
 constexpr float kSignalThumbWidth = 42.0f;
@@ -2903,6 +2906,99 @@ void DesktopUI::drawWorkspaceHeader()
     ImGui::PopStyleVar(2);
 }
 
+float DesktopUI::signalChainHeight() const
+{
+    std::size_t maxLanes = 1;
+    for (const ParallelSection& section : parallelSections())
+        maxLanes = std::max(maxLanes, section.heads.size());
+    return kSignalChainHeight + static_cast<float>(maxLanes - 1) * (kSignalCardHeight + kSignalLaneGap);
+}
+
+void DesktopUI::drawDiLoopStrip()
+{
+    DiLooper& looper = m_engine.diLooper();
+    const DiLooper::State state = looper.state();
+    const bool running = m_engine.isRunning();
+
+    ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 8.0f);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(14.0f, 8.0f));
+    ImGui::BeginChild("##diLoop", ImVec2(0.0f, kDiLoopStripHeight), ImGuiChildFlags_Borders,
+                      ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
+
+    trackedCaps("Loop de DI", kVintageGold, m_brandFont);
+    ImGui::SameLine(0.0f, 16.0f);
+
+    const ImVec2 buttonSize(116.0f, 0.0f);
+    ImGui::BeginDisabled(!running);
+
+    // Gravar / parar a gravação. O pedido só é aplicado no próximo bloco de
+    // áudio — por isso tudo aqui fica desligado sem o motor rodando.
+    if (state == DiLooper::State::Recording)
+    {
+        const std::string label = "Parar " + formatClock(looper.recordedSeconds()) + "##diStopRec";
+        if (recordButton(label.c_str(), buttonSize))
+            looper.stopRecording();
+    }
+    else if (recordButton("Gravar DI##diRec", buttonSize))
+    {
+        looper.startRecording();
+    }
+
+    ImGui::SameLine();
+    const bool hasTake = state == DiLooper::State::Ready || state == DiLooper::State::Playing;
+    ImGui::BeginDisabled(!hasTake && state != DiLooper::State::Recording);
+    if (ImGui::Button(state == DiLooper::State::Playing ? "Parar##diStop" : "Tocar##diPlay", ImVec2(84.0f, 0.0f)))
+        looper.togglePlay();
+    ImGui::EndDisabled();
+
+    ImGui::EndDisabled();
+
+    // Andamento do take: onde a reprodução está, e quanto ele dura.
+    ImGui::SameLine();
+    const float take = static_cast<float>(looper.takeSeconds());
+    const float fraction = state == DiLooper::State::Playing && take > 0.0f
+                               ? static_cast<float>(looper.playheadSeconds()) / take : 0.0f;
+    std::string overlay;
+    switch (state)
+    {
+        case DiLooper::State::Empty:
+            overlay = running ? "grave um trecho da guitarra seca" : "ligue o audio para gravar";
+            break;
+        case DiLooper::State::Recording:
+            overlay = "gravando: toque o riff e pare (ou aperte espaco para ja ouvir)";
+            break;
+        case DiLooper::State::Ready:
+            overlay = "take de " + formatClockTenths(take) + " pronto";
+            break;
+        case DiLooper::State::Playing:
+            overlay = formatClockTenths(looper.playheadSeconds()) + " / " + formatClockTenths(take);
+            break;
+    }
+    const float tailWidth = 170.0f;
+    ImGui::ProgressBar(std::clamp(fraction, 0.0f, 1.0f),
+                       ImVec2(std::max(120.0f, ImGui::GetContentRegionAvail().x - tailWidth), 0.0f),
+                       overlay.c_str());
+
+    ImGui::SameLine();
+    bool loop = looper.loop();
+    if (ImGui::Checkbox("Loop##diLoopCheck", &loop))
+        looper.setLoop(loop);
+
+    ImGui::SameLine();
+    ImGui::BeginDisabled(!hasTake || !running);
+    if (ImGui::SmallButton("Descartar##diClear"))
+        looper.clear();
+    ImGui::EndDisabled();
+
+    ImGui::SameLine();
+    ImGui::TextDisabled("espaco");
+    if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("Espaco toca e para o take. Enquanto ele toca, a guitarra ao vivo fica muda.");
+
+    ImGui::EndChild();
+    ImGui::PopStyleVar(2);
+}
+
 void DesktopUI::drawSignalChain()
 {
     const ModuleChain& chain = m_engine.chain();
@@ -2926,7 +3022,7 @@ void DesktopUI::drawSignalChain()
     };
 
     const float laneStep = kSignalCardHeight + kSignalLaneGap;
-    const float chainHeight = kSignalChainHeight + static_cast<float>(maxLanes - 1) * laneStep;
+    const float chainHeight = signalChainHeight();
 
     ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 8.0f);
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(16.0f, 10.0f));
@@ -3157,9 +3253,12 @@ void DesktopUI::drawSelectedEquipmentEditor()
     const ModuleChain& chain = m_engine.chain();
     ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 8.0f);
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(16.0f, 16.0f));
-    // Deixa embaixo o espaço da signal chain, que vem depois do editor.
-    const float editorHeight = std::max(160.0f, ImGui::GetContentRegionAvail().y - kSignalChainHeight
-                                                     - ImGui::GetStyle().ItemSpacing.y);
+    // Deixa embaixo o espaço da barra do loop de DI e da signal chain, que
+    // vêm depois do editor. A cadeia cresce com os caminhos paralelos, por
+    // isso a altura dela é calculada, não uma constante.
+    const float editorHeight = std::max(160.0f, ImGui::GetContentRegionAvail().y - signalChainHeight()
+                                                     - kDiLoopStripHeight
+                                                     - 2.0f * ImGui::GetStyle().ItemSpacing.y);
     ImGui::BeginChild("##selectedEditor", ImVec2(0.0f, editorHeight), ImGuiChildFlags_Borders,
                       ImGuiWindowFlags_HorizontalScrollbar);
 
@@ -3247,6 +3346,7 @@ void DesktopUI::drawPedalboardWorkspace()
                                               - ImGui::GetStyle().ItemSpacing.x);
     ImGui::BeginChild("##pedalboardMain", ImVec2(mainWidth, 0.0f));
     drawSelectedEquipmentEditor();
+    drawDiLoopStrip();
     drawSignalChain();
     ImGui::EndChild();
 
@@ -3383,6 +3483,13 @@ void DesktopUI::drawFrame()
 
     drawWorkspaceHeader();
     ImGui::Spacing();
+
+    // Espaço toca/para o loop de DI, como num DAW. Só na pedaleira (é lá que
+    // se timbra) e nunca enquanto se digita: WantTextInput fica ligado com
+    // um campo de texto ativo, como o nome do preset.
+    if (m_workspace == Workspace::Pedalboard && !ImGui::GetIO().WantTextInput
+        && ImGui::IsKeyPressed(ImGuiKey_Space, false))
+        m_engine.diLooper().togglePlay();
 
     if (m_workspace == Workspace::Pedalboard)
         drawPedalboardWorkspace();

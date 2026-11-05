@@ -153,6 +153,7 @@ add_library(ibifx_core STATIC
     src/Cabinet.cpp
     src/ModuleChain.cpp
     src/ParallelMarker.cpp
+    src/DiLooper.cpp
     src/AudioModule.cpp
     src/Parameter.cpp
     src/Delay.cpp

@@ -214,6 +214,15 @@ private:
 
     void drawTunerPanel();
     void drawRecorderPanel();
+
+    // A barra do loop de DI (DiLooper.h), entre o editor e a cadeia: grava a
+    // guitarra seca e a toca no lugar da entrada, para timbrar sem tocar.
+    // O espaço toca/para (ver drawFrame()).
+    void drawDiLoopStrip();
+
+    // Altura da faixa da cadeia: cresce com o número de caminhos paralelos.
+    // O editor precisa dela para deixar o espaço certo embaixo.
+    float signalChainHeight() const;
     void drawPracticePanel();
 
     // audio/*.wav, para o seletor de backing track.

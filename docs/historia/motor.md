@@ -73,3 +73,9 @@ mesmo tamanho. Parece uma corrida entre threads sem relação com o
 roteamento: sem marcadores, o laço do `ModuleChain` faz exatamente o que
 fazia antes. Mas **não foi confirmado** que a falha já existia. Fica
 registrado para investigar.
+
+**Atualização (branch `di-loop`):** confirmado. O mesmo teste, compilado a
+partir da `main` (antes de qualquer mudança desta história), falhou 2 vezes
+em 25, sempre nessa mesma verificação — contra 3 em 25 com tudo aplicado. A
+falha é anterior ao roteamento e ao loop de DI: é a corrida que o próprio
+`ReampRecorder.h` já descreve ("não zero matematicamente"). Continua aberta.

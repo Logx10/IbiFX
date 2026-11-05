@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "AudioDevice.h"
+#include "DiLooper.h"
 #include "ModuleChain.h"
 #include "PracticeSession.h"
 #include "ReampRecorder.h"
@@ -122,6 +123,13 @@ public:
     // que se quer reamplificar depois.
     PracticeSession& practiceSession();
 
+    // O loop de DI para timbrar sem tocar (ver DiLooper.h): grava a
+    // guitarra seca e, ao tocar, coloca o take NO LUGAR da entrada, antes da
+    // cadeia — e também antes do afinador e do reamp, que passam a ouvir o
+    // take. Mesma política do reampRecorder(): sempre existe, e parado custa
+    // uma leitura atômica por bloco.
+    DiLooper& diLooper();
+
     // Afinador sempre à mão, sem precisar entrar na cadeia. Ele escuta o
     // sinal SECO (antes dos pedais), como um afinador de verdade no começo
     // do pedalboard — uma distorção na frente bagunçaria a leitura.
@@ -148,6 +156,7 @@ private:
     ModuleChain m_chain;
     ReampRecorder m_reampRecorder;
     PracticeSession m_practiceSession;
+    DiLooper m_diLooper;
     Tuner m_tuner;
 
     std::atomic<bool> m_tunerEnabled{false};
