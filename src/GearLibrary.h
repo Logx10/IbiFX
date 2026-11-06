@@ -50,7 +50,11 @@ enum class GearCategory
     Amp,
     Cabinet,
     Rack,
-    Equalizer
+    Equalizer,
+    // Os marcadores de caminhos paralelos (ParallelMarker.h): Split, mais um
+    // caminho e Merge. Não são equipamentos de som — dizem por onde o sinal
+    // vai.
+    Routing
 };
 
 // Texto para exibição: "Stomp", "Amp", "Cabinet", "Rack".

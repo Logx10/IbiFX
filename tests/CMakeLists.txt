@@ -120,6 +120,13 @@ add_executable(test_high_pass_filter
 target_compile_options(test_high_pass_filter PRIVATE ${IBIFX_WARNINGS})
 target_link_libraries(test_high_pass_filter PRIVATE ibifx_core)
 
+add_executable(test_pickup_simulator
+    test_pickup_simulator.cpp
+)
+
+target_compile_options(test_pickup_simulator PRIVATE ${IBIFX_WARNINGS})
+target_link_libraries(test_pickup_simulator PRIVATE ibifx_core)
+
 add_executable(test_limiter
     test_limiter.cpp
 )
@@ -210,6 +217,55 @@ add_executable(test_rotovibe
 
 target_compile_options(test_rotovibe PRIVATE ${IBIFX_WARNINGS})
 target_link_libraries(test_rotovibe PRIVATE ibifx_core)
+
+add_executable(test_wah
+    test_wah.cpp
+)
+
+target_compile_options(test_wah PRIVATE ${IBIFX_WARNINGS})
+target_link_libraries(test_wah PRIVATE ibifx_core)
+
+add_executable(test_phaser
+    test_phaser.cpp
+)
+
+target_compile_options(test_phaser PRIVATE ${IBIFX_WARNINGS})
+target_link_libraries(test_phaser PRIVATE ibifx_core)
+
+add_executable(test_flanger
+    test_flanger.cpp
+)
+
+target_compile_options(test_flanger PRIVATE ${IBIFX_WARNINGS})
+target_link_libraries(test_flanger PRIVATE ibifx_core)
+
+add_executable(test_parallel_routing
+    test_parallel_routing.cpp
+)
+
+target_compile_options(test_parallel_routing PRIVATE ${IBIFX_WARNINGS})
+target_link_libraries(test_parallel_routing PRIVATE ibifx_core)
+
+add_executable(test_di_looper
+    test_di_looper.cpp
+)
+
+target_compile_options(test_di_looper PRIVATE ${IBIFX_WARNINGS})
+target_link_libraries(test_di_looper PRIVATE ibifx_core)
+
+add_executable(test_fft
+    test_fft.cpp
+)
+
+target_compile_options(test_fft PRIVATE ${IBIFX_WARNINGS})
+target_link_libraries(test_fft PRIVATE ibifx_core)
+
+add_executable(test_graphic_eq
+    test_graphic_eq.cpp
+)
+
+target_compile_options(test_graphic_eq PRIVATE ${IBIFX_WARNINGS})
+target_link_libraries(test_graphic_eq PRIVATE ibifx_core)
 
 add_executable(test_factory_presets test_factory_presets.cpp)
 target_compile_options(test_factory_presets PRIVATE ${IBIFX_WARNINGS})
@@ -336,6 +392,7 @@ add_test(NAME audio_graph COMMAND test_audio_graph)
 add_test(NAME command_queue COMMAND test_command_queue)
 add_test(NAME live_engine COMMAND test_live_engine)
 add_test(NAME high_pass_filter COMMAND test_high_pass_filter)
+add_test(NAME pickup_simulator COMMAND test_pickup_simulator)
 add_test(NAME limiter COMMAND test_limiter)
 add_test(NAME noise_gate COMMAND test_noise_gate)
 add_test(NAME compressor COMMAND test_compressor)
@@ -349,6 +406,13 @@ add_test(NAME convolution_engine COMMAND test_convolution_engine)
 add_test(NAME ir_loader COMMAND test_ir_loader)
 add_test(NAME chorus COMMAND test_chorus)
 add_test(NAME rotovibe COMMAND test_rotovibe)
+add_test(NAME graphic_eq COMMAND test_graphic_eq)
+add_test(NAME fft COMMAND test_fft)
+add_test(NAME di_looper COMMAND test_di_looper)
+add_test(NAME parallel_routing COMMAND test_parallel_routing)
+add_test(NAME flanger COMMAND test_flanger)
+add_test(NAME phaser COMMAND test_phaser)
+add_test(NAME wah COMMAND test_wah)
 add_test(NAME factory_presets COMMAND test_factory_presets)
 add_test(NAME oversampler COMMAND test_oversampler)
 add_test(NAME resampler COMMAND test_resampler)

@@ -234,6 +234,12 @@ concluída.** **Fase 20 (WebAssembly) em andamento** — ver status abaixo.
   Custo O(M) por amostra é um limite conhecido e documentado: convolução
   direta, não FFT — o próprio §34 já antecipa isso como o próximo passo
   quando o custo se mostrar um problema de verdade, não antes.
+  **Resolvido depois:** a Celestion V30 (9600 a 24 mil taps) custava 33% a
+  81% de um núcleo e estalava. O `ConvolutionEngine` passou a fazer os
+  primeiros 128 taps pela conta direta e o resto por FFT (overlap-save
+  particionado, `Fft.h`), sem latência: 2,4% de um núcleo. A mesma IR
+  também somava +15 a +20 dB, e o `Cabinet` agora normaliza o volume de
+  toda IR ao carregar (`normalizeImpulseResponseLevel`, `IRLoader.h`).
   Testado ponta a ponta com uma IR sintética (ruído + decaimento): o sinal
   ficou bem mais quente que o esperado, encostando no teto do `Limiter` boa
   parte do arquivo — característica da IR de teste improvisada (ruído

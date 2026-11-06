@@ -30,6 +30,7 @@ Compressor::Compressor()
     m_parameters.emplace_back("ratio", "Ratio", 1.0f, 20.0f, 4.0f);
     m_parameters.emplace_back("attack", "Attack", 0.001f, 0.5f, 0.01f);
     m_parameters.emplace_back("release", "Release", 0.01f, 2.0f, 0.15f);
+    m_parameters.emplace_back("mix", "Mix", 0.0f, 1.0f, 1.0f);
 }
 
 void Compressor::setThreshold(float thresholdDb)
@@ -72,6 +73,16 @@ float Compressor::release() const
     return m_parameters[3].value();
 }
 
+void Compressor::setMix(float newMix)
+{
+    m_parameters[4].setValue(newMix);
+}
+
+float Compressor::mix() const
+{
+    return m_parameters[4].value();
+}
+
 const char* Compressor::name() const
 {
     return "Compressor";
@@ -91,6 +102,7 @@ void Compressor::process(std::vector<float>& buffer)
 {
     const float thresholdDb = m_parameters[0].value();
     const float ratioValue = m_parameters[1].value();
+    const float mixValue = m_parameters[4].value();
 
     // Recalculados uma vez por bloco: os parâmetros só mudam quando alguém
     // mexe no controle, o que é raro comparado ao número de amostras num
@@ -117,6 +129,7 @@ void Compressor::process(std::vector<float>& buffer)
             gainReductionDb = excessDb - excessDb / ratioValue;
         }
 
-        sample *= decibelsToLinear(-gainReductionDb);
+        const float compressed = sample * decibelsToLinear(-gainReductionDb);
+        sample += mixValue * (compressed - sample);
     }
 }

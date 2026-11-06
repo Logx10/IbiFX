@@ -18,24 +18,36 @@ sempre o do IbiFX (Green Screamer, Brit 800...).
 |---|---|---|---|
 | Noise Gate | `stomp.gate` | Boss NS-2 (o Decay dele = nosso Release; sem o knob Mode) *(inferido)* | Threshold, Release |
 | Orange Squeeze | `stomp.orange-squeeze` | MXR Dyna Comp (a versão laranja dos anos 70/80) | Sensitivity, Output |
+| Iron Clamp | `stomp.iron-clamp` | Original do IbiFX, no espírito dos compressores com blend usados antes de ampli high gain (Keeley Compressor Plus, Wampler Ego) *(inferido)* | Sensitivity, Blend, Output |
 | Clean Boost | `stomp.clean-boost` | MXR Micro Amp / booster limpo *(inferido)* | Gain |
 | Green Screamer | `stomp.green-screamer` | Ibanez Tube Screamer (TS808/TS9) *(inferido)* | Drive, Low Cut, Level |
 | Yellow Drive | `stomp.yellow-drive` | Boss SD-1 pela cor; o som (simétrico, transparente) lembra um overdrive transparente *(inferido)* | Drive, Level |
 | Black Rodent | `stomp.black-rodent` | ProCo RAT *(inferido)* | Distortion, Low Cut, Level |
 | Round Fuzz | `stomp.round-fuzz` | Dallas Arbiter Fuzz Face *(inferido)* | Fuzz, Bias |
+| Orange Turbo | `stomp.orange-turbo` | Boss DS-2 Turbo Distortion (rig do John Frusciante). Turbo II medido: +10 dB em ~900 Hz e -10 dB em ~2,5 kHz | Dist, Tone, Level, Turbo |
+| Green Siberian | `stomp.green-siberian` | Electro-Harmonix Big Muff Pi russo "Green Russian" (rig de Californication). Dois estágios de clipagem e corte de médios raso em 1 kHz | Sustain, Tone, Volume |
+| Bakersfield Fuzz | `stomp.bakersfield-fuzz` | Mosrite Fuzzrite (rig de Stadium Arcadium). Dois transistores; Depth mistura os estágios fora de fase | Depth, Volume |
+| Ensemble Chorus | `stomp.ensemble-chorus` | Boss CE-1 Chorus Ensemble (rig do John Frusciante) | Rate, Depth, Mix |
+| Chapel Reverb | `stomp.chapel-reverb` | Electro-Harmonix Holy Grail, modo hall (By the Way, Stadium Arcadium) | Decay, Damping, Mix |
+| Chrome Wah | `stomp.chrome-wah` | Ibanez WH-10 (rig do John Frusciante): 350 Hz a 2,2 kHz, pico largo | Pedal, Resonance |
+| Orange Swirl | `stomp.orange-swirl` | MXR Phase 90 "script" (rig de Californication): 4 estágios all-pass, vales a partir de 58/340 Hz | Speed, Feedback |
+| Silver Siren | `stomp.silver-siren` | Electro-Harmonix Electric Mistress (rig de Stadium Arcadium): atraso de 0,8 a 6 ms, LFO triangular | Rate, Range, Color |
+| Seven Band EQ | `stomp.seven-band` | Boss GE-7 (mesmas 7 bandas, ±15 dB e Level) *(inferido)* | 100, 200, 400, 800, 1.6k, 3.2k, 6.4k, Level |
 | Blue Chorus | `stomp.blue-chorus` | Boss CE-2 (chorus dos anos 80) *(inferido)* | Rate, Depth, Mix |
 | Analog Echo | `stomp.analog-echo` | Boss DM-2 / MXR Carbon Copy *(inferido)* | Time, Feedback, Mix |
 | Spring Room | `stomp.spring-room` | Reverb de mola de amplificador *(inferido)* | Decay, Damping, Mix |
 
 ## Amps
 
-Todos os amps têm o mesmo painel; só os dois Brit têm Presence.
+Todos os amps têm o mesmo painel; só os Brit têm Presence.
 
 | Nome no IbiFX | Id | Provável referência | Knobs |
 |---|---|---|---|
 | American Clean | `amp.american-clean` | Fender Twin Reverb *(inferido)* | Gain, Bass, Middle, Treble, Sag, Master |
 | Tweed '59 | `amp.tweed-59` | Fender '59 Bassman | Gain, Bass, Middle, Treble, Sag, Master |
 | Brit Plexi | `amp.brit-plexi` | Marshall 1959 Super Lead "Plexi" *(inferido)* | Gain, Bass, Middle, Treble, Presence, Sag, Master |
+| Brit 200 | `amp.brit-200` | Marshall Major 200 W (rig do John Frusciante): Plexi com muito headroom | Gain, Bass, Middle, Treble, Presence, Sag, Master |
+| Brit Silver | `amp.brit-silver` | Marshall Silver Jubilee 2555 (rig do John Frusciante): clipagem assimétrica por LED/diodo entre os estágios do preamp | Gain, Bass, Middle, Treble, Presence, Sag, Master |
 | Brit 800 | `amp.brit-800` | Marshall JCM800 2203 *(inferido)* | Gain, Bass, Middle, Treble, Presence, Sag, Master |
 | Modern Hi-Gain | `amp.modern-hi-gain` | Mesa Dual Rectifier / EVH 5150 *(inferido)* | Gain, Bass, Middle, Treble, Sag, Master |
 

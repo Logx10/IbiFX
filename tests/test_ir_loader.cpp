@@ -5,6 +5,7 @@
 //
 // A infra de verificação vive em test_helpers.h.
 
+#include <algorithm>
 #include <cmath>
 #include <filesystem>
 #include <iostream>
@@ -123,6 +124,57 @@ void testMissingFileThrows()
     check(lancou, "loadImpulseResponse lancou uma excecao");
 }
 
+// Um impulso unitário tem resposta plana em 0 dB: já está na referência, e
+// a normalização não muda nada.
+void testUnitImpulseIsAlreadyNormalized()
+{
+    std::cout << "impulso unitario ja esta normalizado\n";
+
+    std::vector<float> ir = {1.0f, 0.0f, 0.0f, 0.0f};
+    normalizeImpulseResponseLevel(ir, 48000.0);
+
+    checkClose(ir[0], 1.0f, "tap 0 continua 1.0");
+    checkClose(ir[1], 0.0f, "tap 1 continua 0.0");
+}
+
+// A mesma IR gravada 20 dB mais alta ou 20 dB mais baixa sai igual — é o
+// caso das IRs comerciais, normalizadas pelo pico: o volume do arquivo
+// deixa de importar, só a forma da resposta.
+void testLevelOfTheFileNoLongerMatters()
+{
+    std::cout << "o volume do arquivo nao importa mais\n";
+
+    std::vector<float> loud(400);
+    for (std::size_t i = 0; i < loud.size(); ++i)
+        loud[i] = std::exp(-static_cast<float>(i) / 50.0f) * std::cos(0.05f * static_cast<float>(i));
+
+    std::vector<float> quiet = loud;
+    for (float& tap : quiet)
+        tap *= 0.01f;
+
+    normalizeImpulseResponseLevel(loud, 48000.0);
+    normalizeImpulseResponseLevel(quiet, 48000.0);
+
+    float worst = 0.0f;
+    for (std::size_t i = 0; i < loud.size(); ++i)
+        worst = std::max(worst, std::fabs(loud[i] - quiet[i]));
+
+    check(worst < 1e-5f, "IR alta e IR 40 dB mais baixa normalizam para os mesmos taps");
+}
+
+// Uma IR de silêncio não tem o que medir: fica como está, sem dividir por
+// zero.
+void testSilentIrStaysSilent()
+{
+    std::cout << "IR de silencio continua silencio\n";
+
+    std::vector<float> ir(64, 0.0f);
+    normalizeImpulseResponseLevel(ir, 48000.0);
+
+    check(std::isfinite(ir[0]), "tap e numero finito, nao NaN");
+    checkClose(ir[0], 0.0f, "0.0 continua 0.0");
+}
+
 int main()
 {
     std::cout << "\n=== testes do IRLoader ===\n\n";
@@ -130,6 +182,9 @@ int main()
     testMonoImpulseResponseRoundTrip();
     testStereoImpulseResponseIsAveragedToMono();
     testMissingFileThrows();
+    testUnitImpulseIsAlreadyNormalized();
+    testLevelOfTheFileNoLongerMatters();
+    testSilentIrStaysSilent();
 
     return reportResults();
 }

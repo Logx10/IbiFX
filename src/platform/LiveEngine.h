@@ -6,7 +6,9 @@
 #include <vector>
 
 #include "AudioDevice.h"
+#include "DiLooper.h"
 #include "ModuleChain.h"
+#include "PickupSimulator.h"
 #include "PracticeSession.h"
 #include "ReampRecorder.h"
 #include "Tuner.h"
@@ -122,6 +124,13 @@ public:
     // que se quer reamplificar depois.
     PracticeSession& practiceSession();
 
+    // O loop de DI para timbrar sem tocar (ver DiLooper.h): grava a
+    // guitarra seca e, ao tocar, coloca o take NO LUGAR da entrada, antes da
+    // cadeia — e também antes do afinador e do reamp, que passam a ouvir o
+    // take. Mesma política do reampRecorder(): sempre existe, e parado custa
+    // uma leitura atômica por bloco.
+    DiLooper& diLooper();
+
     // Afinador sempre à mão, sem precisar entrar na cadeia. Ele escuta o
     // sinal SECO (antes dos pedais), como um afinador de verdade no começo
     // do pedalboard — uma distorção na frente bagunçaria a leitura.
@@ -136,6 +145,11 @@ public:
     bool isTunerMuted() const;
     const Tuner& tuner() const;
 
+    // Simulacao de captador global, antes da cadeia. Pode mudar com o audio
+    // ligado; a thread de audio suaviza a troca. Nao altera o sinal seco.
+    void setPickupMode(PickupSimulator::Mode mode);
+    PickupSimulator::Mode pickupMode() const;
+
 private:
     // Prepara cadeia, gravador, prática e afinador numa taxa. Só com o
     // dispositivo parado — ver start().
@@ -148,7 +162,9 @@ private:
     ModuleChain m_chain;
     ReampRecorder m_reampRecorder;
     PracticeSession m_practiceSession;
+    DiLooper m_diLooper;
     Tuner m_tuner;
+    PickupSimulator m_pickupSimulator;
 
     std::atomic<bool> m_tunerEnabled{false};
     std::atomic<bool> m_tunerMuted{false};

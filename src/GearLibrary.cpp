@@ -50,6 +50,29 @@ GearModel gear(std::string id,
     return model;
 }
 
+// Posição do primeiro módulo do tipo type na receita. Só para os amplis do
+// próprio catálogo, que sempre têm os módulos procurados.
+std::size_t moduleIndex(const GearModel& model, const std::string& type)
+{
+    for (std::size_t i = 0; i < model.modules.size(); ++i)
+    {
+        if (model.modules[i].type == type)
+            return i;
+    }
+    throw std::logic_error("receita " + model.id + " sem modulo " + type);
+}
+
+// A receita define este parâmetro explicitamente?
+bool recipeSets(const Preset::ModuleState& state, const std::string& parameterId)
+{
+    for (const auto& parameter : state.parameters)
+    {
+        if (parameter.first == parameterId)
+            return true;
+    }
+    return false;
+}
+
 // Os pedais: cada um é a curva de saturação (ou o efeito) que mais se parece
 // com o circuito original, mais o filtro e o volume em volta dela.
 void addStomps(std::vector<GearModel>& models)
@@ -76,6 +99,26 @@ void addStomps(std::vector<GearModel>& models)
                                {"attack", 0.004f}, {"release", 0.3f}}),
          module("Gain", {{"gain", 3.0f}})}));
     models.back().controls = {control("Sensitivity", 0, "gain", 1.0f, 6.0f),
+                              control("Output", 2, "gain", 0.0f, 8.0f)};
+
+    // Compressor de metal, para ir antes de um ampli high gain. Difere do
+    // Orange Squeeze em três pontos: ataque no mínimo (1 ms), para pegar a
+    // palhetada em vez de deixá-la passar; release curto, para soltar entre
+    // um chug e outro de um riff rápido em vez de afundar o próximo; e ratio
+    // alto, que deixa os palm mutes e as notas abertas no mesmo volume. O
+    // Blend (mix do Compressor) devolve parte do sinal seco: sem ele, o
+    // ataque rápido apagaria a definição da palhetada. Pouco seco já basta:
+    // com 22 dB de redução numa palhetada forte, 10% de seco é quase tanto
+    // volume quanto os 90% comprimidos — em 0.8 a palhetada forte já
+    // passava 4 dB da entrada e a nivelação caía para 7 dB.
+    models.push_back(gear("stomp.iron-clamp", "Iron Clamp", GearCategory::Stomp, "Dynamics",
+        "Compressor de metal: ataque rápido e ratio alto para riffs tight, com Blend para manter a palhetada.",
+        {module("Gain", {{"gain", 2.0f}}),
+         module("Compressor", {{"threshold", -30.0f}, {"ratio", 12.0f},
+                               {"attack", 0.001f}, {"release", 0.08f}, {"mix", 0.9f}}),
+         module("Gain", {{"gain", 3.0f}})}));
+    models.back().controls = {control("Sensitivity", 0, "gain", 1.0f, 6.0f),
+                              control("Blend", 1, "mix", 0.0f, 1.0f),
                               control("Output", 2, "gain", 0.0f, 8.0f)};
 
     models.push_back(gear("stomp.clean-boost", "Clean Boost", GearCategory::Stomp, "Boost",
@@ -114,6 +157,110 @@ void addStomps(std::vector<GearModel>& models)
          module("AsymmetricClipper", {{"drive", 20.0f}, {"bias", 0.5f}})}));
     models.back().controls = {control("Fuzz", 0, "gain", 1.0f, 8.0f),
                               control("Bias", 1, "bias", 0.0f, 0.9f)};
+
+    // --- O rig do John Frusciante ---
+    // Os pedais que aparecem nos boards dele de Blood Sugar a Stadium
+    // Arcadium. Os números de frequência vêm de medições publicadas de cada
+    // circuito — ver docs/assets-equipamentos.md. O wah, o phaser e o
+    // flanger usam os módulos Wah, Phaser e Flanger, cada um com os números
+    // do pedal dele no header.
+
+    // No espírito do DS-2 Turbo Distortion, a distorção que está em todas
+    // as fases dele. Clipagem dura (diodos) depois do ganho, como o DS-1.
+    // O knob Turbo é o modo II medido: +10 dB estreitos perto de 900 Hz
+    // (a banda de 800 do GraphicEQ) — em 0 é o modo I, em 10 o modo II. O
+    // corte de ~10 dB em 2,5 kHz que acompanha o modo II e o agudo mais
+    // contido que o do DS-1 ficam fixos no mesmo EQ; o Tone mexe no 6,4k.
+    models.push_back(gear("stomp.orange-turbo", "Orange Turbo", GearCategory::Stomp, "Distortion",
+        "Distorção de solo com modo Turbo: médio saliente em 900 Hz que faz a nota furar a mistura.",
+        {module("HighPass", {{"frequency", 100.0f}}),
+         module("Gain", {{"gain", 6.0f}}),
+         module("Clipper", {{"threshold", 0.25f}}),
+         module("GraphicEQ", {{"band800", 10.0f}, {"band3200", -8.0f}, {"band6400", -8.0f}}),
+         module("Gain", {{"gain", 0.5f}})}));
+    models.back().controls = {control("Dist", 1, "gain", 1.0f, 8.0f),
+                              control("Tone", 3, "band6400", -15.0f, 6.0f),
+                              control("Level", 4, "gain", 0.0f, 3.0f),
+                              control("Turbo", 3, "band800", 0.0f, 10.0f)};
+
+    // No espírito do Big Muff russo ("Green Russian") do board de
+    // Californication. Dois estágios de clipagem suave em cascata — o
+    // sustain enorme vem daí —, com o agudo aparado entre eles como os
+    // capacitores Miller do circuito fazem (~1,2 kHz). Depois, o corte de
+    // médios do tone stack em 1 kHz, mais raso que o dos Muffs americanos
+    // (~6 dB contra ~13 dB), e o grave cheio característico da versão russa.
+    models.push_back(gear("stomp.green-siberian", "Green Siberian", GearCategory::Stomp, "Fuzz",
+        "Fuzz de sustain longo e grave gordo, com médio levemente cavado.",
+        {module("Gain", {{"gain", 3.0f}}),
+         module("SoftClipper", {{"drive", 4.0f}}),
+         module("GraphicEQ", {{"band3200", -6.0f}, {"band6400", -12.0f}}),
+         module("SoftClipper", {{"drive", 3.0f}}),
+         module("GraphicEQ", {{"band400", -3.0f}, {"band800", -6.0f},
+                              {"band1600", -4.0f}, {"band3200", -4.0f}, {"band6400", -12.0f}}),
+         module("Gain", {{"gain", 0.3f}})}));
+    models.back().controls = {control("Sustain", 0, "gain", 1.0f, 8.0f),
+                              control("Tone", 4, "band3200", -15.0f, 8.0f),
+                              control("Volume", 5, "gain", 0.0f, 3.0f)};
+
+    // No espírito do Fuzzrite do board de Stadium Arcadium. Dois estágios
+    // de transistor com o Depth misturando as saídas — fora de fase, então
+    // a mistura cancela parte da fundamental e sobram os harmônicos: o som
+    // fino, rasgado, "de mosquito". Aqui: o capacitor pequeno de entrada
+    // (HighPass alto), uma clipagem bem assimétrica (transistor faminto) e
+    // o Depth como drive dela. O bias é na escala da ENTRADA, por isso o
+    // ganho antes: sem ele, bias 0.6 deixava a palhetada inteira presa no
+    // teto da tanh e o pedal saía mudo. Menos saturado que um Big Muff, mais
+    // rosnado que o Round Fuzz.
+    models.push_back(gear("stomp.bakersfield-fuzz", "Bakersfield Fuzz", GearCategory::Stomp, "Fuzz",
+        "Fuzz dos anos 60, fino e rasgado: mais rosnado que saturado.",
+        {module("HighPass", {{"frequency", 300.0f}}),
+         module("Gain", {{"gain", 3.0f}}),
+         module("AsymmetricClipper", {{"drive", 8.0f}, {"bias", 0.3f}}),
+         module("GraphicEQ", {{"band1600", 3.0f}, {"band3200", 2.0f}}),
+         module("Gain", {{"gain", 0.5f}})}));
+    models.back().controls = {control("Depth", 2, "drive", 1.0f, 30.0f),
+                              control("Volume", 4, "gain", 0.0f, 3.0f)};
+
+    // No espírito do Ibanez WH-10, o wah dele desde o fim dos anos 80:
+    // 350 Hz a 2,2 kHz, pico largo de filtro com amplificador operacional
+    // (Q 3), não o pico espetado do indutor de um Cry Baby. Um módulo só:
+    // o painel (Pedal, Resonance) sai das faixas do próprio Wah.
+    models.push_back(gear("stomp.chrome-wah", "Chrome Wah", GearCategory::Stomp, "Filter",
+        "Wah de pico largo e quente, menos espetado que o clássico de indutor.",
+        {module("Wah", {{"position", 0.5f}, {"resonance", 3.0f}})}));
+
+    // No espírito do MXR Phase 90 "script" (sem realimentação), do board
+    // de Californication: quatro all-pass, dois vales. Feedback em ~0,4
+    // vira o "block logo", mais ressonante.
+    models.push_back(gear("stomp.orange-swirl", "Orange Swirl", GearCategory::Stomp, "Modulation",
+        "Phaser de quatro estágios, um knob só: o rodamoinho clássico dos anos 70.",
+        {module("Phaser", {{"rate", 0.5f}, {"feedback", 0.0f}})}));
+
+    // No espírito do Electric Mistress (Stadium Arcadium, o brilho
+    // "líquido" de Snow): flanger de pente curto com realimentação. Rate,
+    // Range e Color são os três knobs do original.
+    models.push_back(gear("stomp.silver-siren", "Silver Siren", GearCategory::Stomp, "Modulation",
+        "Flanger de pente varrendo devagar, metálico e líquido.",
+        {module("Flanger", {{"rate", 0.3f}, {"range", 0.7f}, {"color", 0.5f}})}));
+
+    // No espírito do CE-1 Chorus Ensemble (Californication, Stadium
+    // Arcadium): chorus lento e largo, metade seco metade molhado — o modo
+    // chorus do original sai mono com a mistura fixa em 50%.
+    models.push_back(gear("stomp.ensemble-chorus", "Ensemble Chorus", GearCategory::Stomp, "Modulation",
+        "Chorus lento e largo dos anos 70, para limpos com brilho.",
+        {module("Chorus", {{"rate", 0.5f}, {"depth", 0.65f}, {"mix", 0.5f}})}));
+
+    // No espírito do Holy Grail (By the Way, Stadium Arcadium) no modo hall:
+    // cauda longa e escura, por baixo do som.
+    models.push_back(gear("stomp.chapel-reverb", "Chapel Reverb", GearCategory::Stomp, "Reverb",
+        "Reverb de pedal com cauda longa e escura, no modo hall.",
+        {module("Reverb", {{"decay", 0.8f}, {"damping", 0.45f}, {"mix", 0.3f}})}));
+
+    // Um módulo só: os oito knobs (sete bandas + Level) saem automáticos das
+    // faixas do próprio GraphicEQ. Tudo em 0 dB é o pedal flat.
+    models.push_back(gear("stomp.seven-band", "Seven Band EQ", GearCategory::Stomp, "EQ",
+        "EQ gráfico de 7 bandas, 100 Hz a 6,4 kHz: esculpe o médio antes ou depois do ampli.",
+        {module("GraphicEQ")}));
 
     // Um módulo só: o painel (Rate, Depth, Mix) sai automático das faixas
     // do próprio Chorus — ver o construtor de GearLibrary.
@@ -192,30 +339,78 @@ void addAmps(std::vector<GearModel>& models)
          module("PowerAmp", {{"drive", 1.2f}, {"sag", 0.2f}}),
          module("Gain", {{"gain", 0.2f}})}));
 
-    // Todos os amplis têm a mesma estrutura, então o mesmo painel — como
-    // o de um ampli real: Gain, Bass, Middle, Treble, Sag e Master. O teto
-    // do Master é 2,5x o volume calibrado da receita, para o padrão cair
-    // perto do "4" na escala de 0 a 10.
+    // --- Os dois Marshall do John Frusciante ---
+    // De Californication a Stadium Arcadium ele dividia a guitarra entre
+    // os dois, cada um no seu par de 4x12: o Major para o corpo limpo e
+    // largo, o Silver Jubilee para a sujeira.
+
+    // No espírito do Major 200 W: o circuito de um Plexi com muito mais
+    // headroom (válvulas KT88 e um transformador enorme). Pouco ganho de
+    // preamp, power amp folgado e quase sem sag — limpo alto e firme, que
+    // só abre quando a guitarra (ou um DS-2) empurra. Master calibrado para
+    // a palhetada média sair no nível do American Clean (~-11 dBFS).
+    models.push_back(gear("amp.brit-200", "Brit 200", GearCategory::Amp, "Clean",
+        "Plexi de 200 W: limpo grande e firme, quebra só quando empurrado.",
+        {module("HighPass", {{"frequency", 90.0f}}),
+         module("Gain", {{"gain", 1.5f}}),
+         module("Preamp", {{"drive", 1.0f}, {"interstage", 10000.0f}}),
+         module("ToneStack", {{"bass", 0.4f}, {"mid", 0.6f}, {"treble", 0.65f}}),
+         module("Gain", {{"gain", 2.0f}}),
+         module("PowerAmp", {{"drive", 0.8f}, {"sag", 0.15f}, {"presence", 0.4f}}),
+         module("Gain", {{"gain", 1.1f}})}));
+
+    // No espírito do Silver Jubilee 2555: três estágios de preamp e, entre
+    // eles, a rede de clipagem que define o ampli — dois LEDs vermelhos e
+    // diodos de silício montados para clipar ASSIMETRICAMENTE (harmônicos
+    // pares, como num overdrive). Sem ela o Jubilee seria um ampli limpo:
+    // quase toda a saturação do preamp vem dos diodos. Aqui ela é um
+    // AsymmetricClipper depois do Preamp. Mais escuro e comprimido no médio
+    // que o JCM800 (o Brit 800) da mesma época. Master calibrado para o
+    // nível dos outros Brit (~-14,5 dBFS).
+    models.push_back(gear("amp.brit-silver", "Brit Silver", GearCategory::Amp, "Crunch",
+        "Crunch denso de clipagem por LED: médio comprimido e agressivo, mais escuro que o 800.",
+        {module("HighPass", {{"frequency", 100.0f}}),
+         module("Gain", {{"gain", 2.0f}}),
+         module("Preamp", {{"drive", 1.6f}, {"interstage", 8000.0f}}),
+         module("AsymmetricClipper", {{"drive", 3.0f}, {"bias", 0.25f}}),
+         module("ToneStack", {{"bass", 0.5f}, {"mid", 0.65f}, {"treble", 0.55f}}),
+         module("Gain", {{"gain", 2.0f}}),
+         module("PowerAmp", {{"drive", 1.5f}, {"sag", 0.3f}, {"presence", 0.5f}}),
+         module("Gain", {{"gain", 0.26f}})}));
+
+    // Todos os amplis têm o mesmo painel — como o de um ampli real: Gain,
+    // Bass, Middle, Treble, Sag e Master. Os knobs acham o módulo pelo TIPO
+    // (o Preamp, o ToneStack, o PowerAmp, o último Gain como master), não
+    // pela posição: o Silver Jubilee tem um estágio de clipagem a mais no
+    // meio, e o painel dele tem que continuar funcionando. O teto do Master
+    // é 2,5x o volume calibrado da receita, para o padrão cair perto do
+    // "4" na escala de 0 a 10.
     //
-    // Os Brit ganham Presence entre Treble e Sag, onde ele fica num painel
-    // Marshall de verdade. Os outros não: o knob não existe nos amplis que
-    // eles lembram, e a receita deles deixa o presence em 0 (neutro).
+    // Presence aparece entre Treble e Sag, onde ele fica num painel
+    // Marshall de verdade, nos amplis cuja receita define presence. Os
+    // outros deixam o presence em 0 (neutro), e o knob não existe nos
+    // amplis que eles lembram.
     for (GearModel& model : models)
     {
         if (model.category != GearCategory::Amp)
             continue;
 
-        const float master = model.modules[6].parameters[0].second;
-        model.controls = {control("Gain", 2, "drive", 0.1f, 5.0f),
-                          control("Bass", 3, "bass", 0.0f, 1.0f),
-                          control("Middle", 3, "mid", 0.0f, 1.0f),
-                          control("Treble", 3, "treble", 0.0f, 1.0f)};
+        const std::size_t preamp = moduleIndex(model, "Preamp");
+        const std::size_t toneStack = moduleIndex(model, "ToneStack");
+        const std::size_t powerAmp = moduleIndex(model, "PowerAmp");
+        const std::size_t masterGain = model.modules.size() - 1;
 
-        if (model.id == "amp.brit-plexi" || model.id == "amp.brit-800")
-            model.controls.push_back(control("Presence", 5, "presence", 0.0f, 1.0f));
+        const float master = model.modules[masterGain].parameters[0].second;
+        model.controls = {control("Gain", preamp, "drive", 0.1f, 5.0f),
+                          control("Bass", toneStack, "bass", 0.0f, 1.0f),
+                          control("Middle", toneStack, "mid", 0.0f, 1.0f),
+                          control("Treble", toneStack, "treble", 0.0f, 1.0f)};
 
-        model.controls.push_back(control("Sag", 5, "sag", 0.0f, 1.0f));
-        model.controls.push_back(control("Master", 6, "gain", 0.0f, master * 2.5f));
+        if (recipeSets(model.modules[powerAmp], "presence"))
+            model.controls.push_back(control("Presence", powerAmp, "presence", 0.0f, 1.0f));
+
+        model.controls.push_back(control("Sag", powerAmp, "sag", 0.0f, 1.0f));
+        model.controls.push_back(control("Master", masterGain, "gain", 0.0f, master * 2.5f));
     }
 }
 
@@ -266,6 +461,25 @@ void addEqualizers(std::vector<GearModel>& models)
                               control("Mid", 0, "mid", 0.0f, 1.0f),
                               control("Treble", 0, "treble", 0.0f, 1.0f),
                               control("Level", 1, "gain", 0.0f, 6.0f)};
+}
+
+// Os marcadores de caminhos paralelos, para até três amps com as suas
+// caixas, como no AmpliTube. Na GUI, inserir o Split já traz um caminho
+// extra e o Merge; "Caminho" acrescenta o terceiro. Level e Phase de cada
+// caminho saem automáticos dos parâmetros do ParallelMarker.
+void addRouting(std::vector<GearModel>& models)
+{
+    models.push_back(gear("route.split", "Split", GearCategory::Routing, "Routing",
+        "Divide o sinal em caminhos paralelos — um amp com a sua caixa em cada. Controla o caminho A.",
+        {module("Split")}));
+
+    models.push_back(gear("route.branch", "Caminho", GearCategory::Routing, "Routing",
+        "Começa mais um caminho paralelo dentro de um Split, com Level e Phase próprios.",
+        {module("Branch")}));
+
+    models.push_back(gear("route.merge", "Merge", GearCategory::Routing, "Routing",
+        "Junta os caminhos paralelos: o que vem depois recebe a soma.",
+        {module("Merge")}));
 }
 
 // Um knob por parâmetro do módulo, na faixa e com o rótulo do próprio
@@ -325,6 +539,7 @@ const char* gearCategoryName(GearCategory category)
     case GearCategory::Cabinet: return "Cabinet";
     case GearCategory::Rack: return "Rack";
     case GearCategory::Equalizer: return "EQ";
+    case GearCategory::Routing: return "Routing";
     }
     return "?";
 }
@@ -335,6 +550,7 @@ GearLibrary::GearLibrary()
     addAmps(m_models);
     addRack(m_models);
     addEqualizers(m_models);
+    addRouting(m_models);
 
     for (GearModel& model : m_models)
     {
@@ -583,8 +799,10 @@ bool parseRig(const std::vector<GearModel>& catalog, const std::vector<Preset::M
             next = RigStage::Rack;
             break;
         case GearCategory::Equalizer:
-            // O Rig legado não tinha EQ livre. Presets novos usam
-            // Preset::chainItems e não passam por esta inferência.
+        case GearCategory::Routing:
+            // O Rig legado não tinha EQ livre nem caminhos paralelos.
+            // Presets novos usam Preset::chainItems e não passam por esta
+            // inferência.
             continue;
         }
 
@@ -607,6 +825,7 @@ bool parseRig(const std::vector<GearModel>& catalog, const std::vector<Preset::M
         case GearCategory::Cabinet: rig.cabinet = model.id; break;
         case GearCategory::Rack: rig.rack.push_back(model.id); break;
         case GearCategory::Equalizer: break;
+        case GearCategory::Routing: break;
         }
 
         if (parseRig(catalog, modules, position + model.modules.size(), candidate.next, rig))
@@ -620,6 +839,7 @@ bool parseRig(const std::vector<GearModel>& catalog, const std::vector<Preset::M
         case GearCategory::Cabinet: rig.cabinet.clear(); break;
         case GearCategory::Rack: rig.rack.pop_back(); break;
         case GearCategory::Equalizer: break;
+        case GearCategory::Routing: break;
         }
     }
 

@@ -143,7 +143,9 @@ void testEveryControlPointsToARealParameter()
 
     for (const GearModel& model : library.models())
     {
-        if (model.controls.empty())
+        // O Merge é a única exceção: só junta os caminhos, não tem o que
+        // ajustar (o volume de cada caminho mora no marcador que o abre).
+        if (model.controls.empty() && model.id != "route.merge")
             everyModelHasControls = false;
 
         Preset single;
@@ -379,6 +381,46 @@ void testCompressorPedalKeepsTheLevelAndSqueezes()
     check(softGainDb - loudGainDb > 9.0, "nota fraca sobe pelo menos 9 dB a mais que a forte");
 }
 
+// O compressor de metal num Mi grave (82 Hz), a nota dos chugs: palhetada
+// forte (-12 dBFS) sai perto do nível de entrada, e uma nota fraca
+// (-30 dBFS) sobe bem mais — mesmo com o Blend devolvendo parte do seco.
+// Em Blend 1.0 (só comprimido) a distância entre as duas encolhe ainda mais.
+void testMetalCompressorEvensTheChugs()
+{
+    std::cout << "compressor de metal nivela os chugs no Mi grave\n";
+
+    GearLibrary library;
+    const double loudGainDb = recipeGainDb(library, "stomp.iron-clamp", 82.4, 0.25f);
+    const double softGainDb = recipeGainDb(library, "stomp.iron-clamp", 82.4, 0.0316f);
+
+    std::cout << "    forte " << loudGainDb << " dB, fraca " << softGainDb << " dB\n";
+    check(std::fabs(loudGainDb) < 3.0, "palhetada forte sai a ate 3 dB da entrada");
+    check(softGainDb - loudGainDb > 9.0, "nota fraca sobe pelo menos 9 dB a mais que a forte");
+}
+
+// Os drives do rig do Frusciante com os knobs no padrão: ligar o pedal com
+// uma palhetada forte (-12 dBFS) não muda o volume MÉDIO em mais de 3 dB,
+// tirando a média de uma nota grave, uma média e uma aguda. Nota a nota
+// eles não são planos de propósito — o Turbo sobe ~10 dB perto de 900 Hz,
+// o Siberian é escuro —, então o volume de uma nota só não diria nada.
+void testFruscianteDrivesKeepTheLevel()
+{
+    std::cout << "drives do rig do Frusciante mantem o volume medio\n";
+
+    GearLibrary library;
+    for (const char* id : {"stomp.orange-turbo", "stomp.green-siberian", "stomp.bakersfield-fuzz"})
+    {
+        double sumDb = 0.0;
+        for (double frequency : {110.0, 330.0, 880.0})
+        {
+            const double gainDb = recipeGainDb(library, id, frequency, 0.25f);
+            std::cout << "    " << id << " " << frequency << " Hz: " << gainDb << " dB\n";
+            sumDb += gainDb;
+        }
+        check(std::fabs(sumDb / 3.0) < 3.0, std::string(id) + ": media a ate 3 dB da entrada");
+    }
+}
+
 void testScanFindsCabinetsAndMicrophones()
 {
     std::cout << "scan encontra cabinets (pastas) e microfones (.wav)\n";
@@ -533,7 +575,7 @@ void testOnlyBritAmpsHavePresence()
         for (const GearControl& control : amp->controls)
             hasPresence = hasPresence || control.parameterId == "presence";
 
-        const bool isBrit = (amp->id == "amp.brit-plexi" || amp->id == "amp.brit-800");
+        const bool isBrit = amp->id.rfind("amp.brit-", 0) == 0;
         check(hasPresence == isBrit, amp->id + (isBrit ? " tem Presence" : " nao tem Presence"));
     }
 }
@@ -553,6 +595,8 @@ int main()
     testEmptySignalChainAndUnknownId();
     testStandaloneToneStackKeepsTheLevel();
     testCompressorPedalKeepsTheLevelAndSqueezes();
+    testMetalCompressorEvensTheChugs();
+    testFruscianteDrivesKeepTheLevel();
     testScanFindsCabinetsAndMicrophones();
     testScanOfMissingDirectoryFindsNothing();
     testInferRigRecoversTheRigOfASavedChain();

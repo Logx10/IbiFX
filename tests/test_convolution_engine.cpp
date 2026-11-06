@@ -3,12 +3,71 @@
 // A infra de verificação (check, checkClose, reportResults) vive em
 // test_helpers.h, compartilhada com os outros testes.
 
+#include <algorithm>
+#include <cmath>
 #include <iostream>
 #include <string>
 #include <vector>
 
 #include "ConvolutionEngine.h"
 #include "test_helpers.h"
+
+namespace
+{
+// Ruído pseudoaleatório determinístico (gerador congruente linear), entre
+// -1 e 1 — o mesmo sinal toda vez que o teste roda.
+std::vector<float> noise(std::size_t count, unsigned seed)
+{
+    std::vector<float> samples(count);
+    for (float& sample : samples)
+    {
+        seed = seed * 1664525u + 1013904223u;
+        sample = static_cast<float>(seed >> 8) / static_cast<float>(1u << 23) - 1.0f;
+    }
+    return samples;
+}
+
+// A conta da definição, y[n] = Σ h[k] · x[n-k], sem nenhum truque — a
+// referência contra a qual a versão por FFT é comparada.
+std::vector<float> directConvolution(const std::vector<float>& ir, const std::vector<float>& input)
+{
+    std::vector<float> output(input.size(), 0.0f);
+    for (std::size_t n = 0; n < input.size(); ++n)
+    {
+        double sum = 0.0;
+        for (std::size_t k = 0; k < ir.size() && k <= n; ++k)
+            sum += static_cast<double>(ir[k]) * static_cast<double>(input[n - k]);
+        output[n] = static_cast<float>(sum);
+    }
+    return output;
+}
+
+// Maior diferença entre o engine e a conta direta, para uma IR de irSize
+// taps — o erro relativo ao maior valor da saída de referência.
+float worstErrorAgainstDirect(std::size_t irSize, std::size_t inputSize)
+{
+    std::vector<float> ir = noise(irSize, 7u);
+    // Decaimento, como uma IR de verdade — senão a saída cresce com o
+    // tamanho e o erro relativo fica artificialmente pequeno.
+    for (std::size_t i = 0; i < ir.size(); ++i)
+        ir[i] *= std::exp(-static_cast<float>(i) / static_cast<float>(irSize / 4 + 1));
+
+    const std::vector<float> input = noise(inputSize, 99u);
+    const std::vector<float> expected = directConvolution(ir, input);
+
+    ConvolutionEngine engine;
+    engine.setImpulseResponse(ir);
+
+    float worst = 0.0f;
+    float peak = 0.0f;
+    for (std::size_t n = 0; n < input.size(); ++n)
+    {
+        worst = std::max(worst, std::fabs(engine.processSample(input[n]) - expected[n]));
+        peak = std::max(peak, std::fabs(expected[n]));
+    }
+    return worst / peak;
+}
+}
 
 // ---------------------------------------------------------------------
 
@@ -112,6 +171,61 @@ void testKnownConvolutionSequence()
     }
 }
 
+// A cauda via FFT dá o mesmo resultado da conta direta, amostra por
+// amostra e sem atraso, em IRs de vários tamanhos — inclusive nas
+// fronteiras das partes (128 = só cabeça, 129 = uma parte de 1 tap só,
+// 256, e um tamanho que não divide por 128).
+void testFftTailMatchesDirectConvolution()
+{
+    std::cout << "cauda via FFT bate com a conta direta, sem latencia\n";
+
+    for (std::size_t irSize : {128u, 129u, 256u, 1000u, 4801u})
+    {
+        const float error = worstErrorAgainstDirect(irSize, 3000);
+        check(error < 1e-5f, "IR de " + std::to_string(irSize) + " taps: erro relativo < 1e-5");
+    }
+}
+
+// Um impulso devolve a própria IR, também na parte que passa pela FFT.
+void testImpulseReturnsLongImpulseResponse()
+{
+    std::cout << "impulso devolve a IR longa inteira\n";
+
+    std::vector<float> ir = noise(700, 3u);
+
+    ConvolutionEngine engine;
+    engine.setImpulseResponse(ir);
+
+    float worst = 0.0f;
+    for (std::size_t n = 0; n < 900; ++n)
+    {
+        const float expected = n < ir.size() ? ir[n] : 0.0f;
+        worst = std::max(worst, std::fabs(engine.processSample(n == 0 ? 1.0f : 0.0f) - expected));
+    }
+    check(worst < 1e-5f, "saida = taps da IR, e zero depois dela");
+}
+
+// reset() também zera a cauda: depois dele, nada do sinal antigo vaza —
+// nem do bloco pela metade, nem dos espectros guardados na FDL.
+void testResetClearsTheTail()
+{
+    std::cout << "reset zera tambem a cauda\n";
+
+    ConvolutionEngine engine;
+    engine.setImpulseResponse(noise(1000, 5u));
+
+    for (float sample : noise(450, 11u))
+        engine.processSample(sample);
+
+    engine.reset();
+
+    float worst = 0.0f;
+    for (int n = 0; n < 1200; ++n)
+        worst = std::max(worst, std::fabs(engine.processSample(0.0f)));
+
+    check(worst == 0.0f, "so silencio depois do reset");
+}
+
 int main()
 {
     std::cout << "\n=== testes do ConvolutionEngine ===\n\n";
@@ -122,6 +236,9 @@ int main()
     testImpulseInputReturnsTheImpulseResponseItself();
     testResetClearsHistoryNotImpulseResponse();
     testKnownConvolutionSequence();
+    testFftTailMatchesDirectConvolution();
+    testImpulseReturnsLongImpulseResponse();
+    testResetClearsTheTail();
 
     return reportResults();
 }

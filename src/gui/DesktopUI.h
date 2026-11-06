@@ -214,6 +214,15 @@ private:
 
     void drawTunerPanel();
     void drawRecorderPanel();
+
+    // A barra do loop de DI (DiLooper.h), entre o editor e a cadeia: grava a
+    // guitarra seca e a toca no lugar da entrada, para timbrar sem tocar.
+    // O espaço toca/para (ver drawFrame()).
+    void drawDiLoopStrip();
+
+    // Altura da faixa da cadeia: cresce com o número de caminhos paralelos.
+    // O editor precisa dela para deixar o espaço certo embaixo.
+    float signalChainHeight() const;
     void drawPracticePanel();
 
     // audio/*.wav, para o seletor de backing track.
@@ -325,6 +334,30 @@ private:
         std::size_t moduleCount = 0;
     };
     std::vector<ChainItem> m_chainItems;
+
+    // Um trecho de caminhos paralelos na cadeia (ParallelMarker.h), em
+    // índices de m_chainItems: o marcador que abre cada caminho (o Split e
+    // cada Branch, em ordem) e o Merge que fecha o trecho.
+    struct ParallelSection
+    {
+        std::vector<std::size_t> heads;
+        std::size_t merge = 0;
+
+        // Itens do caminho lane: de depois do marcador dele até o próximo
+        // marcador, sem incluir nenhum dos dois.
+        std::size_t laneBegin(std::size_t lane) const;
+        std::size_t laneEnd(std::size_t lane) const;
+    };
+
+    // Os trechos bem formados da cadeia atual: Split, Branches e Merge, sem
+    // Split dentro de Split. Um trecho malformado (o motor também o trata
+    // de forma degradada, ver ModuleChain.h) não entra: é desenhado em
+    // linha, como qualquer item.
+    std::vector<ParallelSection> parallelSections() const;
+
+    // Quantos amps em paralelo a GUI deixa montar, como no AmpliTube. O
+    // motor aceitaria mais; o limite é de interface e de CPU.
+    static constexpr std::size_t kMaxLanes = 3;
 
     enum class Workspace
     {

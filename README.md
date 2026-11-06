@@ -423,6 +423,14 @@ Cada pacote contém o programa de terminal (`ibifx`), a interface gráfica
 a interface gráfica é um executável de linha de comando; os pacotes não são
 assinados nem notarizados.
 
+Na interface desktop, o seletor **Captador** ao lado dos medidores de entrada e
+saída aplica **Single → Humbucker** ou **Humbucker → Single** antes da cadeia de
+efeitos. **Original** desliga a conversão. O ajuste é global e não ocupa um
+slot; veja [como a simulação funciona](docs/simulacao-de-captadores.md) e seus
+limites com uma guitarra de saída mono.
+Há também uma [apresentação do simulador](docs/apresentacao-simulador-captadores.md)
+com modos, uso e estado da implementação.
+
 ### macOS / Linux
 
 ```sh

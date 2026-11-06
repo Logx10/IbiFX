@@ -1,7 +1,19 @@
 #include "ModuleChain.h"
 
+#include <algorithm>
 #include <stdexcept>
 #include <utility>
+
+#include "ParallelMarker.h"
+
+namespace
+{
+// Folga mínima dos buffers dos caminhos paralelos. O dispositivo de áudio
+// costuma entregar blocos do tamanho pedido no prepare(), mas alguns
+// drivers mandam blocos maiores de vez em quando; reservar pelo menos isto
+// evita que esse caso aloque na thread de áudio.
+constexpr std::size_t kMinLaneCapacity = 8192;
+}
 
 void ModuleChain::add(std::unique_ptr<AudioModule> module)
 {
@@ -10,7 +22,8 @@ void ModuleChain::add(std::unique_ptr<AudioModule> module)
         throw std::invalid_argument("ModuleChain::add recebeu um modulo nulo");
     }
 
-    m_slots.push_back(Slot{std::move(module), false});
+    ParallelMarker* marker = dynamic_cast<ParallelMarker*>(module.get());
+    m_slots.push_back(Slot{std::move(module), false, marker});
 }
 
 void ModuleChain::remove(std::size_t index)
@@ -99,6 +112,10 @@ bool ModuleChain::isBypassed(std::size_t index) const
 
 void ModuleChain::prepare(double sampleRate, int blockSize)
 {
+    const std::size_t capacity = std::max(kMinLaneCapacity, static_cast<std::size_t>(std::max(blockSize, 0)));
+    m_laneInput.reserve(capacity);
+    m_laneSum.reserve(capacity);
+
     for (Slot& slot : m_slots)
     {
         slot.module->prepare(sampleRate, blockSize);
@@ -194,11 +211,68 @@ void ModuleChain::process(std::vector<float>& buffer)
         applyCommand(command);
     }
 
+    m_openLane = nullptr;
+
     for (Slot& slot : m_slots)
     {
-        if (!slot.bypassed)
+        if (slot.marker != nullptr)
+        {
+            switch (slot.marker->kind())
+            {
+                case ParallelMarker::Kind::Split:
+                case ParallelMarker::Kind::Branch:
+                    if (m_openLane == nullptr)
+                    {
+                        // Um Branch sem Split aberto não abre nada.
+                        if (slot.marker->kind() == ParallelMarker::Kind::Branch)
+                            break;
+
+                        // assign dentro da capacidade reservada: copia, não
+                        // aloca.
+                        m_laneInput.assign(buffer.begin(), buffer.end());
+                        m_laneSum.assign(buffer.size(), 0.0f);
+                    }
+                    else
+                    {
+                        // Fim do caminho anterior: soma, e o próximo
+                        // começa da cópia do sinal de entrada.
+                        finishLane(buffer);
+                        std::copy(m_laneInput.begin(), m_laneInput.end(), buffer.begin());
+                    }
+                    m_openLane = slot.marker;
+                    m_openLaneMuted = slot.bypassed;
+                    break;
+
+                case ParallelMarker::Kind::Merge:
+                    if (m_openLane != nullptr)
+                    {
+                        finishLane(buffer);
+                        std::copy(m_laneSum.begin(), m_laneSum.end(), buffer.begin());
+                        m_openLane = nullptr;
+                    }
+                    break;
+            }
+            continue;
+        }
+
+        // Um caminho mudo nem processa: economiza a CPU de um amp desligado.
+        if (!slot.bypassed && !(m_openLane != nullptr && m_openLaneMuted))
         {
             slot.module->process(buffer);
         }
     }
+
+    // Trecho sem Merge: fecha no fim da fila.
+    if (m_openLane != nullptr)
+    {
+        finishLane(buffer);
+        std::copy(m_laneSum.begin(), m_laneSum.end(), buffer.begin());
+        m_openLane = nullptr;
+    }
+}
+
+void ModuleChain::finishLane(const std::vector<float>& buffer)
+{
+    if (!m_openLaneMuted)
+        m_openLane->addLaneTo(buffer, m_laneSum);
 }

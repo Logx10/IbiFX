@@ -23,9 +23,9 @@
 // da sala e o microfone que captou tudo — a etapa final antes do sinal
 // virar uma gravação.
 //
-// A MATEMÁTICA VIVE EM ConvolutionEngine — ver o comentário lá, incluindo o
-// custo computacional conhecido desta primeira versão (convolução direta,
-// não FFT).
+// A MATEMÁTICA VIVE EM ConvolutionEngine — ver o comentário lá: conta
+// direta nos primeiros taps e FFT no resto, para IRs longas não pesarem na
+// thread de áudio.
 //
 // mix PADRÃO EM 1.0, DIFERENTE DE Delay/Reverb
 // Delay e Reverb normalmente se misturam com o sinal seco. Um cabinet sim
@@ -77,9 +77,11 @@ private:
     ConvolutionEngine m_engine;
     std::string m_irPath;
 
-    // A IR como veio do arquivo, e a taxa dela. Guardada para poder
-    // reconverter se o motor for preparado de novo em outra taxa — converter
-    // a partir de uma IR já convertida acumularia erro.
+    // A IR como veio do arquivo (só com o volume normalizado, ver
+    // normalizeImpulseResponseLevel() em IRLoader.h), e a taxa dela.
+    // Guardada para poder reconverter se o motor for preparado de novo em
+    // outra taxa — converter a partir de uma IR já convertida acumularia
+    // erro.
     std::vector<float> m_originalIr;
     double m_irSampleRate = 0.0;
 

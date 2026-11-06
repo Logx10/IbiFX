@@ -15,6 +15,7 @@
 #include <vector>
 
 #include "Cabinet.h"
+#include "IRLoader.h"
 #include "WavFile.h"
 #include "test_helpers.h"
 
@@ -91,7 +92,8 @@ void testZeroMixIsFullyDry()
 }
 
 // Com mix 1.0 (o padrão), a saída é a convolução pura — calculada à mão
-// pra uma IR de dois taps {0.5, 0.5} conhecida.
+// pra uma IR de dois taps {0.5, 0.5} conhecida. O Cabinet normaliza o
+// volume ao carregar, então os dois taps chegam iguais a h, não a 0.5.
 void testFullMixIsPureConvolution()
 {
     std::cout << "mix 1.0 e a convolucao pura\n";
@@ -106,10 +108,14 @@ void testFullMixIsPureConvolution()
 
     cabinet.process(buffer);
 
-    // y[n] = 0.5*x[n] + 0.5*x[n-1]
-    checkClose(buffer[0], 0.5f, "y[0] = 0.5*1.0 + 0.5*0 (sem historico ainda)");
-    checkClose(buffer[1], 1.0f, "y[1] = 0.5*1.0 + 0.5*1.0");
-    checkClose(buffer[2], 0.5f, "y[2] = 0.5*0.0 + 0.5*1.0");
+    std::vector<float> ir = {0.5f, 0.5f};
+    normalizeImpulseResponseLevel(ir, 44100.0);
+    const float h = ir[0];
+
+    // y[n] = h*x[n] + h*x[n-1]
+    checkClose(buffer[0], h, "y[0] = h*1.0 + h*0 (sem historico ainda)");
+    checkClose(buffer[1], 2.0f * h, "y[1] = h*1.0 + h*1.0");
+    checkClose(buffer[2], h, "y[2] = h*0.0 + h*1.0");
 
     removeIfExists(path);
 }
@@ -185,14 +191,15 @@ std::vector<float> measuredImpulseResponse(Cabinet& cabinet, std::size_t length)
     return buffer;
 }
 
-// Preparado na MESMA taxa da IR, nada muda: a saída para um impulso são os
-// taps do arquivo, um a um.
+// Preparado na MESMA taxa da IR, nada muda além do volume: a saída para um
+// impulso são os taps do arquivo normalizados, um a um.
 void testSameRateKeepsTheIrUntouched()
 {
     std::cout << "IR na mesma taxa do motor nao e convertida\n";
 
     std::vector<float> taps;
     const std::filesystem::path path = writeDecayingImpulseResponse(taps);
+    normalizeImpulseResponseLevel(taps, 44100.0);
 
     Cabinet cabinet;
     cabinet.prepare(44100.0, 128);
@@ -228,6 +235,7 @@ void testIrIsConvertedToTheEngineRate()
 
     std::vector<float> taps;
     const std::filesystem::path path = writeDecayingImpulseResponse(taps);
+    normalizeImpulseResponseLevel(taps, 44100.0);
 
     // Carregar ANTES e preparar depois — a ordem de preset::apply() seguido
     // de LiveEngine::start().
@@ -256,6 +264,9 @@ void testIrIsConvertedToTheEngineRate()
     }
 
     // A IR convertida tem 480 taps: um impulso só gera saída até ali.
+    // "Nada" é abaixo de 1e-6, não zero exato: depois dos primeiros 128
+    // taps a convolução passa pela FFT, que deixa resíduo de arredondamento
+    // do float (~1e-8) onde a conta direta dava 0.
     std::vector<float> buffer(600, 0.0f);
     buffer[0] = 1.0f;
     loadedFirst.reset();
@@ -265,8 +276,8 @@ void testIrIsConvertedToTheEngineRate()
     for (std::size_t i = 480; i < buffer.size(); ++i)
         tail = std::max(tail, std::fabs(buffer[i]));
 
-    check(std::fabs(buffer[470]) > 0.0f, "ainda ha IR perto do fim convertido (480)");
-    check(tail == 0.0f, "e nada depois dele");
+    check(std::fabs(buffer[470]) > 1e-6f, "ainda ha IR perto do fim convertido (480)");
+    check(tail < 1e-6f, "e nada depois dele");
 
     removeIfExists(path);
 }

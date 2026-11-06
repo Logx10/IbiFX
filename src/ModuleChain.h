@@ -7,6 +7,8 @@
 #include "AudioModule.h"
 #include "CommandQueue.h"
 
+class ParallelMarker;
+
 // ModuleChain — uma cadeia linear de módulos, montada em tempo de execução.
 //
 // O QUE MUDA EM RELAÇÃO AO QUE HAVIA ANTES
@@ -53,6 +55,21 @@
 // tocar. Trocar a montagem da cadeia com o áudio rodando exigirá construir a
 // cadeia nova fora e trocá-la por ponteiro atômico, e isso fica para quando
 // houver um dispositivo de áudio de verdade do outro lado.
+// CAMINHOS PARALELOS
+// A fila aceita marcadores (ParallelMarker.h) que abrem um trecho de
+// caminhos paralelos — vários amps, cada um com a sua caixa:
+//
+//     ... Split  [caminho A]  Branch  [caminho B]  Merge ...
+//
+// No Split, o process() guarda uma cópia do sinal; cada caminho processa
+// essa cópia; em cada Branch e no Merge, o caminho que terminou é somado
+// num acumulador, com o volume e a fase do marcador que o abriu. Depois do
+// Merge a fila segue com a soma. A lista continua plana: índices, presets e
+// MIDI não sabem que existem caminhos.
+//
+// Estrutura malformada não quebra o áudio: Branch ou Merge sem um Split
+// aberto são ignorados, um Split dentro de outro trecho é tratado como
+// Branch (não há aninhamento), e um trecho sem Merge fecha no fim da fila.
 class ModuleChain
 {
 public:
@@ -156,12 +173,33 @@ private:
     {
         std::unique_ptr<AudioModule> module;
         bool bypassed = false;
+
+        // Não-nulo se o módulo é um marcador de caminhos paralelos.
+        // Descoberto uma vez, no add(), para o process() não precisar de
+        // dynamic_cast a cada bloco.
+        ParallelMarker* marker = nullptr;
     };
+
+    // Fecha o caminho em andamento: soma buffer em m_laneSum com o volume
+    // do marcador que o abriu (ou nada, se ele estiver em bypass).
+    void finishLane(const std::vector<float>& buffer);
 
     // Aplica um comando à cadeia. Chamada só de dentro do process().
     void applyCommand(const Command& command);
 
     std::vector<Slot> m_slots;
+
+    // Os dois buffers dos caminhos paralelos: a cópia do sinal no Split, e
+    // a soma dos caminhos. Reservados no prepare(), para o process() não
+    // alocar.
+    std::vector<float> m_laneInput;
+    std::vector<float> m_laneSum;
+
+    // O caminho em andamento dentro de um process(): o marcador que o
+    // abriu, e se ele está mudo (marcador em bypass).
+    ParallelMarker* m_openLane = nullptr;
+    bool m_openLaneMuted = false;
+
     CommandQueue m_commands;
     CommandQueue m_midiCommands;
 };

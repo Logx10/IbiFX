@@ -141,6 +141,7 @@ add_library(ibifx_core STATIC
     src/Reverb.cpp
     src/AsymmetricClipper.cpp
     src/ToneStack.cpp
+    src/GraphicEQ.cpp
     src/Preamp.cpp
     src/PowerAmp.cpp
     src/Tuner.cpp
@@ -148,19 +149,26 @@ add_library(ibifx_core STATIC
     src/Resampler.cpp
     src/Oversampler.cpp
     src/ConvolutionEngine.cpp
+    src/Fft.cpp
     src/Cabinet.cpp
     src/ModuleChain.cpp
+    src/ParallelMarker.cpp
+    src/DiLooper.cpp
     src/AudioModule.cpp
     src/Parameter.cpp
     src/Delay.cpp
     src/Chorus.cpp
     src/Rotovibe.cpp
+    src/Wah.cpp
+    src/Phaser.cpp
+    src/Flanger.cpp
     src/SmoothedValue.cpp
     src/WavFile.cpp
     src/offline.cpp
     src/AudioGraph.cpp
     src/CommandQueue.cpp
     src/HighPassFilter.cpp
+    src/PickupSimulator.cpp
     src/Preset.cpp
     src/Serialization.cpp
     src/PresetManager.cpp
