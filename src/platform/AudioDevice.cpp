@@ -24,6 +24,10 @@ struct AudioDevice::Impl
     std::string captureDeviceName;
     std::string lastError;
 
+    // true quando o stream abriu em modo exclusivo (sem o mixer do sistema
+    // no caminho) — ver o comentário em start().
+    bool exclusiveMode = false;
+
     // Escrito pela thread de áudio, lido pela de controle. Atômico pelo mesmo
     // motivo do Parameter: sem isso seria corrida de dados.
     std::atomic<std::size_t> processedBlocks{0};
@@ -134,7 +138,8 @@ AudioDevice::~AudioDevice()
     stop();
 }
 
-bool AudioDevice::start(ProcessCallback callback, Mode mode, double sampleRate, int blockSize)
+bool AudioDevice::start(ProcessCallback callback, Mode mode, double sampleRate, int blockSize,
+                        bool preferExclusive)
 {
     if (m_impl->running)
     {
@@ -207,10 +212,8 @@ bool AudioDevice::start(ProcessCallback callback, Mode mode, double sampleRate, 
         config.capture.channels = 0;
     }
 
-    // Modo exclusivo no WASAPI: bypassa o mixer do Windows e entrega o buffer
-    // diretamente ao driver, eliminando ~10-20 ms de latência adicionados pelo
-    // audio graph compartilhado. Só funciona no Windows; nos outros backends
-    // o campo wasapi é ignorado.
+    // Stream marcado como "pro audio" no Windows: prioridade de agendamento
+    // mais alta para a thread de áudio. Ignorado nos outros backends.
     config.wasapi.usage = ma_wasapi_usage_pro_audio;
 
     config.sampleRate = static_cast<ma_uint32>(sampleRate);
@@ -219,7 +222,52 @@ bool AudioDevice::start(ProcessCallback callback, Mode mode, double sampleRate, 
     config.notificationCallback = notificationCallback;
     config.pUserData = m_impl.get();
 
-    result = ma_device_init(&m_impl->context, &config, &m_impl->device);
+    // COMPARTILHADO DE BAIXA LATÊNCIA POR PADRÃO, EXCLUSIVO SÓ A PEDIDO
+    //
+    // O modo compartilhado clássico soma o buffer do mixer do Windows
+    // (~10-20 ms) em cima do nosso. Desde o Windows 10 existe um
+    // meio-termo: a API IAudioClient3 deixa um stream COMPARTILHADO rodar
+    // com o período pequeno que pedimos — o mixer continua lá (os outros
+    // apps continuam tocando), mas girando rápido. O miniaudio usa essa via
+    // sozinho, com uma condição documentada nele: o conversor de sample
+    // rate do Windows (AUTOCONVERTPCM) precisa estar desligado, porque a
+    // IAudioClient3 recusa a combinação. Desligado, qualquer diferença de
+    // taxa é resolvida pelo resampler interno do miniaudio.
+    config.wasapi.noAutoConvertSRC = MA_TRUE;
+
+    // O modo exclusivo (fala direto com o driver, mixer fora do caminho —
+    // a mesma via que o ASIO4ALL embrulha) ganha mais uns poucos ms, mas
+    // CALA O RESTO DO COMPUTADOR enquanto o app roda. Por isso não é mais o
+    // padrão: só entra quando preferExclusive for pedido explicitamente, e
+    // ainda cai para o compartilhado se o driver recusar.
+    m_impl->exclusiveMode = false;
+
+    if (preferExclusive && mode != Mode::Null)
+    {
+        config.playback.shareMode = ma_share_mode_exclusive;
+
+        if (deviceType == ma_device_type_duplex)
+        {
+            config.capture.shareMode = ma_share_mode_exclusive;
+        }
+
+        result = ma_device_init(&m_impl->context, &config, &m_impl->device);
+
+        if (result == MA_SUCCESS)
+        {
+            m_impl->exclusiveMode = true;
+        }
+        else
+        {
+            config.playback.shareMode = ma_share_mode_shared;
+            config.capture.shareMode = ma_share_mode_shared;
+        }
+    }
+
+    if (!m_impl->exclusiveMode)
+    {
+        result = ma_device_init(&m_impl->context, &config, &m_impl->device);
+    }
 
     if (result != MA_SUCCESS)
     {
@@ -300,6 +348,11 @@ std::string AudioDevice::deviceName() const
 std::string AudioDevice::captureDeviceName() const
 {
     return m_impl->captureDeviceName;
+}
+
+bool AudioDevice::exclusiveMode() const
+{
+    return m_impl->exclusiveMode;
 }
 
 std::string AudioDevice::lastError() const
