@@ -16,6 +16,7 @@
 #include "GraphicEQ.h"
 #include "HighPassFilter.h"
 #include "Limiter.h"
+#include "LowPassFilter.h"
 #include "NoiseGate.h"
 #include "ParallelMarker.h"
 #include "Phaser.h"
@@ -42,6 +43,7 @@ std::unique_ptr<AudioModule> createModule(const std::string& type)
     if (type == "NoiseGate") return std::make_unique<NoiseGate>();
     if (type == "Compressor") return std::make_unique<Compressor>();
     if (type == "HighPass") return std::make_unique<HighPassFilter>();
+    if (type == "LowPass") return std::make_unique<LowPassFilter>();
     if (type == "Delay") return std::make_unique<Delay>();
     if (type == "Reverb") return std::make_unique<Reverb>();
     if (type == "Chorus") return std::make_unique<Chorus>();

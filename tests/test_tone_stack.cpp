@@ -207,6 +207,54 @@ void testBassKnobFollowsAudioTaper()
     check(meioParaMaximoDb > 2.0, "bass 0.5 fica mais de 2 dB abaixo de bass 1.0 em 80 Hz");
 }
 
+// Os três circuitos (Bassman, Marshall, Blackface) são jogos de componentes
+// DIFERENTES no mesmo circuito — com os knobs na mesma posição, a resposta
+// em frequência tem que mudar de um pra outro de forma mensurável. Medido
+// em 500 Hz (onde o scoop do Blackface é profundo e o do Bassman é raso) e
+// em 5 kHz (onde o capacitor de treble do Marshall, quase o dobro do do
+// Bassman, deixa mais agudo passar).
+void testCircuitsRespondDifferently()
+{
+    std::cout << "cada circuito tem uma resposta propria\n";
+
+    auto medir = [](int circuitIndex, double frequency) -> float
+    {
+        std::vector<float> sinal = generateSine(frequency, 8000);
+
+        ToneStack toneStack;
+        toneStack.setCircuit(circuitIndex);
+        toneStack.prepare(kSampleRate, 64);
+        toneStack.process(sinal);
+
+        return rmsOfSecondHalf(sinal);
+    };
+
+    const double scoopDb =
+        20.0 * std::log10(medir(2, 500.0) / medir(0, 500.0));
+    std::cout << "    Blackface vs Bassman em 500 Hz: " << scoopDb << " dB\n";
+    check(std::fabs(scoopDb) > 2.0,
+          "o medio do Blackface difere do Bassman em mais de 2 dB");
+
+    const double trebleDb =
+        20.0 * std::log10(medir(1, 5000.0) / medir(0, 5000.0));
+    std::cout << "    Marshall vs Bassman em 5 kHz: " << trebleDb << " dB\n";
+    check(std::fabs(trebleDb) > 0.75,
+          "o agudo do Marshall difere do Bassman em mais de 0.75 dB");
+}
+
+// O circuito padrão é o Bassman (índice 0) — preset antigo, sem o
+// parâmetro, continua soando exatamente como soava.
+void testCircuitRoundTripAndDefault()
+{
+    std::cout << "circuito: padrao e setter\n";
+
+    ToneStack toneStack;
+    check(toneStack.circuit() == 0, "circuito padrao e o Bassman (0)");
+
+    toneStack.setCircuit(2);
+    check(toneStack.circuit() == 2, "circuito vira o Blackface (2)");
+}
+
 // reset() apaga a memória do filtro (3 amostras de entrada, 3 de saída):
 // depois de processar sinal de verdade e resetar, um bloco silencioso tem
 // que sair silencioso — nada de eco numérico do que veio antes.
@@ -273,6 +321,8 @@ int main()
     testTrebleBoostsHighFrequencies();
     testBassBoostsLowFrequencies();
     testBassKnobFollowsAudioTaper();
+    testCircuitsRespondDifferently();
+    testCircuitRoundTripAndDefault();
     testResetClearsFilterHistory();
     testParameterRoundTrip();
     testEmptyBufferDoesNotCrash();

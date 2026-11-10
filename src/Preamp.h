@@ -78,6 +78,44 @@
 // seguinte satura de novo e recria os agudos na hora; foi medido (ver
 // test_preamp.cpp). Roda dentro do oversampling, junto da cascata. O corte é por ampli (ver GearLibrary):
 // um Brit mais aberto, um Tweed mais escuro.
+//
+// O BIAS: POR QUE tanh SOZINHA NÃO SOA "VÁLVULA" (parâmetro "bias")
+// tanh é uma curva SIMÉTRICA: trata o semiciclo positivo e o negativo
+// exatamente igual, e uma não-linearidade simétrica só produz harmônicos
+// ÍMPARES (3º, 5º...). Um triodo real não é simétrico: o ponto de operação
+// fica deslocado entre a saturação de corrente e o corte, então um
+// semiciclo achata antes do outro. Essa assimetria gera os harmônicos
+// PARES — o 2º principalmente, uma oitava acima da nota — que são a parte
+// "quente/redonda" do som valvulado que falta num clipper simétrico.
+//
+// A modelagem é a clássica: desloca-se o ponto de operação da curva,
+//
+//     y = (tanh(drive*x + bias) - tanh(bias)) / (1 + tanh(bias))
+//
+// O "- tanh(bias)" remove o degrau DC que o deslocamento criaria em
+// silêncio (entrada 0 precisa continuar saindo 0). A divisão por
+// (1 + tanh(bias)) renormaliza a faixa: o semiciclo negativo, que agora
+// alcança -1 - tanh(bias) antes da divisão, volta a ter piso exatamente
+// em -1 — e o positivo fica com teto um pouco ABAIXO de +1, que é
+// exatamente o retrato de um estágio que satura um lado antes do outro.
+// A garantia de faixa [-1, +1] da classe continua valendo, sem depender
+// do Limiter. Com bias = 0 (o padrão), a fórmula colapsa em tanh(drive*x)
+// — o módulo soa idêntico ao que era antes de o parâmetro existir, mesmo
+// precedente do presence no PowerAmp.
+//
+// O CAPACITOR DE ACOPLAMENTO ENTRE ESTÁGIOS
+// Saturação assimétrica tem um subproduto: o valor MÉDIO do sinal deixa de
+// ser zero (um lado achatado pesa menos que o outro) — nasce um nível DC
+// que depende do quanto se está tocando. Deixado passar, esse DC desloca o
+// ponto de operação do próximo estágio de forma descontrolada, e o boost
+// de 2x entre estágios ainda o dobra a cada passo. Um amplificador real
+// resolve isso com o capacitor de acoplamento entre as válvulas, que
+// bloqueia DC e deixa o áudio passar. Aqui ele é um passa-alta de um polo
+// em ~10 Hz (kCouplingHz no .cpp) na saída dos estágios 1 e 2 — do último
+// não precisa: a renormalização já garante a faixa, e o resíduo DC de
+// saída é pequeno e morre no primeiro passa-alta adiante na cadeia. Os
+// capacitores só entram em cena com bias > 0; com bias 0 não há DC para
+// bloquear e eles ficam fora do caminho.
 class Preamp : public AudioModule
 {
 public:
@@ -92,6 +130,12 @@ public:
     // classe).
     void setInterstageCutoff(float hertz);
     float interstageCutoff() const;
+
+    // Deslocamento do ponto de operação de cada estágio — a fonte dos
+    // harmônicos pares (ver "O BIAS" no comentário da classe). 0 = curva
+    // simétrica, idêntica ao módulo antes do parâmetro existir.
+    void setBias(float amount);
+    float bias() const;
 
     // Liga/desliga o filtro entre estágios — ligado por padrão. Desligar
     // serve aos testes que conferem a curva da cascata com uma amostra só
@@ -124,4 +168,10 @@ private:
     // Estado do passa-baixa na saída de cada estágio. Só a thread de áudio
     // mexe, dentro do process().
     std::array<float, 3> m_interstageState{};
+
+    // Estado dos capacitores de acoplamento (passa-alta de um polo) entre
+    // os estágios 1->2 e 2->3 — entrada e saída anteriores de cada um. Só
+    // a thread de áudio mexe, dentro do process().
+    std::array<float, 2> m_couplingX{};
+    std::array<float, 2> m_couplingY{};
 };

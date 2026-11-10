@@ -95,13 +95,34 @@
 // é como o componente físico se comporta. Qualquer frontend, preset ou
 // automação que mande bass = 0,5 ouve o mesmo knob no meio.
 //
-// COMPONENTES USADOS: OS DO FENDER '59 BASSMAN
-// C1 = 0,25 nF, C2 = C3 = 20 nF, R1 = 250 kΩ (treble), R2 = 1 MΩ (bass),
-// R3 = 25 kΩ (mid), R4 = 56 kΩ — os valores publicados no artigo pra esse
-// amplificador específico. Um Marshall ou um Vox usam a MESMA topologia de
-// circuito com valores de componente diferentes, e soariam diferente por
-// causa disso — não é um parâmetro deste módulo ainda, é uma constante fixa
-// dentro dele.
+// OS COMPONENTES SÃO UM PARÂMETRO: TRÊS CIRCUITOS REAIS (parâmetro "circuit")
+// A topologia do circuito é a mesma em praticamente todo amplificador
+// clássico — o que muda de um Fender pra um Marshall são os VALORES dos
+// componentes, e é essa diferença que faz cada família responder de um
+// jeito aos mesmos três knobs. O módulo traz três jogos de valores, todos
+// de esquemático publicado (os mesmos do Duncan Tone Stack Calculator, a
+// referência usual de quem projeta amplificador):
+//
+//   0 = Fender '59 Bassman 5F6-A (o do artigo de Yeh & Smith):
+//       C1=250pF  C2=C3=20nF  R1=250k  R2=1M  R3=25k  R4=56k
+//       Médios presentes, controles suaves e muito interativos.
+//
+//   1 = Marshall JCM800/plexi:
+//       C1=470pF  C2=C3=22nF  R1=220k  R2=1M  R3=25k  R4=33k
+//       O capacitor de treble quase dobrado deixa mais agudo passar por
+//       cima do stack, e o R4 menor muda o equilíbrio do grave — o "aberto
+//       em cima, apertado embaixo" de um Marshall.
+//
+//   2 = Fender Blackface (AB763 — Twin/Deluxe):
+//       C1=250pF  C2=100nF  C3=47nF  R1=250k  R2=250k  R3=10k  R4=100k
+//       C2 cinco vezes maior e R2 quatro vezes menor: o scoop de médios
+//       profundo e o grave generoso do Fender limpo — e knobs que mexem
+//       MUITO mais na resposta que os do Bassman.
+//
+// Escolher o circuito certo pra cada ampli da GearLibrary é o que faz os
+// knobs de tone responderem como nos amplificadores que eles lembram — um
+// American Clean com o stack de Bassman respondia pouco porque o Bassman
+// responde pouco; com o de Blackface, responde como um Fender limpo.
 //
 // LIMITAÇÃO DESTA PRIMEIRA VERSÃO
 // Os coeficientes são recalculados uma vez por bloco, a partir dos valores
@@ -126,6 +147,11 @@ public:
 
     void setTreble(float amount);
     float treble() const;
+
+    // Qual jogo de componentes usar — 0 Bassman, 1 Marshall, 2 Blackface
+    // (ver "OS COMPONENTES SÃO UM PARÂMETRO" no comentário da classe).
+    void setCircuit(int circuitIndex);
+    int circuit() const;
 
     const char* name() const override;
 

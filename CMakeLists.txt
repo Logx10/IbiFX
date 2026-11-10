@@ -169,6 +169,7 @@ add_library(ibifx_core STATIC
     src/CommandQueue.cpp
     src/HighPassFilter.cpp
     src/PickupSimulator.cpp
+    src/LowPassFilter.cpp
     src/Preset.cpp
     src/Serialization.cpp
     src/PresetManager.cpp

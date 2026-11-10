@@ -126,6 +126,12 @@ add_executable(test_pickup_simulator
 
 target_compile_options(test_pickup_simulator PRIVATE ${IBIFX_WARNINGS})
 target_link_libraries(test_pickup_simulator PRIVATE ibifx_core)
+add_executable(test_low_pass_filter
+    test_low_pass_filter.cpp
+)
+
+target_compile_options(test_low_pass_filter PRIVATE ${IBIFX_WARNINGS})
+target_link_libraries(test_low_pass_filter PRIVATE ibifx_core)
 
 add_executable(test_limiter
     test_limiter.cpp
@@ -393,6 +399,7 @@ add_test(NAME command_queue COMMAND test_command_queue)
 add_test(NAME live_engine COMMAND test_live_engine)
 add_test(NAME high_pass_filter COMMAND test_high_pass_filter)
 add_test(NAME pickup_simulator COMMAND test_pickup_simulator)
+add_test(NAME low_pass_filter COMMAND test_low_pass_filter)
 add_test(NAME limiter COMMAND test_limiter)
 add_test(NAME noise_gate COMMAND test_noise_gate)
 add_test(NAME compressor COMMAND test_compressor)

@@ -59,6 +59,28 @@
 // m_envelope segue o NÍVEL do sinal (como m_envelope em Compressor.cpp, que
 // já resolvia isso) — só ele é comparado contra o threshold. m_gain
 // continua sendo quem de fato multiplica a amostra, suavizado como sempre.
+//
+// HISTERESE: ABRIR E FECHAR NÃO USAM O MESMO LIMIAR
+// Um threshold único tem um defeito que o envelope sozinho não corrige: uma
+// nota decaindo passa DEVAGAR pelo limiar, e perto dele qualquer ondulação
+// residual do envelope cruza a linha várias vezes — o gate abre e fecha em
+// sequência rápida ("chatter"), picotando justamente o fim da nota, a parte
+// mais frágil. Gates de hardware resolvem isso como um termostato: LIGAR e
+// DESLIGAR acontecem em pontos diferentes. Aqui o gate abre quando o
+// envelope passa do threshold e só fecha quando cai abaixo da METADE dele
+// (~6 dB abaixo — kHysteresisRatio no .cpp). Na faixa entre os dois
+// limiares, o estado atual é mantido: aberto fica aberto, fechado fica
+// fechado. O envelope precisa atravessar a faixa INTEIRA para mudar o
+// estado — a ondulação, pequena, não atravessa.
+//
+// HOLD: UM TEMPO MÍNIMO ABERTO ANTES DE COMEÇAR A FECHAR
+// Mesmo com histerese, notas curtas e secas (palm mute, staccato) caem
+// abaixo do limiar de fechar quase imediatamente — e o release começaria a
+// comer o finalzinho de cada nota. Gates reais têm um estágio de HOLD: ao
+// cair abaixo do limiar de fechar, o gate continua TOTALMENTE aberto por um
+// tempo fixo (kHoldSeconds no .cpp) antes de o release começar. Tocar outra
+// nota dentro desse tempo rearma o contador — em passagens rápidas o gate
+// simplesmente não fecha entre as notas, que é o comportamento esperado.
 class NoiseGate : public AudioModule
 {
 public:
@@ -101,4 +123,19 @@ private:
     // Coeficiente do filtro de um polo do envelope. Fixo, assim como
     // m_attackCoeff — ver kEnvelopeSeconds em NoiseGate.cpp.
     float m_envelopeCoeff = 1.0f;
+
+    // O estado do "termostato" da histerese — para onde m_gain caminha.
+    // Separado de m_gain: este muda por decisão (limiar cruzado), aquele
+    // caminha suavemente atrás dele.
+    bool m_open = false;
+
+    // Contador regressivo do hold, em amostras. Rearmado sempre que o
+    // envelope passa do threshold de abrir; só quando chega a zero o gate
+    // tem permissão de fechar.
+    int m_holdSamplesLeft = 0;
+
+    // Quantas amostras o hold dura — kHoldSeconds vezes o sample rate,
+    // calculado no prepare(). O valor inicial cobre quem processa sem
+    // preparar (os testes de buffer vazio), assumindo 44100 Hz.
+    int m_holdSamplesTotal = 2205;
 };

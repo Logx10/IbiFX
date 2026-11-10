@@ -252,6 +252,88 @@ void testInterstageCutoffRoundTrip()
     checkClose(preamp.interstageCutoff(), 6000.0f, "vira 6 kHz");
 }
 
+// ---------------------------------------------------------------------
+// Bias (assimetria de estágio)
+
+// Com bias 0 (o padrão), a curva renormalizada colapsa em tanh(drive*x)
+// pura e a cascata bate EXATAMENTE com a conta feita à mão do jeito antigo
+// — mesma garantia de neutralidade do presence no PowerAmp: quem nunca
+// mexer no bias ouve o módulo de sempre.
+void testZeroBiasMatchesTheOldSymmetricCascade()
+{
+    std::cout << "bias 0 e identico a cascata simetrica de antes\n";
+
+    const float drive = 1.0f;
+    const float entrada = 0.5f;
+
+    std::vector<float> buffer = {entrada};
+
+    Preamp preamp;
+    preamp.setOversampling(false);  // curva pura, sem o atraso do filtro
+    preamp.setInterstageFilter(false);
+    preamp.setDrive(drive);
+    preamp.process(buffer);
+
+    // A cascata de antes, à mão: tanh -> x2 -> tanh -> x2 -> tanh.
+    float esperado = entrada;
+    esperado = std::tanh(drive * esperado) * 2.0f;
+    esperado = std::tanh(drive * esperado) * 2.0f;
+    esperado = std::tanh(drive * esperado);
+
+    checkClose(buffer[0], esperado, "cascata com bias 0 = cascata simetrica calculada a mao");
+    checkClose(preamp.bias(), 0.0f, "bias padrao e 0");
+}
+
+// O motivo do bias existir: com ele, os dois semiciclos saem DIFERENTES — a
+// assinatura de uma não-linearidade assimétrica, que é o que gera os
+// harmônicos pares (ver "O BIAS" em Preamp.h). Uma tanh simétrica devolve
+// |saida| igual para +x e -x, sempre.
+void testBiasMakesHalfCyclesAsymmetric()
+{
+    std::cout << "bias deixa os semiciclos assimetricos\n";
+
+    auto processa = [](float entrada) -> float
+    {
+        std::vector<float> buffer = {entrada};
+
+        Preamp preamp;
+        preamp.setOversampling(false);  // curva pura, sem o atraso do filtro
+        preamp.setInterstageFilter(false);
+        preamp.setDrive(1.0f);
+        preamp.setBias(0.2f);
+        preamp.process(buffer);
+        return buffer[0];
+    };
+
+    const float positivo = processa(0.3f);
+    const float negativo = processa(-0.3f);
+
+    check(std::fabs(std::fabs(positivo) - std::fabs(negativo)) > 0.01f,
+          "a mesma amplitude sai com magnitudes diferentes nos dois semiciclos");
+}
+
+// A renormalização garante a faixa mesmo com o bias no máximo — o piso fica
+// exatamente em -1 e o teto um pouco abaixo de +1 (ver "O BIAS" em
+// Preamp.h). Mesmo teste de entradas absurdas do caso simétrico.
+void testOutputStaysInRangeWithMaxBias()
+{
+    std::cout << "saida continua em [-1, +1] com bias no maximo\n";
+
+    std::vector<float> buffer = {50.0f, -50.0f, 1000.0f, -1000.0f};
+
+    Preamp preamp;
+    preamp.setOversampling(false);  // curva pura, sem o atraso do filtro
+    preamp.setInterstageFilter(false);
+    preamp.setDrive(5.0f);
+    preamp.setBias(0.3f);
+    preamp.process(buffer);
+
+    for (float sample : buffer)
+    {
+        check(sample <= 1.0f && sample >= -1.0f, "amostra extrema ficou dentro da faixa");
+    }
+}
+
 int main()
 {
     std::cout << "\n=== testes do Preamp ===\n\n";
@@ -266,6 +348,10 @@ int main()
 
     testInterstageFilterTamesHighHarmonics();
     testInterstageCutoffRoundTrip();
+
+    testZeroBiasMatchesTheOldSymmetricCascade();
+    testBiasMakesHalfCyclesAsymmetric();
+    testOutputStaysInRangeWithMaxBias();
 
     return reportResults();
 }

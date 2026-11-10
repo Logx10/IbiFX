@@ -61,6 +61,19 @@
 // suavizado: girá-lo de repente moveria o ponto de operação da curva
 // instantaneamente, produzindo o mesmo tipo de degrau que motivou o
 // SmoothedValue em todo parâmetro que multiplica ou desloca o sinal direto.
+//
+// O CAPACITOR DE SAÍDA (DC blocker)
+// Subtrair B remove o offset ESTÁTICO — o que a curva produz em silêncio.
+// Mas clipar um sinal de verdade assimetricamente gera um segundo DC, este
+// DINÂMICO: o semiciclo achatado pesa menos que o outro na média, e a média
+// do sinal deixa de ser zero enquanto se toca — proporcional ao quanto se
+// toca. Pedal real resolve isso com o capacitor de acoplamento na saída
+// (mesma peça, mesmo motivo do que foi feito entre os estágios do Preamp).
+// Aqui é um passa-alta de um polo em ~10 Hz na saída do módulo, na taxa do
+// motor (DC é 0 Hz, não precisa rodar sobreamostrado), seguido de um clamp
+// em ±1: o transiente de um passa-alta pode passar da faixa por uma fração
+// de milésimo, e a garantia do módulo é exata. setDcBlocker(false) existe
+// para os testes que conferem a curva pura, como o setOversampling(false).
 class AsymmetricClipper : public AudioModule
 {
 public:
@@ -90,10 +103,23 @@ public:
     void setOversampling(bool enabled);
     bool oversampling() const;
 
+    // Liga/desliga o capacitor de saída (ver "O CAPACITOR DE SAÍDA" acima)
+    // — ligado por padrão. Desligar serve aos testes de curva pura.
+    void setDcBlocker(bool enabled);
+    bool dcBlocker() const;
+
 private:
     SmoothedValue m_smoothedDrive;
     SmoothedValue m_smoothedBias;
 
     Oversampler m_oversampler;
     bool m_oversampling = true;
+
+    double m_sampleRate = 44100.0;
+
+    // Estado do capacitor de saída: entrada e saída anteriores do
+    // passa-alta. Só a thread de áudio mexe, dentro do process().
+    bool m_dcBlocker = true;
+    float m_dcX1 = 0.0f;
+    float m_dcY1 = 0.0f;
 };

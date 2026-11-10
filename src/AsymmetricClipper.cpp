@@ -2,6 +2,15 @@
 
 #include <cmath>
 
+namespace
+{
+constexpr float kPi = 3.14159265f;
+
+// Corte do capacitor de saída — ver "O CAPACITOR DE SAÍDA" no .h. Bem
+// abaixo da nota mais grave da guitarra: só o DC sai.
+constexpr float kDcBlockerHz = 10.0f;
+}
+
 AsymmetricClipper::AsymmetricClipper()
 {
     m_parameters.emplace_back("drive", "Drive", 0.0f, 100.0f, 1.0f);
@@ -39,8 +48,9 @@ const char* AsymmetricClipper::name() const
 
 void AsymmetricClipper::prepare(double sampleRate, int /*blockSize*/)
 {
-    m_smoothedDrive.prepare(sampleRate, kDefaultRampSeconds, m_parameters[0].value());
-    m_smoothedBias.prepare(sampleRate, kDefaultRampSeconds, m_parameters[1].value());
+    m_sampleRate = sampleRate > 0.0 ? sampleRate : 44100.0;
+    m_smoothedDrive.prepare(m_sampleRate, kDefaultRampSeconds, m_parameters[0].value());
+    m_smoothedBias.prepare(m_sampleRate, kDefaultRampSeconds, m_parameters[1].value());
 }
 
 void AsymmetricClipper::reset()
@@ -48,12 +58,20 @@ void AsymmetricClipper::reset()
     m_smoothedDrive.snapTo(m_parameters[0].value());
     m_smoothedBias.snapTo(m_parameters[1].value());
     m_oversampler.reset();
+    m_dcX1 = 0.0f;
+    m_dcY1 = 0.0f;
 }
 
 void AsymmetricClipper::process(std::vector<float>& buffer)
 {
     m_smoothedDrive.setTarget(m_parameters[0].value());
     m_smoothedBias.setTarget(m_parameters[1].value());
+
+    // Passa-alta de um polo na forma y[n] = g*(x[n] - x[n-1]) + r*y[n-1] —
+    // o capacitor de saída (ver o .h). Uma conta por bloco: só depende do
+    // sample rate.
+    const float dcR = std::exp(-2.0f * kPi * kDcBlockerHz / static_cast<float>(m_sampleRate));
+    const float dcG = 0.5f * (1.0f + dcR);
 
     for (float& sample : buffer)
     {
@@ -75,6 +93,19 @@ void AsymmetricClipper::process(std::vector<float>& buffer)
         };
 
         sample = m_oversampling ? m_oversampler.process(sample, curve) : curve(sample);
+
+        // O capacitor de saída remove o DC dinâmico que a assimetria gera
+        // tocando — na taxa do motor, porque DC não tem o que serrilhar. O
+        // clamp devolve a garantia exata de faixa que o transiente do
+        // passa-alta pode furar por uma fração de milésimo.
+        if (m_dcBlocker)
+        {
+            const float blocked = dcG * (sample - m_dcX1) + dcR * m_dcY1;
+            m_dcX1 = sample;
+            m_dcY1 = blocked;
+
+            sample = blocked > 1.0f ? 1.0f : (blocked < -1.0f ? -1.0f : blocked);
+        }
     }
 }
 
@@ -87,4 +118,16 @@ void AsymmetricClipper::setOversampling(bool enabled)
 bool AsymmetricClipper::oversampling() const
 {
     return m_oversampling;
+}
+
+void AsymmetricClipper::setDcBlocker(bool enabled)
+{
+    m_dcBlocker = enabled;
+    m_dcX1 = 0.0f;
+    m_dcY1 = 0.0f;
+}
+
+bool AsymmetricClipper::dcBlocker() const
+{
+    return m_dcBlocker;
 }

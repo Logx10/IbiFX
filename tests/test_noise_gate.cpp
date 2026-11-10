@@ -83,7 +83,9 @@ void testSustainedLoudSignalFullyOpensGate()
 // "A decisão é tomada em cima de um envelope" em NoiseGate.h — é
 // exatamente esse atraso que corrige o chiado/corte dentro da nota). Por
 // isso o teste deixa uma fase de "assentar" o envelope ANTES de medir a
-// curva, e mede o gain de partida em vez de assumir 1.0.
+// curva, e mede o gain de partida em vez de assumir 1.0. A fase de
+// assentar também precisa engolir o HOLD (50 ms = 50 amostras a 1000 Hz),
+// que mantém o gate aberto antes de o release sequer começar.
 void testGateClosesFollowingReleaseCurve()
 {
     std::cout << "o gate fecha seguindo a curva de release, uma vez que o envelope ja assentou\n";
@@ -107,11 +109,11 @@ void testGateClosesFollowingReleaseCurve()
     // bem abaixo do threshold e ainda deixa o gain visível na saída.
     const float entradaFraca = 0.001f;
 
-    // 40 amostras é bastante folga (a constante de tempo do envelope é de
-    // ~5.5 amostras a 1000 Hz) para o envelope descer do nível alto
-    // anterior para bem abaixo do threshold, deixando só a curva de release
-    // do GAIN propriamente dita para medir a seguir.
-    std::vector<float> assentando(40, entradaFraca);
+    // 130 amostras: ~30 para o envelope descer do nível alto anterior até
+    // abaixo do limiar de fechar (constante de tempo de ~5.5 amostras a
+    // 1000 Hz), 50 do hold segurando o gate aberto, e o resto já é a curva
+    // de release do GAIN rodando — que é o que se mede a seguir.
+    std::vector<float> assentando(130, entradaFraca);
     gate.process(assentando);
     const float gainInicial = assentando.back() / entradaFraca;
     check(gainInicial > 1e-3f && gainInicial < 1.0f,
@@ -217,6 +219,85 @@ void testQuietNoteOpensWithDefaultThreshold()
           "nota de pico 0.01 passa sem exigir uma palhetada forte");
 }
 
+// A histerese: um sinal na FAIXA entre o limiar de fechar (metade do de
+// abrir) e o de abrir mantém o estado atual, nos dois sentidos — um gate
+// aberto fica aberto, um fechado fica fechado. É o que impede o "chatter"
+// de uma nota decaindo devagar pelo limiar (ver "HISTERESE" em NoiseGate.h).
+void testHysteresisKeepsStateInsideTheBand()
+{
+    std::cout << "na faixa de histerese, o estado atual e mantido\n";
+
+    const double sampleRate = 1000.0;
+
+    // threshold 0.1 -> limiar de fechar 0.05. A entrada 0.07 fica no meio
+    // da faixa: acima de fechar, abaixo de abrir.
+    const float dentroDaFaixa = 0.07f;
+
+    // Lado 1: gate ABERTO continua aberto dentro da faixa. Sem histerese,
+    // 0.07 < 0.1 mandaria o gain para 0 e a nota decaindo seria cortada.
+    NoiseGate aberto;
+    aberto.setThreshold(0.1f);
+    aberto.prepare(sampleRate, 64);
+
+    std::vector<float> abrindo(200, 0.5f);
+    aberto.process(abrindo);
+
+    std::vector<float> decaindo(400, dentroDaFaixa);
+    aberto.process(decaindo);
+
+    check(decaindo.back() / dentroDaFaixa > 0.99f,
+          "sinal na faixa de histerese nao fecha um gate aberto");
+
+    // Lado 2: gate FECHADO continua fechado dentro da faixa — a histerese
+    // não pode virar um threshold efetivo mais baixo pra abrir.
+    NoiseGate fechado;
+    fechado.setThreshold(0.1f);
+    fechado.prepare(sampleRate, 64);
+
+    std::vector<float> tentando(400, dentroDaFaixa);
+    fechado.process(tentando);
+
+    checkClose(tentando.back(), 0.0f, "sinal na faixa de histerese nao abre um gate fechado");
+}
+
+// O hold: depois que o sinal some, o gate fica TOTALMENTE aberto por 50 ms
+// antes de o release começar — o fim de uma nota staccato não é comido (ver
+// "HOLD" em NoiseGate.h). O teste usa um release curto de propósito: se o
+// release começasse na hora, o gain já teria desabado dentro da janela do
+// hold.
+void testHoldKeepsGateOpenBeforeReleaseStarts()
+{
+    std::cout << "o hold segura o gate aberto antes do release comecar\n";
+
+    const double sampleRate = 1000.0;  // 50 ms de hold = 50 amostras
+
+    NoiseGate gate;
+    gate.setRelease(0.01f);  // 10 amostras — bem mais curto que o hold
+    gate.prepare(sampleRate, 64);
+
+    std::vector<float> abrindo(200, 0.5f);
+    gate.process(abrindo);
+
+    // 40 amostras de quase-silêncio: o envelope cruza o limiar de fechar em
+    // ~30, então o hold está só começando — o gain tem que continuar ~1.
+    // Sem o hold, o release (10 amostras) já teria derrubado o gain para
+    // menos da metade.
+    const float entradaFraca = 0.001f;
+    std::vector<float> dentroDoHold(40, entradaFraca);
+    gate.process(dentroDoHold);
+
+    check(dentroDoHold.back() / entradaFraca > 0.9f,
+          "dentro da janela do hold, o gate continua aberto");
+
+    // Mais 90 amostras: o hold (50) esgota e o release corre ~40 amostras —
+    // 4 constantes de tempo, gain abaixo de 5%. O hold segura, mas acaba.
+    std::vector<float> depoisDoHold(90, entradaFraca);
+    gate.process(depoisDoHold);
+
+    check(depoisDoHold.back() / entradaFraca < 0.05f,
+          "esgotado o hold, o release fecha o gate normalmente");
+}
+
 // Buffer vazio não pode quebrar.
 void testEmptyBufferDoesNotCrash()
 {
@@ -242,6 +323,8 @@ int main()
     testResetClosesTheGate();
     testThresholdAndReleaseRoundTrip();
     testQuietNoteOpensWithDefaultThreshold();
+    testHysteresisKeepsStateInsideTheBand();
+    testHoldKeepsGateOpenBeforeReleaseStarts();
     testEmptyBufferDoesNotCrash();
 
     return reportResults();

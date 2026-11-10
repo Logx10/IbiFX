@@ -4,16 +4,30 @@
 
 namespace
 {
-// Componentes do tone stack do Fender '59 Bassman, exatamente como
-// publicados em Yeh & Smith, DAFx-06 (Fig. 1). R1 é o potenciômetro de
-// treble, R2 o de bass, R3 o de mid — R4 é fixo, não é um controle.
-constexpr double kC1 = 0.25e-9;
-constexpr double kC2 = 20e-9;
-constexpr double kC3 = 20e-9;
-constexpr double kR1 = 250e3;
-constexpr double kR2 = 1e6;
-constexpr double kR3 = 25e3;
-constexpr double kR4 = 56e3;
+// Um jogo de componentes do circuito — R1 é o potenciômetro de treble, R2 o
+// de bass, R3 o de mid, R4 é fixo (não é um controle).
+struct CircuitComponents
+{
+    double c1, c2, c3;
+    double r1, r2, r3, r4;
+};
+
+// Os três circuitos do parâmetro "circuit", na ordem do índice — valores de
+// esquemático publicado, os mesmos do Duncan Tone Stack Calculator. Ver
+// "OS COMPONENTES SÃO UM PARÂMETRO" em ToneStack.h para o caráter de cada
+// um.
+constexpr CircuitComponents kCircuits[] = {
+    // 0: Fender '59 Bassman 5F6-A — os valores do artigo de Yeh & Smith.
+    {0.25e-9, 20e-9, 20e-9, 250e3, 1e6, 25e3, 56e3},
+
+    // 1: Marshall JCM800/plexi.
+    {0.47e-9, 22e-9, 22e-9, 220e3, 1e6, 25e3, 33e3},
+
+    // 2: Fender Blackface AB763 (Twin/Deluxe).
+    {0.25e-9, 100e-9, 47e-9, 250e3, 250e3, 10e3, 100e3},
+};
+
+constexpr int kCircuitCount = static_cast<int>(sizeof(kCircuits) / sizeof(kCircuits[0]));
 
 // Curva de um pot logarítmico tipo "A": (b^x - 1)/(b - 1) com b = 81 dá 0
 // no início, 1 no fim e 10% da resistência no meio do curso (81^0,5 = 9,
@@ -31,6 +45,23 @@ ToneStack::ToneStack()
     m_parameters.emplace_back("bass", "Bass", 0.0f, 1.0f, 0.5f);
     m_parameters.emplace_back("mid", "Mid", 0.0f, 1.0f, 0.5f);
     m_parameters.emplace_back("treble", "Treble", 0.0f, 1.0f, 0.5f);
+
+    // Guardado como float porque todo parâmetro é float (é o que o sistema
+    // de presets serializa); updateCoefficients arredonda para o índice.
+    // 0 = Bassman, o circuito que o módulo sempre teve — preset antigo soa
+    // igual.
+    m_parameters.emplace_back("circuit", "Circuit", 0.0f,
+                              static_cast<float>(kCircuitCount - 1), 0.0f);
+}
+
+void ToneStack::setCircuit(int circuitIndex)
+{
+    m_parameters[3].setValue(static_cast<float>(circuitIndex));
+}
+
+int ToneStack::circuit() const
+{
+    return static_cast<int>(m_parameters[3].value() + 0.5f);
 }
 
 void ToneStack::setBass(float amount)
@@ -93,56 +124,66 @@ void ToneStack::updateCoefficients()
     const double m = static_cast<double>(m_parameters[1].value());
     const double t = static_cast<double>(m_parameters[2].value());
 
+    // O jogo de componentes escolhido — arredondado e preso à faixa, porque
+    // o parâmetro é um float que veio de preset ou de automação.
+    int circuitIndex = static_cast<int>(m_parameters[3].value() + 0.5f);
+    if (circuitIndex < 0)
+        circuitIndex = 0;
+    if (circuitIndex >= kCircuitCount)
+        circuitIndex = kCircuitCount - 1;
+
+    const CircuitComponents& k = kCircuits[circuitIndex];
+
     // Produtos reaproveitados nas somas abaixo — nomeados como aparecem no
     // artigo (C1C2 = C1*C2, e assim por diante), para que cada linha de
     // b1..a3 abaixo possa ser comparada direto com a Eqn. 1 do artigo.
-    const double c1c2 = kC1 * kC2;
-    const double c1c3 = kC1 * kC3;
-    const double c2c3 = kC2 * kC3;
-    const double c1c2c3 = kC1 * kC2 * kC3;
-    const double r3sq = kR3 * kR3;
+    const double c1c2 = k.c1 * k.c2;
+    const double c1c3 = k.c1 * k.c3;
+    const double c2c3 = k.c2 * k.c3;
+    const double c1c2c3 = k.c1 * k.c2 * k.c3;
+    const double r3sq = k.r3 * k.r3;
 
-    const double b1 = t * kC1 * kR1
-                     + m * kC3 * kR3
-                     + l * (kC1 * kR2 + kC2 * kR2)
-                     + (kC1 * kR3 + kC2 * kR3);
+    const double b1 = t * k.c1 * k.r1
+                     + m * k.c3 * k.r3
+                     + l * (k.c1 * k.r2 + k.c2 * k.r2)
+                     + (k.c1 * k.r3 + k.c2 * k.r3);
 
-    const double b2 = t * (c1c2 * kR1 * kR4 + c1c3 * kR1 * kR4)
+    const double b2 = t * (c1c2 * k.r1 * k.r4 + c1c3 * k.r1 * k.r4)
                      - m * m * (c1c3 * r3sq + c2c3 * r3sq)
-                     + m * (c1c3 * kR1 * kR3 + c1c3 * r3sq + c2c3 * r3sq)
-                     + l * (c1c2 * kR1 * kR2 + c1c2 * kR2 * kR4 + c1c3 * kR2 * kR4)
-                     + l * m * (c1c3 * kR2 * kR3 + c2c3 * kR2 * kR3)
-                     + (c1c2 * kR1 * kR3 + c1c2 * kR3 * kR4 + c1c3 * kR3 * kR4);
+                     + m * (c1c3 * k.r1 * k.r3 + c1c3 * r3sq + c2c3 * r3sq)
+                     + l * (c1c2 * k.r1 * k.r2 + c1c2 * k.r2 * k.r4 + c1c3 * k.r2 * k.r4)
+                     + l * m * (c1c3 * k.r2 * k.r3 + c2c3 * k.r2 * k.r3)
+                     + (c1c2 * k.r1 * k.r3 + c1c2 * k.r3 * k.r4 + c1c3 * k.r3 * k.r4);
 
-    const double b3 = l * m * (c1c2c3 * kR1 * kR2 * kR3 + c1c2c3 * kR2 * kR3 * kR4)
-                     - m * m * (c1c2c3 * kR1 * r3sq + c1c2c3 * r3sq * kR4)
-                     + m * (c1c2c3 * kR1 * r3sq + c1c2c3 * r3sq * kR4)
-                     + t * c1c2c3 * kR1 * kR3 * kR4
-                     - t * m * c1c2c3 * kR1 * kR3 * kR4
-                     + t * l * c1c2c3 * kR1 * kR2 * kR4;
+    const double b3 = l * m * (c1c2c3 * k.r1 * k.r2 * k.r3 + c1c2c3 * k.r2 * k.r3 * k.r4)
+                     - m * m * (c1c2c3 * k.r1 * r3sq + c1c2c3 * r3sq * k.r4)
+                     + m * (c1c2c3 * k.r1 * r3sq + c1c2c3 * r3sq * k.r4)
+                     + t * c1c2c3 * k.r1 * k.r3 * k.r4
+                     - t * m * c1c2c3 * k.r1 * k.r3 * k.r4
+                     + t * l * c1c2c3 * k.r1 * k.r2 * k.r4;
 
     // a0 é sempre 1 — não depende de nenhum controle nem de componente.
     constexpr double a0 = 1.0;
 
-    const double a1 = (kC1 * kR1 + kC1 * kR3 + kC2 * kR3 + kC2 * kR4 + kC3 * kR4)
-                     + m * kC3 * kR3
-                     + l * (kC1 * kR2 + kC2 * kR2);
+    const double a1 = (k.c1 * k.r1 + k.c1 * k.r3 + k.c2 * k.r3 + k.c2 * k.r4 + k.c3 * k.r4)
+                     + m * k.c3 * k.r3
+                     + l * (k.c1 * k.r2 + k.c2 * k.r2);
 
     // Repare: nenhum termo de a1, a2, a3 tem "t" sozinho fora de m/l — é
     // exatamente a propriedade que o artigo aponta (treble não afeta os
     // polos do sistema, só os zeros no numerador b1..b3).
-    const double a2 = m * (c1c3 * kR1 * kR3 - c2c3 * kR3 * kR4 + c1c3 * r3sq + c2c3 * r3sq)
-                     + l * m * (c1c3 * kR2 * kR3 + c2c3 * kR2 * kR3)
+    const double a2 = m * (c1c3 * k.r1 * k.r3 - c2c3 * k.r3 * k.r4 + c1c3 * r3sq + c2c3 * r3sq)
+                     + l * m * (c1c3 * k.r2 * k.r3 + c2c3 * k.r2 * k.r3)
                      - m * m * (c1c3 * r3sq + c2c3 * r3sq)
-                     + l * (c1c2 * kR2 * kR4 + c1c2 * kR1 * kR2 + c1c3 * kR2 * kR4 + c2c3 * kR2 * kR4)
-                     + (c1c2 * kR1 * kR4 + c1c3 * kR1 * kR4 + c1c2 * kR3 * kR4
-                        + c1c2 * kR1 * kR3 + c1c3 * kR3 * kR4 + c2c3 * kR3 * kR4);
+                     + l * (c1c2 * k.r2 * k.r4 + c1c2 * k.r1 * k.r2 + c1c3 * k.r2 * k.r4 + c2c3 * k.r2 * k.r4)
+                     + (c1c2 * k.r1 * k.r4 + c1c3 * k.r1 * k.r4 + c1c2 * k.r3 * k.r4
+                        + c1c2 * k.r1 * k.r3 + c1c3 * k.r3 * k.r4 + c2c3 * k.r3 * k.r4);
 
-    const double a3 = l * m * (c1c2c3 * kR1 * kR2 * kR3 + c1c2c3 * kR2 * kR3 * kR4)
-                     - m * m * (c1c2c3 * kR1 * r3sq + c1c2c3 * r3sq * kR4)
-                     + m * (c1c2c3 * r3sq * kR4 + c1c2c3 * kR1 * r3sq - c1c2c3 * kR1 * kR3 * kR4)
-                     + l * c1c2c3 * kR1 * kR2 * kR4
-                     + c1c2c3 * kR1 * kR3 * kR4;
+    const double a3 = l * m * (c1c2c3 * k.r1 * k.r2 * k.r3 + c1c2c3 * k.r2 * k.r3 * k.r4)
+                     - m * m * (c1c2c3 * k.r1 * r3sq + c1c2c3 * r3sq * k.r4)
+                     + m * (c1c2c3 * r3sq * k.r4 + c1c2c3 * k.r1 * r3sq - c1c2c3 * k.r1 * k.r3 * k.r4)
+                     + l * c1c2c3 * k.r1 * k.r2 * k.r4
+                     + c1c2c3 * k.r1 * k.r3 * k.r4;
 
     // Transformada bilinear: s = c(1 - z⁻¹)/(1 + z⁻¹), com c = 2/T.
     const double c = 2.0 * m_sampleRate;

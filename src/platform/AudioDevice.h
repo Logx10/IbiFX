@@ -75,10 +75,18 @@ public:
     // sampleRate e blockSize são PEDIDOS, não garantias: o driver pode
     // devolver outros valores, e os métodos abaixo informam o que valeu de
     // fato. Devolve false em caso de falha, com o motivo em lastError().
+    //
+    // O padrão no Windows é o compartilhado de baixa latência (IAudioClient3
+    // — período pequeno SEM calar os outros apps; ver o comentário em
+    // start() no .cpp). preferExclusive = true pede o modo exclusivo: uns
+    // poucos ms a menos, mas nenhum outro programa toca som enquanto o
+    // stream estiver aberto — e cai de volta para o compartilhado se o
+    // driver recusar.
     bool start(ProcessCallback callback,
                Mode mode = Mode::Duplex,
                double sampleRate = 48000.0,
-               int blockSize = 128);
+               int blockSize = 128,
+               bool preferExclusive = false);
 
     // Para o dispositivo e libera os recursos. Seguro chamar duas vezes.
     void stop();
@@ -93,6 +101,12 @@ public:
     // do Windows/macOS/Linux, porque esta classe ainda não permite escolher
     // um dispositivo específico.
     std::string deviceName() const;
+
+    // true quando o stream abriu em MODO EXCLUSIVO — só acontece com
+    // preferExclusive = true no start() E o driver aceitando; este getter
+    // conta o que valeu de fato. false antes do start(), no modo Null e no
+    // padrão compartilhado.
+    bool exclusiveMode() const;
 
     // Nome do dispositivo de ENTRADA, no modo Duplex. Vazio nos outros modos.
     //
