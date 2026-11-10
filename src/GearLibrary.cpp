@@ -82,14 +82,19 @@ void addStomps(std::vector<GearModel>& models)
         "Só volume, sem distorção — empurra o ampli para saturar mais.",
         {module("Gain", {{"gain", 2.0f}})}));
 
+    // O Tone é o passa-baixa DEPOIS do clipping, como no pedal verde real —
+    // sem ele os harmônicos da clipagem sobem sem teto e o pedal soa
+    // "fizzy", de simulador.
     models.push_back(gear("stomp.green-screamer", "Green Screamer", GearCategory::Stomp, "Overdrive",
         "Overdrive de médio saliente: corta o grave antes de clipar, assimétrico.",
         {module("HighPass", {{"frequency", 400.0f}}),
          module("AsymmetricClipper", {{"drive", 4.0f}, {"bias", 0.15f}}),
+         module("LowPass", {{"frequency", 3000.0f}}),
          module("Gain", {{"gain", 1.2f}})}));
     models.back().controls = {control("Drive", 1, "drive", 0.5f, 12.0f),
+                              control("Tone", 2, "frequency", 500.0f, 8000.0f),
                               control("Low Cut", 0, "frequency", 100.0f, 900.0f),
-                              control("Level", 2, "gain", 0.0f, 3.0f)};
+                              control("Level", 3, "gain", 0.0f, 3.0f)};
 
     models.push_back(gear("stomp.yellow-drive", "Yellow Drive", GearCategory::Stomp, "Overdrive",
         "Overdrive transparente e simétrico, de faixa cheia.",
@@ -98,15 +103,19 @@ void addStomps(std::vector<GearModel>& models)
     models.back().controls = {control("Drive", 0, "drive", 0.5f, 10.0f),
                               control("Level", 1, "gain", 0.0f, 2.5f)};
 
+    // O Filter é o knob homônimo do pedal rato real: passa-baixa depois da
+    // clipagem dura — que é a que mais gera harmônico agudo de todas.
     models.push_back(gear("stomp.black-rodent", "Black Rodent", GearCategory::Stomp, "Distortion",
         "Distorção de clipagem dura, áspera e agressiva.",
         {module("HighPass", {{"frequency", 150.0f}}),
          module("Gain", {{"gain", 4.0f}}),
          module("Clipper", {{"threshold", 0.4f}}),
+         module("LowPass", {{"frequency", 2200.0f}}),
          module("Gain", {{"gain", 2.0f}})}));
     models.back().controls = {control("Distortion", 1, "gain", 1.0f, 8.0f),
+                              control("Filter", 3, "frequency", 400.0f, 8000.0f),
                               control("Low Cut", 0, "frequency", 40.0f, 600.0f),
-                              control("Level", 3, "gain", 0.0f, 4.0f)};
+                              control("Level", 4, "gain", 0.0f, 4.0f)};
 
     models.push_back(gear("stomp.round-fuzz", "Round Fuzz", GearCategory::Stomp, "Fuzz",
         "Fuzz de transistor: ganho enorme e assimetria forte, quase onda quadrada.",
@@ -138,14 +147,19 @@ void addStomps(std::vector<GearModel>& models)
 // ToneStack -> volume -> PowerAmp), com valores diferentes. O que separa um
 // "limpo americano" de um "high gain moderno" é quanto ganho entra no
 // Preamp, onde o ToneStack está girado e quanto o PowerAmp respira (sag).
+//
+// O bias do Preamp (ver "O BIAS" em Preamp.h) segue o caráter de cada um:
+// um limpo quase simétrico, um Tweed rico em 2º harmônico (é o "quente"
+// dele), os Brit no meio, e o hi-gain moderno mais simétrico de novo —
+// ganho alto com muito harmônico par embola, o aperto dele vem dos ímpares.
 void addAmps(std::vector<GearModel>& models)
 {
     models.push_back(gear("amp.american-clean", "American Clean", GearCategory::Amp, "Clean",
         "Limpo cristalino com agudo brilhante e muito headroom.",
         {module("HighPass", {{"frequency", 70.0f}}),
          module("Gain", {{"gain", 2.0f}}),
-         module("Preamp", {{"drive", 0.8f}, {"interstage", 11000.0f}}),
-         module("ToneStack", {{"bass", 0.6f}, {"mid", 0.35f}, {"treble", 0.7f}}),
+         module("Preamp", {{"drive", 0.8f}, {"interstage", 11000.0f}, {"bias", 0.04f}}),
+         module("ToneStack", {{"bass", 0.6f}, {"mid", 0.35f}, {"treble", 0.7f}, {"circuit", 2.0f}}),
          module("Gain", {{"gain", 3.0f}}),
          module("PowerAmp", {{"drive", 0.8f}, {"sag", 0.1f}}),
          module("Gain", {{"gain", 1.0f}})}));
@@ -156,8 +170,8 @@ void addAmps(std::vector<GearModel>& models)
         "Crunch quente e comprimido que 'respira' com a palhetada (muito sag).",
         {module("HighPass", {{"frequency", 80.0f}}),
          module("Gain", {{"gain", 1.5f}}),
-         module("Preamp", {{"drive", 1.2f}, {"interstage", 6000.0f}}),
-         module("ToneStack", {{"bass", 0.5f}, {"mid", 0.6f}, {"treble", 0.55f}}),
+         module("Preamp", {{"drive", 1.2f}, {"interstage", 6000.0f}, {"bias", 0.12f}}),
+         module("ToneStack", {{"bass", 0.5f}, {"mid", 0.6f}, {"treble", 0.55f}, {"circuit", 0.0f}}),
          module("Gain", {{"gain", 2.5f}}),
          module("PowerAmp", {{"drive", 2.0f}, {"sag", 0.7f}}),
          module("Gain", {{"gain", 0.27f}})}));
@@ -166,8 +180,8 @@ void addAmps(std::vector<GearModel>& models)
         "Crunch clássico de rock dos anos 60/70, aberto e com o power amp trabalhando.",
         {module("HighPass", {{"frequency", 100.0f}}),
          module("Gain", {{"gain", 2.0f}}),
-         module("Preamp", {{"drive", 1.8f}, {"interstage", 9000.0f}}),
-         module("ToneStack", {{"bass", 0.45f}, {"mid", 0.7f}, {"treble", 0.6f}}),
+         module("Preamp", {{"drive", 1.8f}, {"interstage", 9000.0f}, {"bias", 0.08f}}),
+         module("ToneStack", {{"bass", 0.45f}, {"mid", 0.7f}, {"treble", 0.6f}, {"circuit", 1.0f}}),
          module("Gain", {{"gain", 2.5f}}),
          module("PowerAmp", {{"drive", 2.2f}, {"sag", 0.5f}, {"presence", 0.5f}}),
          module("Gain", {{"gain", 0.2f}})}));
@@ -176,8 +190,8 @@ void addAmps(std::vector<GearModel>& models)
         "Hard rock dos anos 80: médio para frente, grave apertado.",
         {module("HighPass", {{"frequency", 120.0f}}),
          module("Gain", {{"gain", 3.0f}}),
-         module("Preamp", {{"drive", 2.8f}, {"interstage", 7500.0f}}),
-         module("ToneStack", {{"bass", 0.45f}, {"mid", 0.75f}, {"treble", 0.6f}}),
+         module("Preamp", {{"drive", 2.8f}, {"interstage", 7500.0f}, {"bias", 0.07f}}),
+         module("ToneStack", {{"bass", 0.45f}, {"mid", 0.75f}, {"treble", 0.6f}, {"circuit", 1.0f}}),
          module("Gain", {{"gain", 2.0f}}),
          module("PowerAmp", {{"drive", 1.5f}, {"sag", 0.3f}, {"presence", 0.5f}}),
          module("Gain", {{"gain", 0.2f}})}));
@@ -186,8 +200,8 @@ void addAmps(std::vector<GearModel>& models)
         "Metal moderno: saturação densa, médio cavado, grave firme.",
         {module("HighPass", {{"frequency", 140.0f}}),
          module("Gain", {{"gain", 4.0f}}),
-         module("Preamp", {{"drive", 4.5f}, {"interstage", 6500.0f}}),
-         module("ToneStack", {{"bass", 0.65f}, {"mid", 0.3f}, {"treble", 0.65f}}),
+         module("Preamp", {{"drive", 4.5f}, {"interstage", 6500.0f}, {"bias", 0.05f}}),
+         module("ToneStack", {{"bass", 0.65f}, {"mid", 0.3f}, {"treble", 0.65f}, {"circuit", 1.0f}}),
          module("Gain", {{"gain", 2.5f}}),
          module("PowerAmp", {{"drive", 1.2f}, {"sag", 0.2f}}),
          module("Gain", {{"gain", 0.2f}})}));

@@ -43,6 +43,7 @@ void testZeroBiasMatchesPlainTanh()
 
     AsymmetricClipper clipper;
     clipper.setOversampling(false);  // curva pura, sem o atraso do filtro
+    clipper.setDcBlocker(false);     // idem: sem o capacitor de saida
     clipper.setDrive(2.0f);
     clipper.setBias(0.0f);
     clipper.process(buffer);
@@ -73,6 +74,7 @@ void testCurveValuesWithBias()
 
     AsymmetricClipper clipper;
     clipper.setOversampling(false);  // curva pura, sem o atraso do filtro
+    clipper.setDcBlocker(false);     // idem: sem o capacitor de saida
     clipper.setDrive(drive);
     clipper.setBias(bias);
     clipper.process(buffer);
@@ -180,6 +182,43 @@ void testHigherDriveSaturatesMoreOnOppositeSideOfBias()
           "drive 5.0 satura mais que drive 1.0, no lado oposto ao bias");
 }
 
+// O CAPACITOR DE SAÍDA: clipar assimetricamente um sinal de verdade gera um
+// DC proporcional ao quanto se toca (ver "O CAPACITOR DE SAÍDA" no .h) — a
+// subtração do centro só remove o offset em silêncio. Um sinal sustentado
+// de um lado só é o pior caso: sem o blocker a saída é um DC constante; com
+// ele, converge para zero.
+void testDcBlockerRemovesPlayingDependentOffset()
+{
+    std::cout << "o capacitor de saida remove o DC gerado tocando\n";
+
+    // 1000 Hz deixa a constante de tempo do blocker (~16 amostras) curta o
+    // bastante para 400 amostras darem convergência de sobra.
+    const double sampleRate = 1000.0;
+
+    auto ultimaAmostra = [sampleRate](bool comBlocker) -> float
+    {
+        std::vector<float> sustentado(400, 0.5f);
+
+        AsymmetricClipper clipper;
+        clipper.setOversampling(false);  // curva pura, sem o atraso do filtro
+        clipper.setDcBlocker(comBlocker);
+        clipper.setDrive(2.0f);
+        clipper.setBias(0.3f);
+        clipper.prepare(sampleRate, 64);
+        clipper.process(sustentado);
+
+        return sustentado.back();
+    };
+
+    const float semBlocker = ultimaAmostra(false);
+    const float comBlocker = ultimaAmostra(true);
+
+    check(std::fabs(semBlocker) > 0.2f,
+          "sem o blocker, o sinal sustentado sai com um DC grande (o problema)");
+    check(std::fabs(comBlocker) < 0.02f,
+          "com o blocker, o mesmo sinal converge para perto de zero (a solucao)");
+}
+
 // Os getters devolvem o que os setters guardaram.
 void testParameterRoundTrip()
 {
@@ -223,6 +262,7 @@ int main()
     testOutputNeverLeavesRange();
     testHigherDriveSaturatesMore();
     testHigherDriveSaturatesMoreOnOppositeSideOfBias();
+    testDcBlockerRemovesPlayingDependentOffset();
     testParameterRoundTrip();
     testEmptyBufferDoesNotCrash();
 

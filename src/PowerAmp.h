@@ -25,15 +25,30 @@
 // COMO MODELAMOS ISSO
 // Um envelope de nível (mesmo tipo de filtro de um polo do NoiseGate e do
 // Compressor, ver OnePole.h) acompanha o volume RECENTE do sinal — não o
-// instantâneo. Esse envelope aumenta o "drive" efetivo da curva de
-// saturação: quanto mais alto o volume sustentado ultimamente, mais fácil
-// a próxima amostra satura.
+// instantâneo. Esse envelope age em DUAS frentes, porque a queda de tensão
+// real também age em duas:
 //
-//     driveEfetivo = drive * (1 + sag * envelope)
-//     saída = tanh(driveEfetivo * entrada)
+// 1. Aumenta o "drive" efetivo da curva: quanto mais alto o volume
+//    sustentado ultimamente, mais fácil a próxima amostra satura.
 //
-// sag = 0 desliga o efeito inteiramente (driveEfetivo = drive sempre — vira
-// um único estágio de saturação comum, sem memória nenhuma).
+//        driveEfetivo = drive * (1 + sag * envelope)
+//
+// 2. ABAIXA O TETO da saída: menos tensão na fonte é, literalmente, menos
+//    excursão disponível no estágio de saída. O teto cai até 25%
+//    (kSagDipDepth no .cpp) com sag e envelope no máximo:
+//
+//        teto = 1 - kSagDipDepth * sag * min(envelope, 1)
+//        saída = teto * tanh(driveEfetivo * entrada / teto)
+//
+//    A divisão por teto DENTRO da tanh mantém o ganho de sinal pequeno
+//    igual a driveEfetivo (a derivada em 0 não muda) — só o teto desce.
+//    É essa queda momentânea de teto, que se recupera quando a demanda
+//    passa, que produz a sensação de "espremer e voltar" ("squish") de um
+//    power amp valvulado de verdade — o drive sozinho comprimia, mas não
+//    afundava.
+//
+// sag = 0 desliga o efeito inteiramente (driveEfetivo = drive, teto = 1 —
+// vira um único estágio de saturação comum, sem memória nenhuma).
 //
 // TEMPOS BEM MAIS LENTOS QUE OS DE UM NoiseGate OU Compressor
 // O envelope de sag usa ataque de 50 ms e release de 300 ms — de propósito
@@ -46,10 +61,11 @@
 // estruturais do efeito, não controles que o músico giraria.
 //
 // POR QUE A SAÍDA CONTINUA EM [-1, +1]
-// A saída final é sempre uma tanh — mesma garantia matemática do
-// SoftClipper e do Preamp. O envelope só pode aumentar driveEfetivo, nunca
-// diminuir abaixo de drive, então o pior caso ainda é uma curva tanh comum,
-// só que mais "apertada".
+// A saída final é sempre teto * tanh(...), com |tanh| < 1 e teto entre
+// 0,75 e 1 (o envelope entra na conta do teto limitado a 1, então o teto
+// nunca desce além de kSagDipDepth) — o produto fica sempre dentro de
+// [-teto, +teto], que está dentro de [-1, +1]. Mesma garantia matemática
+// do SoftClipper e do Preamp, só que com um teto que respira.
 //
 // PRESENCE (parâmetro "presence", 0 a 1)
 // O knob que dá a "mordida" de um Marshall. No circuito real ele não é um

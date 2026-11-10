@@ -17,6 +17,11 @@ constexpr float kSagReleaseSeconds = 0.3f;
 constexpr float kPresenceFrequency = 2500.0f;
 constexpr float kPresenceMaxBoost = 2.0f;
 constexpr float kPi = 3.14159265f;
+
+// Quanto o teto da saída pode afundar com sag e envelope no máximo — ver
+// "COMO MODELAMOS ISSO" no .h. 25% (~-2,5 dB) é um sag pesado de
+// retificadora de válvula; mais que isso soa como defeito, não caráter.
+constexpr float kSagDipDepth = 0.25f;
 }
 
 PowerAmp::PowerAmp()
@@ -102,9 +107,20 @@ void PowerAmp::process(std::vector<float>& buffer)
 
         const float effectiveDrive = driveValue * (1.0f + sagValue * m_envelope);
 
+        // O teto afunda com o mesmo envelope que aperta o drive — as duas
+        // faces da queda de tensão (ver "COMO MODELAMOS ISSO" no .h). O
+        // envelope entra limitado a 1: com entrada quente ele pode passar
+        // disso, e um teto que afundasse sem limite viraria silêncio (ou
+        // pior, divisão por zero).
+        const float boundedEnvelope = m_envelope > 1.0f ? 1.0f : m_envelope;
+        const float ceiling = 1.0f - kSagDipDepth * sagValue * boundedEnvelope;
+
         // O envelope do sag fica na taxa do motor (ele é lento, não gera
-        // harmônico nenhum); só a curva roda sobreamostrada.
-        const auto curve = [effectiveDrive](float x) { return std::tanh(effectiveDrive * x); };
+        // harmônico nenhum); só a curva roda sobreamostrada. A divisão por
+        // teto dentro da tanh mantém o ganho de sinal pequeno — só o teto
+        // desce.
+        const auto curve = [effectiveDrive, ceiling](float x)
+        { return ceiling * std::tanh(effectiveDrive * x / ceiling); };
 
         sample = m_oversampling ? m_oversampler.process(sample, curve) : curve(sample);
     }

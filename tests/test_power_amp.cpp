@@ -31,9 +31,10 @@ void testSilenceStaysSilent()
     checkClose(buffer[2], 0.0f, "0.0 continua 0.0 (3a amostra)");
 }
 
-// A saída nunca escapa de [-1, +1] — o pior caso do sag é aumentar o drive
-// efetivo, nunca diminuí-lo, então a saída final continua sendo uma tanh
-// comum, só que mais apertada.
+// A saída nunca escapa de [-1, +1] — a saída é sempre teto * tanh(...),
+// com o teto entre 0,75 e 1 (o envelope entra limitado a 1 na conta do
+// teto), então o produto nunca passa de ±1 — mesmo com entradas absurdas
+// inflando o envelope.
 void testOutputNeverLeavesRange()
 {
     std::cout << "saida nunca sai de [-1, +1]\n";
@@ -139,6 +140,39 @@ void testHigherSagAmplifiesTheMemoryEffect()
 
     check(diferencaComSagAlto > diferencaComSagBaixo,
           "sag 1.0 produz uma diferenca maior que sag 0.2");
+}
+
+// A SEGUNDA FACE DO SAG: além de apertar o drive, a demanda sustentada
+// AFUNDA O TETO da saída (ver "COMO MODELAMOS ISSO" em PowerAmp.h). Com
+// drive alto o bastante para cravar a tanh no teto, a diferença fica nua:
+// sem sag o teto é ~1, com sag máximo e sinal quente sustentado ele desce
+// para ~0,775 (1 - 0,25 * envelope de ~0,9).
+void testSagDipsTheOutputCeiling()
+{
+    std::cout << "sag sustentado afunda o teto da saida\n";
+
+    auto tetoComSag = [](float sagValue) -> float
+    {
+        PowerAmp powerAmp;
+        powerAmp.setOversampling(false);  // curva pura, sem o atraso do filtro
+        powerAmp.setDrive(5.0f);  // bem dentro da saturação: a saída E o teto
+        powerAmp.setSag(sagValue);
+        powerAmp.prepare(1000.0, 64);
+
+        // 500 amostras a 1000 Hz = 0.5 s de sinal quente — de sobra para o
+        // envelope do sag (ataque de 50 ms) convergir.
+        std::vector<float> sustentado(500, 0.9f);
+        powerAmp.process(sustentado);
+
+        return sustentado.back();
+    };
+
+    const float semSag = tetoComSag(0.0f);
+    const float comSag = tetoComSag(1.0f);
+
+    check(semSag > 0.95f, "sem sag, o teto fica onde a tanh crava (~1)");
+    check(comSag < 0.85f, "com sag maximo, o teto desceu de verdade");
+    check(comSag > 0.7f, "mas nunca mais que os 25% do kSagDipDepth");
 }
 
 // reset() apaga a memória do envelope — depois dele, uma nota fraca não
@@ -276,6 +310,7 @@ int main()
     testZeroSagIsPlainTanh();
     testLoudPassageLeavesMemoryOnQuietNote();
     testHigherSagAmplifiesTheMemoryEffect();
+    testSagDipsTheOutputCeiling();
     testResetClearsTheSagMemory();
     testParameterRoundTrip();
     testEmptyBufferDoesNotCrash();
