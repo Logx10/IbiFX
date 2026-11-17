@@ -17,9 +17,11 @@
 #include <filesystem>
 #include <iostream>
 #include <string>
+#include <string_view>
 #include <utility>
 
 #include "GearSkins.h"
+#include "IronheartPanel.h"
 #include "Preset.h"
 #include "DiLooper.h"
 #include "PresetManager.h"
@@ -1983,6 +1985,180 @@ void DesktopUI::drawGearPanel(std::size_t segmentIndex, const GearModel& model)
         toggleGearBypass(segmentIndex);
 }
 
+void DesktopUI::drawIronheartPanel(std::size_t segmentIndex, const GearModel& model)
+{
+    // Hallmark · pre-emit critique: P5 H5 E4 S5 R5 V4.
+    // Painel focado no canal ativo, com master e extras no mesmo lugar.
+    // A paleta, os knobs e os comandos de audio sao os existentes.
+    namespace panel = ironheart_panel;
+    const ChainItem& segment = m_chainItems[segmentIndex];
+    const bool hasPreamp = model.id != "rack.ironheart-master";
+    const bool hasMaster = model.id != "amp.ironheart-preamp";
+    const bool bypassed = m_engine.chain().isBypassed(segment.firstModule);
+    const auto read = [&](std::size_t offset, const char* id, float fallback = 0.0f) {
+        std::size_t parameter = 0, flat = 0;
+        if (!hasPreamp) offset = 0; // master avulso possui somente um modulo
+        return flatIndexFor(segment.firstModule + offset, id, parameter, flat) ? m_targets[flat] : fallback;
+    };
+    const auto write = [&](std::size_t offset, const char* id, float value) {
+        std::size_t parameter = 0, flat = 0;
+        if (!hasPreamp) offset = 0;
+        if (flatIndexFor(segment.firstModule + offset, id, parameter, flat))
+        {
+            m_targets[flat] = value;
+            m_engine.setParameter(segment.firstModule + offset, parameter, value);
+        }
+    };
+    const auto tooltip = [](const char* text) {
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal | ImGuiHoveredFlags_AllowWhenDisabled) || ImGui::IsItemFocused())
+            ImGui::SetTooltip("%s", text);
+    };
+    auto selected = panel::channel(read(0, "lead"), read(0, "clean"));
+
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(16, 12));
+    ImGui::PushStyleColor(ImGuiCol_ChildBg, kSurfaceRaised);
+    ImGui::BeginChild("ironheart", ImVec2(0, 0), ImGuiChildFlags_Borders | ImGuiChildFlags_AutoResizeY);
+    const float panelWidth = ImGui::GetContentRegionAvail().x;
+    const bool inlineChannels = hasPreamp && panelWidth >= 460.0f;
+    ImGui::AlignTextToFramePadding();
+    ImGui::TextUnformatted(model.name.c_str());
+    if (inlineChannels) ImGui::SameLine(0, 24); else ImGui::Spacing();
+    // Tres escolhas visiveis substituem a combinacao de duas chaves.
+    if (hasPreamp) for (const auto item : {panel::Channel::Clean, panel::Channel::Rhythm, panel::Channel::Lead})
+    {
+        if (item != panel::Channel::Clean) ImGui::SameLine();
+        const char* label = item == panel::Channel::Clean ? "Clean" : item == panel::Channel::Rhythm ? "Rhythm" : "Lead";
+        if (ImGui::RadioButton(label, selected == item))
+        {
+            const auto values = panel::select(item, read(0, "clean"));
+            // Ajustar Clean primeiro evita passar pelo canal errado ao
+            // sair de Lead. Os mesmos IDs continuam salvos nos presets.
+            write(0, "clean", values.clean); write(0, "lead", values.lead);
+            selected = item;
+        }
+        tooltip(item == panel::Channel::Clean ? "Clean usa seu Volume e compartilha o EQ com Rhythm."
+            : item == panel::Channel::Rhythm ? "Rhythm: ganho e volume proprios, EQ compartilhado com Clean."
+                                             : "Lead: ganho, volume e EQ independentes.");
+    }
+    if (!hasPreamp || panelWidth >= (inlineChannels ? 600.0f : 380.0f))
+        ImGui::SameLine(0, 20);
+    bool active = !bypassed;
+    if (ImGui::Checkbox("Ativo", &active)) toggleGearBypass(segmentIndex);
+    tooltip("Ativa ou contorna todas as secoes deste equipamento juntas.");
+    if (hasMaster && (read(1, "power") < .5f || read(1, "play") < .5f))
+    {
+        ImGui::TextDisabled("Potencia em standby ou desligada.");
+        if (ImGui::Button("Ligar e tocar")) { write(1, "power", 1); write(1, "play", 1); }
+    }
+    ImGui::Spacing();
+
+    const auto drawKnobs = [&](const char* tableId, std::span<const panel::Control> controls) {
+        const int visible = static_cast<int>(std::count_if(controls.begin(), controls.end(), [&](const auto& control) {
+            return control.moduleOffset == 0 ? hasPreamp : hasMaster;
+        }));
+        if (visible == 0) return;
+        const int columns = std::clamp(static_cast<int>(ImGui::GetContentRegionAvail().x / kAmpKnobCellWidth),
+                                       1, visible);
+        if (ImGui::BeginTable(tableId, columns, ImGuiTableFlags_SizingStretchSame))
+        {
+            for (const auto& control : controls)
+            {
+                if (control.moduleOffset != 0 && !hasMaster) continue;
+                if (control.moduleOffset == 0 && !hasPreamp) continue;
+                ImGui::TableNextColumn();
+                ImGui::PushID(control.id);
+                ImGui::BeginGroup();
+                const float left = ImGui::GetCursorPosX(), width = ImGui::GetContentRegionAvail().x;
+                const auto centered = [&](float size) { ImGui::SetCursorPosX(left + std::max(0.0f, (width - size) * .5f)); };
+                centered(ImGui::CalcTextSize(control.label).x);
+                ImGui::TextUnformatted(control.label);
+                float value = read(control.moduleOffset, control.id);
+                const bool disabled = (std::string_view(control.id) == "reverb" && read(1, "reverbEnabled") < .5f)
+                    || (std::string_view(control.id) == "boost" && read(0, "boostEnabled") < .5f);
+                ImGui::BeginDisabled(disabled);
+                centered(2 * kAmpKnobRadius);
+                if (knob("##knob", &value, 0, 1, kAmpKnobRadius)) write(control.moduleOffset, control.id, value);
+                ImGui::EndDisabled();
+                tooltip(control.help);
+                centered(56);
+                ImGui::SetNextItemWidth(56);
+                // Valor editavel tambem por teclado; escala do musico 0–10.
+                float displayed = value * 10;
+                ImGui::BeginDisabled(disabled);
+                if (ImGui::DragFloat("##value", &displayed, .05f, 0, 10, "%.1f", ImGuiSliderFlags_AlwaysClamp))
+                    write(control.moduleOffset, control.id, displayed / 10);
+                ImGui::EndDisabled();
+                tooltip(control.help);
+                ImGui::Spacing();
+                ImGui::EndGroup();
+                ImGui::PopID();
+            }
+            ImGui::EndTable();
+        }
+    };
+    if (hasPreamp)
+    {
+        ImGui::Separator();
+        drawKnobs("channel", panel::controls(selected));
+    }
+
+    const auto toggle = [&](std::size_t offset, const char* id, const char* label, const char* help) {
+        bool enabled = read(offset, id) >= .5f;
+        ImGui::PushID(id);
+        if (ImGui::Checkbox(label, &enabled)) write(offset, id, enabled ? 1 : 0);
+        tooltip(help);
+        ImGui::PopID();
+    };
+    if (hasMaster)
+    {
+        ImGui::SeparatorText("Saida e ambiente");
+        const int columns = ImGui::GetContentRegionAvail().x >= 340.0f ? 2 : 1;
+        if (ImGui::BeginTable("master", columns, ImGuiTableFlags_SizingStretchSame))
+        {
+            for (const auto& control : panel::masterControls)
+            {
+                ImGui::TableNextColumn();
+                ImGui::PushID(control.id);
+                const bool reverb = std::string_view(control.id) == "reverb";
+                if (reverb) toggle(1, "reverbEnabled", "Reverb", "Liga o ambiente sem alterar o ajuste do nivel.");
+                else { ImGui::AlignTextToFramePadding(); ImGui::TextUnformatted("Saida (Watts)"); }
+                float displayed = read(1, control.id) * 10;
+                ImGui::BeginDisabled(reverb && read(1, "reverbEnabled") < .5f);
+                ImGui::SetNextItemWidth(-1);
+                if (ImGui::SliderFloat("##level", &displayed, 0, 10, "%.1f", ImGuiSliderFlags_AlwaysClamp))
+                    write(1, control.id, displayed / 10);
+                ImGui::EndDisabled();
+                tooltip(control.help);
+                ImGui::PopID();
+            }
+            ImGui::EndTable();
+        }
+    }
+    ImGui::Spacing();
+    if (ImGui::CollapsingHeader("Mais ajustes"))
+    {
+        if (hasPreamp) toggle(0, "boostEnabled", "Boost ligado", "Empurra a entrada antes da saturacao; atua em todos os canais.");
+        drawKnobs("advanced", panel::advancedKnobs);
+        if (hasPreamp)
+        {
+            ImGui::TextDisabled("Variacoes do EQ deste canal");
+            for (const auto& control : panel::pulls(selected)) toggle(0, control.id, control.label, control.help);
+        }
+        if (hasMaster)
+        {
+            ImGui::Spacing();
+            toggle(1, "power", "Power", "Alimentacao da potencia; desligar silencia o amp.");
+            toggle(1, "play", "Play", "Desligar coloca a potencia em standby.");
+        }
+        ImGui::Spacing();
+        if (ImGui::Button("Restaurar amp")) resetGearToRecipe(segmentIndex, model);
+        tooltip("Volta todos os canais e o master aos valores iniciais do equipamento.");
+    }
+    ImGui::EndChild();
+    ImGui::PopStyleColor();
+    ImGui::PopStyleVar();
+}
+
 void DesktopUI::resetGearToRecipe(std::size_t segmentIndex, const GearModel& model)
 {
     // O reset NÃO é resetModule(): isso devolveria cada módulo ao padrão
@@ -3322,7 +3498,15 @@ void DesktopUI::drawSelectedEquipmentEditor()
         const bool raw = model == nullptr || model->controls.empty()
                          || m_expandedSegments.count(m_selectedItem) != 0;
 
-        if (raw)
+        const bool ironheart = model != nullptr && (model->id == "amp.ironheart-120"
+            || model->id == "amp.ironheart-preamp" || model->id == "rack.ironheart-master");
+        if (ironheart)
+        {
+            ImGui::PushID(static_cast<int>(m_selectedItem));
+            drawIronheartPanel(m_selectedItem, *model);
+            ImGui::PopID();
+        }
+        else if (raw)
         {
             if (model != nullptr && !model->controls.empty())
             {
