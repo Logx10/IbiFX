@@ -1,4 +1,10 @@
-# Ironheart 120 — pré e master inspirados no Laney IRT120H
+# Ironheart 120 — modelo inspirado no Laney IRT120H de 2011
+
+O painel possui **28 controles funcionais**. A implementação do pré vai
+da entrada aos volumes/buffers de saída; o master usa redes próprias de
+Tone/Watts e uma potência reduzida com Dynamics na realimentação.
+Ter todos os controles não equivale a resolver todos os fenômenos físicos
+do cabeçote. Não houve captura ou calibração contra um amplificador real.
 
 A entrada e o Pre-Boost já usam a rede linear derivada do esquema de 2011.
 Veja a [implementação e suas hipóteses](ironheart-entrada-implementacao.md),
@@ -6,6 +12,7 @@ o [primeiro triodo V1A com polarização dinâmica](ironheart-v1a.md)
 suas [saídas passivas com carga dos canais](ironheart-saidas-v1a.md),
 os [estágios V1B/V2 e a correção de R187](ironheart-v1b-v2.md),
 os [seguidores V3 e EQs próprios](ironheart-v3-eq.md),
+o [fechamento dos volumes, buffers e master](ironheart-saida-master.md),
 além do [plano de evolução dos demais blocos](ironheart-circuito-2011.md).
 
 No catálogo de amplificadores, selecione **Ironheart 120** para usar o pré e
@@ -34,17 +41,21 @@ Os ramos passivos de entrada continuam carregando V1A: o bright do Clean
 pode ter uma interação pequena com os outros modos, mesmo sem selecionar
 a saída Clean. Clean Volume inclui agora o capacitor de 470 pF do esquema.
 
-Dynamics varia o grave que entra na potência. Tone escurece/abre a saída
-depois da saturação. Watts atenua a saída mantendo o drive da potência;
-é uma escala normalizada de volume, sem correspondência calibrada em watts
-físicos. Power Off e Standby silenciam com uma rampa curta, sem tempo de
-aquecimento simulado. Reverb On corresponde à chave de habilitação remota.
+Dynamics varia a realimentação dos graves dentro da potência reduzida.
+Tone controla dois ramos RC antes da saturação. Watts regula os dois ramos
+que excitam a potência, mudando excursão, compressão e nível. No mínimo
+conserva uma saída baixa pelos resistores de 10 kΩ: **Watts não é mute**.
+A escala não corresponde a watts físicos calibrados. Power Off e Standby
+silenciam por rampa, sem tempo de aquecimento simulado. Reverb On habilita
+uma cauda somada ao dry; aumentar Reverb não reduz a nota seca.
 
-Na rodada de calibração, Clean recebeu maior recuperação de nível depois da
-saturação e Watts passou a usar curva linear de volume. Após integrar a rede
-de entrada, triodos de ganho, seguidores e EQs, os três canais ficam a menos de 1 dB entre si nos
-padrões para o seno de referência, com boost desligado. Veja
-[as medições e efeitos sobre presets](melhorias-amplificadores.md).
+Os volumes Rhythm/Lead são agora potenciômetros log de 1 MΩ carregados
+pelo somador. Clean usa um ramo fixo de 660 kΩ que contorna Rhythm Volume.
+Os padrões de Volume são Rhythm 3,5 e Lead 3,2; Clean Volume continua em 5.
+Essas posições equilibram a receita inicial, sem normalização por nota ou
+ganhos elétricos diferentes por canal. As calibrações anteriores são
+[históricas](melhorias-amplificadores.md); presets existentes conservam seus
+parâmetros, mas o som muda com a nova modelagem.
 
 ## Loop de efeitos e uso só do pré
 
@@ -57,6 +68,9 @@ Ironheart Preamp → delay/chorus/outros efeitos → Ironheart Master → gabine
 **Ironheart Master** fica na categoria Rack. Essa divisão permite inserir
 efeitos na posição do FX Send/Return ou combinar o pré com outra potência.
 O modelo integrado **Ironheart 120** já contém as duas seções consecutivas.
+Para contornar efeitos do loop, use o bypass desses módulos. Os níveis
+elétricos 0/−10 dB dos jacks não têm seleção no modelo: a cadeia trabalha
+em ponto flutuante, sem pedal externo ou retorno analógico.
 
 O controle por MIDI usa os parâmetros comuns do IbiFX; Channel, Clean,
 Boost On e Reverb On podem ser mapeados pelo mecanismo de MIDI existente.
@@ -95,24 +109,40 @@ São duas redes independentes, com os resistores de 47 kΩ, capacitores e
 potenciômetros do esquema, incluindo os três terminais do Mid. Deep liga
 100 nF adicionais ao ramo Bass, Mid Shift acrescenta 10 nF ao ramo Mid e
 Treble Shift acrescenta 470 pF ao Treble, mantendo resistores de 10 MΩ
-nos contatos abertos. A carga de saída ainda é aproximada por 1 MΩ fixo;
-volumes/buffers de saída permanecem pendentes. As redes processam em 4×
+nos contatos abertos. `IronheartOutputStage` fornece a carga variável dos
+volumes e do bypass Clean ao EQ antes de resolver o seguidor. Inclui
+680 kΩ no cursor, realimentação de 330 kΩ/22 pF dos buffers e somador de
+10 kΩ/47 pF. A excursão útil dos TL072 é estimada em ±13 V; JFETs são
+chaves ideais. As redes processam em 4×
 e mantêm sua memória ao trocar de canal; posições dos knobs são suavizadas.
 
-`IronheartMaster` possui o `Reverb` e o `PowerAmp` existentes, além dos
-filtros de Dynamics/Tone e da atenuação de saída. O reverb é o Schroeder
-do projeto, sem alegação de reproduzir o algoritmo proprietário da Laney.
+`IronheartMaster` possui `IronheartPowerSection` e o reverb Schroeder do
+projeto. Tone/Watts duplos de 220 kΩ, acoplamentos de 100 nF, Tone de 10 nF
+e resistores de 10 kΩ/220 kΩ participam da rede. Dynamics usa uma redução
+de R128/VR13/C81/R129, resolvida na mesma amostra que a saturação.
+A inversora é substituída por duas fontes com resistências estimadas;
+6L6/transformador são representados por saturação normalizada e sag.
+**Não há solução individual de V4, quatro 6L6 e transformador** nem suas
+interações com impedância de falante. O reverb não reproduz o programa
+proprietário FV-1. Um acoplamento equivalente de 5 Hz bloqueia DC na saída.
+O [documento da saída/master](ironheart-saida-master.md)
+detalha a matemática e as hipóteses.
+
+A escala interna usa 1 unidade de entrada por volt antes de V1A e 0,6
+unidade por volt depois dos buffers. São convenções fixas, sem ajuste
+automático por nota ou canal. O pré admite headroom acima de 1; use o
+Output Limiter para o teto final.
 
 Cada objeto possui seus filtros e históricos. A cadeia mantém a posse dos
 módulos com `unique_ptr`. `prepare()` aloca o reverb; `process()` não cria
 buffers, não acessa arquivos e não bloqueia. Posições dos potenciômetros,
-shunt de V2B, Dynamics, Tone
-e nível de saída usam rampas de 20 ms. EQ e pull switches mudam por bloco,
-como no ToneStack existente; mudanças rápidas podem gerar transientes.
+shunt de V2B, volumes, Dynamics, Tone, Watts, Reverb e mute usam rampas de
+20 ms. Pull switches mudam por bloco preservando estados; mudanças rápidas
+podem gerar transientes.
 `reset()` limpa os históricos e mantém os parâmetros escolhidos.
 
 O amp combina **entrada, quatro triodos de ganho, dois seguidores e redes de EQ derivados do esquema sob hipóteses simplificadas**
-com os demais blocos aproximados; não é uma reprodução medida nem uma captura do
+com volumes/buffers próprios e potência reduzida; não é uma reprodução medida nem uma captura do
 amplificador. Falta comparar com gravações DI
 de referência e ouvir com diferentes guitarras, IRs e níveis de entrada.
 
@@ -157,13 +187,13 @@ Algumas afirmações requerem esquemático ou medições antes de alterar o som:
   que impediria o controle de reduzir a saída como esperado.
 - O esquema de serviço de 2011 permitiu conferir os componentes da entrada
   e derivar o boost original; não sustentamos a hipótese de corte de 720 Hz.
-  Ele também identifica Tone e Watts duplos, ainda sem modelagem dessa rede.
+  Ele também identifica Tone e Watts duplos, incorporados na rede reduzida.
   O roteamento até V3, o shunt do Clean e os tone stacks foram incorporados;
-  volumes, buffers e redes posteriores ainda são aproximados. O manual BCC identifica
+  volumes e buffers de saída também foram incorporados sob hipóteses documentadas. O manual BCC identifica
   outra revisão do boost, que não deve ser atribuída ao IRT120H original.
-- Dynamics como controle na realimentação é uma direção útil para um modelo
-  físico futuro. O módulo atual aproxima sua resposta grave com filtros;
-  não resolve a malha elétrica NFB nem usa WDF/ODE.
+- Dynamics agora participa de uma malha reduzida de realimentação. O
+  carregamento da cauda da inversora é aproximado por uma impedância fixa;
+  isso não resolve a potência inteira nem exige WDF/ODE para o amp completo.
 
 - [IRT120H original — Laney](https://www.laney.co.uk/discontinued/irt120h).
 - [Manual IRT120H/IRT60H — Laney](https://manuals.laney.co.uk/IRT120H_IRT60H_Manual_ML.pdf).

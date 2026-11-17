@@ -14,6 +14,9 @@ public:
     void setControls(float bass, float mid, float treble,
                      bool deep, bool midShift, bool trebleShift) noexcept;
     void reset() noexcept;
+    // Carga equivalente do volume/somador, em siemens. Padrão permite
+    // estudar o EQ isolado; o pré fornece a carga real a cada amostra.
+    void setOutputLoad(double conductance) noexcept;
     // begin → resolver seguidor com esta carga → finish(cátodo AC resolvido).
     IronheartCathodeFollower::Load beginSample() noexcept;
     double finishSample(double cathodeACVolts) noexcept;
@@ -39,6 +42,7 @@ private:
     Matrix m_matrix{}, m_factor{};
     Vector m_coupling{}, m_response{}, m_offset{};
     double m_portG = 0.0;
+    double m_outputLoad = 1.0 / 1e6;
     double m_lastBass = -1.0, m_lastMid = -1.0, m_lastTreble = -1.0;
     bool m_deep = false, m_midShift = false, m_trebleShift = false;
     bool m_dirty = true, m_prepared = false;

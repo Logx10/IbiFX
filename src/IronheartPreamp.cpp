@@ -6,8 +6,7 @@ namespace
 {
 // Conversão de nível da cadeia em volts para o restante do motor. Não é
 // um componente do circuito nem uma normalização dependente dos knobs.
-constexpr float kToneOutputCalibration = 6.3f;
-float taper(float position) { return position * position; }
+constexpr float kOutputVoltsToEngine = 0.6f;
 
 // Curva A aproximada, com 10% da resistência a meio curso. O esquema
 // identifica VR2 como log, mas não fornece sua curva medida.
@@ -35,7 +34,9 @@ IronheartPreamp::IronheartPreamp()
         m_parameters.emplace_back(id + "Deep", label + "Deep", 0.0f, 1.0f, 0.0f);
         m_parameters.emplace_back(id + "MidShift", label + "Mid Shift", 0.0f, 1.0f, 0.0f);
         m_parameters.emplace_back(id + "TrebleShift", label + "Treble Shift", 0.0f, 1.0f, 0.0f);
-        m_parameters.emplace_back(id + "Volume", label + "Volume", 0.0f, 1.0f, 0.5f);
+        // Posições iniciais distintas compensam a carga adicional de R5
+        // no EQ Rhythm, sem alterar o circuito ou normalizar cada canal.
+        m_parameters.emplace_back(id + "Volume", label + "Volume", 0.0f, 1.0f, id == "lead" ? 0.32f : 0.35f);
     }
     configure();
 }
@@ -54,10 +55,10 @@ void IronheartPreamp::configure()
     m_inputStage.setEnabled(value(BoostOn) >= 0.5f);
     m_gainStages.setClean(clean);
     m_leadMix.setTarget(lead ? 1.0f : 0.0f);
-    // Recuperação de nível maior no modo de menor ganho; não normalizamos
-    // a entrada para preservar a resposta à força da palhetada.
-    m_volume.setTarget(clean ? (value(CleanVolume) == 0.0f ? 0.0f : 6.0f)
-                             : taper(lead ? value(LeadVolume) : value(RhythmVolume)));
+    // Silêncio digital no batente: a rede usa 1 ohm de regularização
+    // nos cursores; isso não deve se transformar em vazamento audível.
+    m_outputEnable.setTarget(clean && value(CleanVolume) == 0.0f ? 0.0f : 1.0f);
+    m_outputStage.setControls(value(LeadVolume), value(RhythmVolume), clean);
 
     // As duas redes continuam processando: trocar de canal não recupera
     // estados de capacitores congelados. Clean compartilha a seção Rhythm.
@@ -94,8 +95,11 @@ void IronheartPreamp::prepare(double sampleRate, int blockSize)
     };
     prepareTone(m_leadTone, LeadBass);
     prepareTone(m_rhythmTone, RhythmBass);
-    m_volume.prepare(m_sampleRate, kDefaultRampSeconds, m_volume.target());
+    m_outputStage.prepare(m_sampleRate * Oversampler::kFactor,
+                          value(LeadVolume), value(RhythmVolume),
+                          value(Lead) < 0.5f && value(Clean) >= 0.5f);
     m_leadMix.prepare(m_sampleRate, kDefaultRampSeconds, m_leadMix.target());
+    m_outputEnable.prepare(m_sampleRate, kDefaultRampSeconds, m_outputEnable.target());
     (void)blockSize;
     reset();
 }
@@ -103,8 +107,8 @@ void IronheartPreamp::prepare(double sampleRate, int blockSize)
 void IronheartPreamp::reset()
 {
     configure();
-    m_volume.snapTo(m_volume.target());
     m_leadMix.snapTo(m_leadMix.target());
+    m_outputEnable.snapTo(m_outputEnable.target());
     m_oversampler.reset();
     m_inputStage.reset();
     m_v1a.reset();
@@ -112,6 +116,7 @@ void IronheartPreamp::reset()
     m_gainStages.reset();
     m_leadFollower.reset(); m_rhythmFollower.reset();
     m_leadTone.reset(); m_rhythmTone.reset();
+    m_outputStage.reset();
 }
 
 void IronheartPreamp::process(std::vector<float>& buffer)
@@ -126,14 +131,17 @@ void IronheartPreamp::process(std::vector<float>& buffer)
             const double plate = m_v1a.processSample(m_inputStage.processSample(x), load);
             const auto outputs = m_channels.finishSample(plate);
             const double grid = m_gainStages.processSample(outputs.grid);
+            const auto loads = m_outputStage.beginSample();
+            m_leadTone.setOutputLoad(loads.lead);
+            m_rhythmTone.setOutputLoad(loads.rhythm);
             const auto leadLoad = m_leadTone.beginSample();
             const auto rhythmLoad = m_rhythmTone.beginSample();
             const double leadOut = m_leadTone.finishSample(m_leadFollower.processSample(grid, leadLoad));
             const double rhythmOut = m_rhythmTone.finishSample(m_rhythmFollower.processSample(grid, rhythmLoad));
-            return static_cast<float>(0.04 * (lead * leadOut + (1.0f - lead) * rhythmOut));
+            return static_cast<float>(m_outputStage.finishSample(leadOut, rhythmOut, lead));
         });
-        sample *= m_volume.nextValue();
+        sample *= m_outputEnable.nextValue();
     }
     // Adaptação fixa de nível, sem normalização por nota/bloco.
-    for (float& sample : buffer) sample *= kToneOutputCalibration;
+    for (float& sample : buffer) sample *= kOutputVoltsToEngine;
 }

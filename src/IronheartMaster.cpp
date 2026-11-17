@@ -11,8 +11,6 @@ IronheartMaster::IronheartMaster()
     m_parameters.emplace_back("watts", "Watts", 0.0f, 1.0f, 0.5f);
     m_parameters.emplace_back("power", "Power", 0.0f, 1.0f, 1.0f);
     m_parameters.emplace_back("play", "Standby / Play", 0.0f, 1.0f, 1.0f);
-    m_powerAmp.setDrive(1.2f);
-    m_powerAmp.findParameter("coupling")->setValue(5.0f);
     m_reverb.setDecay(0.65f);
     m_reverb.setDamping(0.55f);
 }
@@ -23,50 +21,42 @@ void IronheartMaster::prepare(double sampleRate, int blockSize)
 {
     m_sampleRate = std::isfinite(sampleRate) && sampleRate > 0.0 ? sampleRate : 44100.0;
     m_reverb.prepare(m_sampleRate, blockSize);
-    m_powerAmp.prepare(m_sampleRate, blockSize);
+    m_powerSection.prepare(m_sampleRate, m_parameters[Tone].value(),
+                           m_parameters[Watts].value(), m_parameters[Dynamics].value());
+    // Bloqueio de DC equivalente na saída; não modela o transformador.
+    m_dcR = static_cast<float>(std::exp(-6.283185307179586 * 5.0 / m_sampleRate));
+    m_dcG = .5f * (1.0f + m_dcR);
     m_level.prepare(m_sampleRate, kDefaultRampSeconds, 0.0f);
-    m_dynamics.prepare(m_sampleRate, kDefaultRampSeconds, m_parameters[Dynamics].value());
-    m_tone.prepare(m_sampleRate, kDefaultRampSeconds, m_parameters[Tone].value());
+    m_reverbLevel.prepare(m_sampleRate, kDefaultRampSeconds, 0.0f);
     reset();
 }
 
 void IronheartMaster::reset()
 {
-    m_bass = m_top = 0.0f;
     m_reverb.reset();
-    m_powerAmp.reset();
-    const float watts = m_parameters[Watts].value();
+    m_dcX = m_dcY = 0.0f;
+    m_powerSection.setControls(m_parameters[Tone].value(), m_parameters[Watts].value(), m_parameters[Dynamics].value());
+    m_powerSection.reset();
     const bool playing = m_parameters[Power].value() >= 0.5f && m_parameters[Play].value() >= 0.5f;
-    m_level.snapTo(playing ? 0.75f * watts : 0.0f);
-    m_dynamics.snapTo(m_parameters[Dynamics].value());
-    m_tone.snapTo(m_parameters[Tone].value());
+    m_level.snapTo(playing ? 0.75f : 0.0f);
+    m_reverbLevel.snapTo(m_parameters[ReverbOn].value() >= 0.5f ? 0.35f * m_parameters[ReverbLevel].value() : 0.0f);
 }
 
 void IronheartMaster::process(std::vector<float>& buffer)
 {
     const bool playing = m_parameters[Power].value() >= 0.5f && m_parameters[Play].value() >= 0.5f;
-    const float watts = m_parameters[Watts].value();
-    m_level.setTarget(playing ? 0.75f * watts : 0.0f);
-    m_dynamics.setTarget(m_parameters[Dynamics].value());
-    m_tone.setTarget(m_parameters[Tone].value());
-    m_reverb.setMix(m_parameters[ReverbOn].value() >= 0.5f
+    m_level.setTarget(playing ? 0.75f : 0.0f);
+    m_powerSection.setControls(m_parameters[Tone].value(), m_parameters[Watts].value(), m_parameters[Dynamics].value());
+    m_reverbLevel.setTarget(m_parameters[ReverbOn].value() >= 0.5f
         ? 0.35f * m_parameters[ReverbLevel].value() : 0.0f);
     // A cauda continua sendo processada ao desligar o reverb, evitando
     // congelar o histórico e trazer uma nota antiga ao religá-lo.
-    m_reverb.process(buffer);
-    const float bassCoeff = 1.0f - std::exp(-6.2831853f * 140.0f / static_cast<float>(m_sampleRate));
     for (float& sample : buffer)
     {
-        m_bass += bassCoeff * (sample - m_bass);
-        sample += (m_dynamics.nextValue() * 1.5f - 0.75f) * m_bass;
-    }
-    m_powerAmp.process(buffer);
-    for (float& sample : buffer)
-    {
-        const float tone = m_tone.nextValue();
-        const float cutoff = 1200.0f * std::pow(10.0f, tone);
-        const float coeff = 1.0f - std::exp(-6.2831853f * cutoff / static_cast<float>(m_sampleRate));
-        m_top += coeff * (sample - m_top);
-        sample = m_top * m_level.nextValue();
+        const float wet = m_reverb.processWetSample(sample);
+        const float power = m_powerSection.processSample(sample + wet * m_reverbLevel.nextValue());
+        const float blocked = m_dcG * (power - m_dcX) + m_dcR * m_dcY;
+        m_dcX = power; m_dcY = blocked;
+        sample = blocked * m_level.nextValue();
     }
 }

@@ -43,6 +43,8 @@ elétricos.
 O catálogo também inclui **Ironheart 120**, inspirado no Laney IRT120H,
 com pré de três modos, Pre-Boost, EQ com pull switches e master. Veja os
 [controles, uso só do pré e loop de efeitos](docs/ironheart-120.md).
+Os [volumes, buffers e master reduzido](docs/ironheart-saida-master.md)
+têm documentação de circuito, testes e limites de fidelidade.
 Para regular a redução de ruído sem cortar notas, veja o
 [ajuste e comportamento do Noise Gate](docs/noise-gate.md).
 Há também uma [revisão de todos os amps, medições e prioridades de evolução](docs/revisao-amplificadores.md).

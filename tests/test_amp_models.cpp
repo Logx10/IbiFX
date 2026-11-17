@@ -158,12 +158,14 @@ void testUsefulDynamicsAndChannelBalance(const GearLibrary& library)
         check(span < 20.0, id + " ainda comprime como amp saturado");
     }
     const double clean = toneLevel(library, "amp.ironheart-120", 0.08f, 0);
+    double lowest = clean, highest = clean;
     for (int mode : {1, 2})
     {
         const double channel = toneLevel(library, "amp.ironheart-120", 0.08f, mode);
-        check(std::fabs(20.0 * std::log10(channel / clean)) < 3.0,
-              "Ironheart troca de canal sem salto grande no nivel de referencia");
+        lowest = std::min(lowest, channel); highest = std::max(highest, channel);
     }
+    check(20.0 * std::log10(highest / lowest) < 3.0,
+          "Ironheart: todos os pares de canais ficam a menos de 3dB no nivel de referencia");
 }
 }
 
