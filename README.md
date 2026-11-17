@@ -40,6 +40,15 @@ elétricos.
     feedback e mix;
 - a documentação inicial de arquitetura e roadmap.
 
+O catálogo também inclui **Ironheart 120**, inspirado no Laney IRT120H,
+com pré de três modos, Pre-Boost, EQ com pull switches e master. Veja os
+[controles, uso só do pré e loop de efeitos](docs/ironheart-120.md).
+Para regular a redução de ruído sem cortar notas, veja o
+[ajuste e comportamento do Noise Gate](docs/noise-gate.md).
+Há também uma [revisão de todos os amps, medições e prioridades de evolução](docs/revisao-amplificadores.md).
+As [melhorias implementadas nos amps](docs/melhorias-amplificadores.md) incluem
+ganho por estágio, controles Power Master/Output e calibração do Ironheart.
+
 Os três primeiros são **funções de transferência** aplicadas amostra a amostra
 — `f(x) = ganho * x`, `f(x) = corta em ±teto` e `f(x) = tanh(drive * x)`.
 Trocar o efeito é trocar o formato dessa curva, e é essa ideia que sustenta a

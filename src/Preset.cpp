@@ -15,6 +15,8 @@
 #include "GainProcessor.h"
 #include "GraphicEQ.h"
 #include "HighPassFilter.h"
+#include "IronheartPreamp.h"
+#include "IronheartMaster.h"
 #include "Limiter.h"
 #include "LowPassFilter.h"
 #include "NoiseGate.h"
@@ -55,6 +57,8 @@ std::unique_ptr<AudioModule> createModule(const std::string& type)
     if (type == "Branch") return std::make_unique<ParallelMarker>(ParallelMarker::Kind::Branch);
     if (type == "Merge") return std::make_unique<ParallelMarker>(ParallelMarker::Kind::Merge);
     if (type == "Preamp") return std::make_unique<Preamp>();
+    if (type == "IronheartPreamp") return std::make_unique<IronheartPreamp>();
+    if (type == "IronheartMaster") return std::make_unique<IronheartMaster>();
     if (type == "ToneStack") return std::make_unique<ToneStack>();
     if (type == "GraphicEQ") return std::make_unique<GraphicEQ>();
     if (type == "PowerAmp") return std::make_unique<PowerAmp>();

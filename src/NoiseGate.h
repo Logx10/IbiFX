@@ -69,18 +69,19 @@
 // DESLIGAR acontecem em pontos diferentes. Aqui o gate abre quando o
 // envelope passa do threshold e só fecha quando cai abaixo da METADE dele
 // (~6 dB abaixo — kHysteresisRatio no .cpp). Na faixa entre os dois
-// limiares, o estado atual é mantido: aberto fica aberto, fechado fica
-// fechado. O envelope precisa atravessar a faixa INTEIRA para mudar o
-// estado — a ondulação, pequena, não atravessa.
+// limiares, uma nota reconhecida continua passando. Durante o release,
+// voltar acima do limiar inferior também recupera o volume: um bend não
+// precisa de uma nova palhetada para reabrir. Depois de fechar até -100 dB
+// de ganho, é necessário cruzar o limiar superior para iniciar outra nota.
 //
 // HOLD: UM TEMPO MÍNIMO ABERTO ANTES DE COMEÇAR A FECHAR
 // Mesmo com histerese, notas curtas e secas (palm mute, staccato) caem
 // abaixo do limiar de fechar quase imediatamente — e o release começaria a
 // comer o finalzinho de cada nota. Gates reais têm um estágio de HOLD: ao
 // cair abaixo do limiar de fechar, o gate continua TOTALMENTE aberto por um
-// tempo fixo (kHoldSeconds no .cpp) antes de o release começar. Tocar outra
-// nota dentro desse tempo rearma o contador — em passagens rápidas o gate
-// simplesmente não fecha entre as notas, que é o comportamento esperado.
+// tempo fixo (kHoldSeconds no .cpp) antes de o release começar. Recuperar o
+// nível acima do limiar inferior rearma o contador. Assim, o hold mede tempo
+// CONSECUTIVO abaixo desse limiar, sem somar vales separados de um vibrato.
 class NoiseGate : public AudioModule
 {
 public:
@@ -90,8 +91,8 @@ public:
     void setThreshold(float newThreshold);
     float threshold() const;
 
-    // Segundos até fechar completamente depois que o sinal cai abaixo do
-    // threshold.
+    // Constante de tempo do fechamento depois do hold: em um release o
+    // ganho cai a ~37%, não a zero. Release maior preserva mais a cauda.
     void setRelease(float seconds);
     float release() const;
 
@@ -124,14 +125,13 @@ private:
     // m_attackCoeff — ver kEnvelopeSeconds em NoiseGate.cpp.
     float m_envelopeCoeff = 1.0f;
 
-    // O estado do "termostato" da histerese — para onde m_gain caminha.
-    // Separado de m_gain: este muda por decisão (limiar cruzado), aquele
-    // caminha suavemente atrás dele.
+    // Uma nota foi reconhecida e ainda não terminou o release. O alvo do
+    // ganho depende também do nível atual e do hold; m_open só é apagado
+    // quando o ganho chega ao piso de fechamento.
     bool m_open = false;
 
-    // Contador regressivo do hold, em amostras. Rearmado sempre que o
-    // envelope passa do threshold de abrir; só quando chega a zero o gate
-    // tem permissão de fechar.
+    // Contador regressivo do hold, em amostras. Rearmado enquanto a nota
+    // reconhecida se mantém acima do limiar de fechar.
     int m_holdSamplesLeft = 0;
 
     // Quantas amostras o hold dura — kHoldSeconds vezes o sample rate,

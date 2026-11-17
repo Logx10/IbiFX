@@ -17,6 +17,8 @@
 // ModuleChain. A biblioteca não cria módulos; ela monta um Preset, e quem o
 // aplica é o preset::apply() de sempre. Um equipamento novo é uma entrada
 // nova no catálogo, não uma classe nova.
+// O Ironheart usa módulos próprios porque a seleção de canais precisa
+// compartilhar EQ e retirar controles do caminho conforme o modo escolhido.
 //
 // AS QUATRO CATEGORIAS E A ORDEM DA CADEIA
 // Seguem a ordem física de um rig de guitarra:
@@ -74,6 +76,8 @@ struct GearControl
     std::string parameterId;
     float minValue = 0.0f;
     float maxValue = 1.0f;
+    // Vazio = knob contínuo; preenchido = chave com posições nomeadas.
+    std::vector<std::string> choices;
 };
 
 struct GearModel

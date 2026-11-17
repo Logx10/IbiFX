@@ -182,6 +182,41 @@ add_executable(test_preamp
 target_compile_options(test_preamp PRIVATE ${IBIFX_WARNINGS})
 target_link_libraries(test_preamp PRIVATE ibifx_core)
 
+add_executable(test_ironheart test_ironheart.cpp)
+target_compile_options(test_ironheart PRIVATE ${IBIFX_WARNINGS})
+target_link_libraries(test_ironheart PRIVATE ibifx_core)
+add_test(NAME ironheart COMMAND test_ironheart)
+
+add_executable(test_ironheart_input_stage test_ironheart_input_stage.cpp)
+target_compile_options(test_ironheart_input_stage PRIVATE ${IBIFX_WARNINGS})
+target_link_libraries(test_ironheart_input_stage PRIVATE ibifx_core)
+add_test(NAME ironheart_input_stage COMMAND test_ironheart_input_stage)
+
+add_executable(test_ironheart_triode_stage test_ironheart_triode_stage.cpp)
+target_compile_options(test_ironheart_triode_stage PRIVATE ${IBIFX_WARNINGS})
+target_link_libraries(test_ironheart_triode_stage PRIVATE ibifx_core)
+add_test(NAME ironheart_triode_stage COMMAND test_ironheart_triode_stage)
+
+add_executable(test_ironheart_channel_network test_ironheart_channel_network.cpp)
+target_compile_options(test_ironheart_channel_network PRIVATE ${IBIFX_WARNINGS})
+target_link_libraries(test_ironheart_channel_network PRIVATE ibifx_core)
+add_test(NAME ironheart_channel_network COMMAND test_ironheart_channel_network)
+
+add_executable(test_ironheart_gain_stages test_ironheart_gain_stages.cpp)
+target_compile_options(test_ironheart_gain_stages PRIVATE ${IBIFX_WARNINGS})
+target_link_libraries(test_ironheart_gain_stages PRIVATE ibifx_core)
+add_test(NAME ironheart_gain_stages COMMAND test_ironheart_gain_stages)
+
+add_executable(test_ironheart_tone_section test_ironheart_tone_section.cpp)
+target_compile_options(test_ironheart_tone_section PRIVATE ${IBIFX_WARNINGS})
+target_link_libraries(test_ironheart_tone_section PRIVATE ibifx_core)
+add_test(NAME ironheart_tone_section COMMAND test_ironheart_tone_section)
+
+add_executable(test_amp_models test_amp_models.cpp)
+target_compile_options(test_amp_models PRIVATE ${IBIFX_WARNINGS})
+target_link_libraries(test_amp_models PRIVATE ibifx_core)
+add_test(NAME amp_models COMMAND test_amp_models)
+
 add_executable(test_power_amp
     test_power_amp.cpp
 )

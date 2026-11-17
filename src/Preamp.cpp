@@ -39,6 +39,10 @@ Preamp::Preamp()
     // assimetria forte — tanh(0.3) desloca ~29% do teto de um lado. Cada
     // ampli da GearLibrary escolhe o seu (ver addAmps).
     m_parameters.emplace_back("bias", "Bias", 0.0f, 0.3f, 0.0f);
+    // Escalas de ganho dos estágios seguintes. Padrão 1 preserva presets
+    // antigos; cada receita pode distribuir a saturação pela cascata.
+    m_parameters.emplace_back("stage2", "Stage 2 Gain", 0.1f, 2.0f, 1.0f);
+    m_parameters.emplace_back("stage3", "Stage 3 Gain", 0.1f, 2.0f, 1.0f);
 }
 
 void Preamp::setBias(float amount)
@@ -127,13 +131,15 @@ void Preamp::process(std::vector<float>& buffer)
     // passante ficar em 1.
     const float couplingR = std::exp(-2.0f * kPi * kCouplingHz / static_cast<float>(cascadeRate));
     const float couplingG = 0.5f * (1.0f + couplingR);
+    const float stage2 = m_parameters[3].value();
+    const float stage3 = m_parameters[4].value();
 
     for (float& sample : buffer)
     {
         const float driveValue = m_smoothedDrive.nextValue();
 
         const auto cascade = [this, driveValue, interstageCoefficient,
-                              biasValue, tanhBias, onePlusTanhBias, couplingR, couplingG](float stageSignal)
+                              biasValue, tanhBias, onePlusTanhBias, couplingR, couplingG, stage2, stage3](float stageSignal)
         {
             for (int stage = 0; stage < kStageCount; ++stage)
             {
@@ -141,7 +147,8 @@ void Preamp::process(std::vector<float>& buffer)
                 // Com bias 0 isto é exatamente tanh(drive*x), como sempre
                 // foi. A renormalização garante a faixa [-1, +1] da saída
                 // sem precisar de nada depois dela.
-                stageSignal = (std::tanh(driveValue * stageSignal + biasValue) - tanhBias) / onePlusTanhBias;
+                const float stageGain = stage == 0 ? 1.0f : (stage == 1 ? stage2 : stage3);
+                stageSignal = (std::tanh(driveValue * stageGain * stageSignal + biasValue) - tanhBias) / onePlusTanhBias;
 
                 // Reexpande antes do PRÓXIMO estágio, exceto depois do último —
                 // é o que garante que a saída final seja sempre a curva

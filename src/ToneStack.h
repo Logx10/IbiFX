@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <vector>
 
 #include "AudioModule.h"
@@ -153,6 +154,10 @@ public:
     void setCircuit(int circuitIndex);
     int circuit() const;
 
+    // Voicings estimados do Ironheart. Chamado pelo módulo proprietário na
+    // thread de áudio; os parâmetros persistentes pertencem ao pré.
+    void setVoicing(bool deep, bool midShift, bool trebleShift);
+
     const char* name() const override;
 
     void prepare(double sampleRate, int blockSize) override;
@@ -167,6 +172,13 @@ private:
     void updateCoefficients();
 
     double m_sampleRate = 44100.0;
+    bool m_deep = false;
+    bool m_midShift = false;
+    bool m_trebleShift = false;
+    // Bass/Mid/Treble, circuito, taxa e três voicings. Evita resolver a
+    // rede passiva novamente quando os controles não mudaram.
+    std::array<double, 8> m_coefficientSettings{};
+    bool m_coefficientsValid = false;
 
     double m_b0 = 0.0, m_b1 = 0.0, m_b2 = 0.0, m_b3 = 0.0;
     double m_a0 = 1.0, m_a1 = 0.0, m_a2 = 0.0, m_a3 = 0.0;

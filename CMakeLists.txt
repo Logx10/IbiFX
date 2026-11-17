@@ -143,6 +143,14 @@ add_library(ibifx_core STATIC
     src/ToneStack.cpp
     src/GraphicEQ.cpp
     src/Preamp.cpp
+    src/IronheartPreamp.cpp
+    src/IronheartInputStage.cpp
+    src/IronheartTriodeStage.cpp
+    src/IronheartChannelNetwork.cpp
+    src/IronheartGainStages.cpp
+    src/IronheartCathodeFollower.cpp
+    src/IronheartToneNetwork.cpp
+    src/IronheartMaster.cpp
     src/PowerAmp.cpp
     src/Tuner.cpp
     src/IRLoader.cpp
@@ -247,6 +255,11 @@ target_link_libraries(ibifx_rotovibe_preview PRIVATE ibifx_core)
 add_executable(ibifx_factory_presets tools/generate_factory_presets.cpp)
 target_compile_options(ibifx_factory_presets PRIVATE ${IBIFX_WARNINGS})
 target_link_libraries(ibifx_factory_presets PRIVATE ibifx_core)
+
+# Mede todas as receitas com a mesma entrada; não é um benchmark de fidelidade.
+add_executable(ibifx_amp_audit tools/amp_audit.cpp)
+target_compile_options(ibifx_amp_audit PRIVATE ${IBIFX_WARNINGS})
+target_link_libraries(ibifx_amp_audit PRIVATE ibifx_core)
 
 # O frontend desktop (Fase 12, AI_GUIDELINES §36) — Dear ImGui + SDL3, a
 # escolha registrada em docs/adr/0001-portabilidade-desktop-e-web.md: é a

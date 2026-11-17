@@ -334,6 +334,28 @@ void testOutputStaysInRangeWithMaxBias()
     }
 }
 
+void testIndependentStageDrive()
+{
+    Preamp normal, softer;
+    normal.setDrive(2.0f);
+    softer.setDrive(2.0f);
+    softer.findParameter("stage2")->setValue(0.5f);
+    softer.findParameter("stage3")->setValue(0.5f);
+    normal.prepare(48000.0, 128);
+    softer.prepare(48000.0, 128);
+    std::vector<float> a(4096), b;
+    for (std::size_t n = 0; n < a.size(); ++n)
+        a[n] = 0.01f * static_cast<float>(std::sin(6.283185307179586 * 220.0 * n / 48000.0));
+    b = a;
+    normal.process(a);
+    softer.process(b);
+    double loud = 0.0, quiet = 0.0;
+    for (std::size_t n = 1024; n < a.size(); ++n) { loud += a[n] * a[n]; quiet += b[n] * b[n]; }
+    check(quiet < loud * 0.5, "ganho dos estagios seguintes muda a cascata sem alterar primeiro drive");
+    checkClose(normal.findParameter("stage2")->value(), 1.0f, "estagio 2 preserva ganho legado por padrao");
+    checkClose(normal.findParameter("stage3")->value(), 1.0f, "estagio 3 preserva ganho legado por padrao");
+}
+
 int main()
 {
     std::cout << "\n=== testes do Preamp ===\n\n";
@@ -352,6 +374,7 @@ int main()
     testZeroBiasMatchesTheOldSymmetricCascade();
     testBiasMakesHalfCyclesAsymmetric();
     testOutputStaysInRangeWithMaxBias();
+    testIndependentStageDrive();
 
     return reportResults();
 }

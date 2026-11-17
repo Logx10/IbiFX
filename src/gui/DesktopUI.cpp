@@ -123,7 +123,7 @@ constexpr ImVec4 kHealthyColor(0.30f, 0.85f, 0.40f, 1.0f);
 constexpr const char* kGearDragPayload = "IBIFX_GEAR_ID";
 constexpr const char* kChainItemDragPayload = "IBIFX_CHAIN_ITEM";
 
-// O painel de um ampli: uma célula por knob, numa fileira só.
+// O painel de um ampli: uma célula por controle, até oito por fileira.
 constexpr float kAmpKnobCellWidth = 86.0f;
 constexpr float kAmpKnobRadius = 20.0f;
 
@@ -131,7 +131,7 @@ constexpr float kAmpKnobRadius = 20.0f;
 float gearPanelWidth(const GearModel& model)
 {
     if (model.category == GearCategory::Amp)
-        return kAmpKnobCellWidth * static_cast<float>(model.controls.size()) + 2.0f * kPedalPadding;
+        return kAmpKnobCellWidth * static_cast<float>(std::min<std::size_t>(8, model.controls.size())) + 2.0f * kPedalPadding;
     return kPedalWidth;
 }
 
@@ -453,7 +453,7 @@ std::string formatValue(const Parameter& parameter, float value)
         std::snprintf(buffer, sizeof(buffer), "%.0f Hz", static_cast<double>(value));
     else if (parameter.id() == "rate")
         std::snprintf(buffer, sizeof(buffer), "%.2f Hz", static_cast<double>(value));
-    else if (parameter.id() == "time")
+    else if (parameter.id() == "time" || parameter.id() == "release" || parameter.id() == "attack")
         std::snprintf(buffer, sizeof(buffer), "%.0f ms", static_cast<double>(value) * 1000.0);
     else if (parameter.id() == "threshold" && parameter.maxValue() <= 0.3f && parameter.minValue() >= 0.0f)
         std::snprintf(buffer, sizeof(buffer), "%.3f", static_cast<double>(value));
@@ -1752,9 +1752,9 @@ void DesktopUI::drawGearPanel(std::size_t segmentIndex, const GearModel& model)
     const bool bypassed = chain.isBypassed(segment.firstModule);
     const std::size_t count = model.controls.size();
 
-    // Ampli: uma fileira de knobs larga. Pedal: grade de 2 colunas, como
-    // drawPedal().
-    const int columns = isAmp ? static_cast<int>(count) : (count <= 1 ? 1 : 2);
+    // Amplis com muitos controles (Ironheart) quebram em várias fileiras.
+    // Pedal: grade de 2 colunas, como drawPedal().
+    const int columns = isAmp ? static_cast<int>(std::min<std::size_t>(8, count)) : (count <= 1 ? 1 : 2);
     const int rows = static_cast<int>((count + static_cast<std::size_t>(columns) - 1) / static_cast<std::size_t>(columns));
     const float knobRadius = isAmp ? kAmpKnobRadius : kPedalKnobRadius;
     const float cellWidth = isAmp ? kAmpKnobCellWidth : kPedalWidth / static_cast<float>(columns);
@@ -1874,7 +1874,18 @@ void DesktopUI::drawGearPanel(std::size_t segmentIndex, const GearModel& model)
         const float knobTop = cellTop + ImGui::GetTextLineHeight() + 4.0f;
         float value = std::clamp(m_targets[flatIndex], control.minValue, control.maxValue);
         bool changed = false;
-        if (isTreadle(model, control))
+        if (!control.choices.empty())
+        {
+            const auto position = static_cast<std::size_t>(std::clamp(
+                static_cast<int>(std::round(value)), 0, static_cast<int>(control.choices.size()) - 1));
+            ImGui::SetCursorScreenPos(ImVec2(cellCenterX - 35.0f, knobTop));
+            if (ImGui::Button(control.choices[position].c_str(), ImVec2(70.0f, knobRadius * 2.0f)))
+            {
+                value = static_cast<float>((position + 1) % control.choices.size());
+                changed = true;
+            }
+        }
+        else if (isTreadle(model, control))
         {
             ImGui::SetCursorScreenPos(ImVec2(cellCenterX - 14.0f, knobTop));
             changed = ImGui::VSliderFloat("##treadle", ImVec2(28.0f, knobRadius * 2.0f),
@@ -1918,7 +1929,9 @@ void DesktopUI::drawGearPanel(std::size_t segmentIndex, const GearModel& model)
         // Escala de 0 a 10, como a serigrafia de um ampli de verdade — o
         // valor interno (drive 2.8, ganho 0.2...) não diz nada a quem toca.
         char scale[16];
-        if (model.id == "stomp.rotovibe" && control.parameterId == "mode")
+        if (!control.choices.empty())
+            std::snprintf(scale, sizeof(scale), "%s", value >= 0.5f ? "1" : "0");
+        else if (model.id == "stomp.rotovibe" && control.parameterId == "mode")
             std::snprintf(scale, sizeof(scale), "%s", value >= 0.5f ? "Vib" : "Cho");
         else if (control.parameterId == "invert")
             std::snprintf(scale, sizeof(scale), "%s", value >= 0.5f ? "180" : "0");
@@ -1927,6 +1940,8 @@ void DesktopUI::drawGearPanel(std::size_t segmentIndex, const GearModel& model)
                           0.3 * std::pow(7.0 / 0.3, static_cast<double>(value)));
         else if (model.id == "stomp.chrome-wah" && control.parameterId == "position")
             std::snprintf(scale, sizeof(scale), "%.0f Hz", static_cast<double>(Wah::centerFrequency(value)));
+        else if (model.id == "stomp.gate" && control.parameterId == "release")
+            std::snprintf(scale, sizeof(scale), "%.0f ms", static_cast<double>(value) * 1000.0);
         else
             std::snprintf(scale, sizeof(scale), "%.1f",
                           static_cast<double>(10.0f * (value - control.minValue) / (control.maxValue - control.minValue)));
@@ -2105,12 +2120,20 @@ void DesktopUI::drawSkinnedGear(std::size_t segmentIndex, const GearModel& model
             m_engine.setParameter(moduleIndex, parameterIndex, value);
         }
 
-        // A serigrafia da imagem só tem MIN/MAX; o valor exato aparece ao
-        // passar o mouse, na mesma escala de 0 a 10 do painel vetorial.
+        // Gate usa unidades reais: release em ms, threshold em dBFS.
         if (ImGui::IsItemHovered() || ImGui::IsItemActive())
+        {
+            if (model.id == "stomp.gate" && control.parameterId == "release")
+                ImGui::SetTooltip("Release: %.0f ms\nMaior = fechamento mais lento, preservando a cauda.",
+                                  static_cast<double>(value) * 1000.0);
+            else if (model.id == "stomp.gate" && control.parameterId == "threshold")
+                ImGui::SetTooltip("Threshold: %.1f dBFS\nAbaixe se notas fracas forem cortadas.",
+                                  static_cast<double>(amplitudeToDb(value)));
+            else
             ImGui::SetTooltip("%s  %.1f", control.label.c_str(),
                               static_cast<double>(10.0f * (value - control.minValue)
                                                   / (control.maxValue - control.minValue)));
+        }
         ImGui::PopID();
     }
 

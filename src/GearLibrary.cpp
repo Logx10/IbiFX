@@ -326,32 +326,32 @@ void addAmps(std::vector<GearModel>& models)
     models.push_back(gear("amp.brit-plexi", "Brit Plexi", GearCategory::Amp, "Crunch",
         "Crunch clássico de rock dos anos 60/70, aberto e com o power amp trabalhando.",
         {module("HighPass", {{"frequency", 100.0f}}),
-         module("Gain", {{"gain", 2.0f}}),
-         module("Preamp", {{"drive", 1.8f}, {"interstage", 9000.0f}, {"bias", 0.08f}}),
+         module("Gain", {{"gain", 1.5f}}),
+         module("Preamp", {{"drive", 1.3f}, {"interstage", 9000.0f}, {"bias", 0.08f}, {"stage2", 0.8f}, {"stage3", 0.65f}}),
          module("ToneStack", {{"bass", 0.45f}, {"mid", 0.7f}, {"treble", 0.6f}, {"circuit", 1.0f}}),
-         module("Gain", {{"gain", 2.5f}}),
+         module("Gain", {{"gain", 3.5f}}),
          module("PowerAmp", {{"drive", 2.2f}, {"sag", 0.5f}, {"presence", 0.5f}}),
-         module("Gain", {{"gain", 0.2f}})}));
+         module("Gain", {{"gain", 0.28f}})}));
 
     models.push_back(gear("amp.brit-800", "Brit 800", GearCategory::Amp, "High Gain",
         "Hard rock dos anos 80: médio para frente, grave apertado.",
         {module("HighPass", {{"frequency", 120.0f}}),
-         module("Gain", {{"gain", 3.0f}}),
-         module("Preamp", {{"drive", 2.8f}, {"interstage", 7500.0f}, {"bias", 0.07f}}),
-         module("ToneStack", {{"bass", 0.45f}, {"mid", 0.75f}, {"treble", 0.6f}, {"circuit", 1.0f}}),
          module("Gain", {{"gain", 2.0f}}),
+         module("Preamp", {{"drive", 1.9f}, {"interstage", 7500.0f}, {"bias", 0.07f}, {"stage2", 0.9f}, {"stage3", 0.85f}}),
+         module("ToneStack", {{"bass", 0.45f}, {"mid", 0.75f}, {"treble", 0.6f}, {"circuit", 1.0f}}),
+         module("Gain", {{"gain", 2.5f}}),
          module("PowerAmp", {{"drive", 1.5f}, {"sag", 0.3f}, {"presence", 0.5f}}),
-         module("Gain", {{"gain", 0.2f}})}));
+         module("Gain", {{"gain", 0.22f}})}));
 
     models.push_back(gear("amp.modern-hi-gain", "Modern Hi-Gain", GearCategory::Amp, "High Gain",
         "Metal moderno: saturação densa, médio cavado, grave firme.",
         {module("HighPass", {{"frequency", 140.0f}}),
-         module("Gain", {{"gain", 4.0f}}),
-         module("Preamp", {{"drive", 4.5f}, {"interstage", 6500.0f}, {"bias", 0.05f}}),
+         module("Gain", {{"gain", 1.2f}}),
+         module("Preamp", {{"drive", 2.4f}, {"interstage", 6500.0f}, {"bias", 0.05f}, {"stage2", 0.95f}, {"stage3", 0.9f}}),
          module("ToneStack", {{"bass", 0.65f}, {"mid", 0.3f}, {"treble", 0.65f}, {"circuit", 1.0f}}),
          module("Gain", {{"gain", 2.5f}}),
          module("PowerAmp", {{"drive", 1.2f}, {"sag", 0.2f}}),
-         module("Gain", {{"gain", 0.2f}})}));
+         module("Gain", {{"gain", 0.22f}})}));
 
     // --- Os dois Marshall do John Frusciante ---
     // De Californication a Stadium Arcadium ele dividia a guitarra entre
@@ -373,14 +373,11 @@ void addAmps(std::vector<GearModel>& models)
          module("PowerAmp", {{"drive", 0.8f}, {"sag", 0.15f}, {"presence", 0.4f}}),
          module("Gain", {{"gain", 1.1f}})}));
 
-    // No espírito do Silver Jubilee 2555: três estágios de preamp e, entre
-    // eles, a rede de clipagem que define o ampli — dois LEDs vermelhos e
-    // diodos de silício montados para clipar ASSIMETRICAMENTE (harmônicos
-    // pares, como num overdrive). Sem ela o Jubilee seria um ampli limpo:
-    // quase toda a saturação do preamp vem dos diodos. Aqui ela é um
-    // AsymmetricClipper depois do Preamp. Mais escuro e comprimido no médio
-    // que o JCM800 (o Brit 800) da mesma época. Master calibrado para o
-    // nível dos outros Brit (~-14,5 dBFS).
+    // No espírito do Silver Jubilee: três estágios de pré, mais uma curva
+    // assimétrica antes do EQ. É uma aproximação de caráter, não a solução
+    // elétrica da rede de diodos. A receita atual usa o ToneStack padrão
+    // (Bassman), sem modelar os modos Clean/Rhythm Clip/Lead do hardware.
+    // Preservamos esse voicing como referência de escuta aprovada pelo usuário.
     models.push_back(gear("amp.brit-silver", "Brit Silver", GearCategory::Amp, "Crunch",
         "Crunch denso de clipagem por LED: médio comprimido e agressivo, mais escuro que o 800.",
         {module("HighPass", {{"frequency", 100.0f}}),
@@ -393,10 +390,10 @@ void addAmps(std::vector<GearModel>& models)
          module("Gain", {{"gain", 0.26f}})}));
 
     // Todos os amplis têm o mesmo painel — como o de um ampli real: Gain,
-    // Bass, Middle, Treble, Sag e Master. Os knobs acham o módulo pelo TIPO
+    // Bass, Middle, Treble, Sag, Power Master e Output. Os knobs acham o módulo pelo TIPO
     // (o Preamp, o ToneStack, o PowerAmp, o último Gain como master), não
     // pela posição: o Silver Jubilee tem um estágio de clipagem a mais no
-    // meio, e o painel dele tem que continuar funcionando. O teto do Master
+    // meio, e o painel dele tem que continuar funcionando. O teto do Output
     // é 2,5x o volume calibrado da receita, para o padrão cair perto do
     // "4" na escala de 0 a 10.
     //
@@ -413,6 +410,10 @@ void addAmps(std::vector<GearModel>& models)
         const std::size_t toneStack = moduleIndex(model, "ToneStack");
         const std::size_t powerAmp = moduleIndex(model, "PowerAmp");
         const std::size_t masterGain = model.modules.size() - 1;
+        const std::size_t powerMaster = powerAmp - 1;
+        const float powerLevel = model.modules[powerMaster].parameters[0].second;
+        if (model.id != "amp.brit-silver")
+            model.modules[powerAmp].parameters.emplace_back("coupling", 5.0f);
 
         const float master = model.modules[masterGain].parameters[0].second;
         model.controls = {control("Gain", preamp, "drive", 0.1f, 5.0f),
@@ -424,7 +425,8 @@ void addAmps(std::vector<GearModel>& models)
             model.controls.push_back(control("Presence", powerAmp, "presence", 0.0f, 1.0f));
 
         model.controls.push_back(control("Sag", powerAmp, "sag", 0.0f, 1.0f));
-        model.controls.push_back(control("Master", masterGain, "gain", 0.0f, master * 2.5f));
+        model.controls.push_back(control("Power Master", powerMaster, "gain", 0.0f, powerLevel * 2.0f));
+        model.controls.push_back(control("Output", masterGain, "gain", 0.0f, master * 2.5f));
     }
 }
 
@@ -518,6 +520,49 @@ std::vector<GearControl> controlsFromModule(const Preset::ModuleState& state)
     return result;
 }
 
+void addIronheart(std::vector<GearModel>& models)
+{
+    Preset defaults;
+    defaults.modules = {module("IronheartPreamp"), module("IronheartMaster")};
+    ModuleChain defaultChain;
+    preset::apply(defaults, defaultChain);
+    defaults = preset::capture("Ironheart", defaultChain);
+    // O Reset do painel usa a receita, que precisa conter todos os padrões.
+    const auto& preamp = defaults.modules[0];
+    const auto& master = defaults.modules[1];
+    auto controls = controlsFromModule(preamp);
+    auto masterControls = controlsFromModule(master);
+    for (auto& c : masterControls) c.moduleOffset = 1;
+    controls.insert(controls.end(), masterControls.begin(), masterControls.end());
+    for (auto& c : controls)
+    {
+        if (c.parameterId == "lead") c.choices = {"Cln/Rhy", "Lead"};
+        else if (c.parameterId == "clean") c.choices = {"Rhythm", "Clean"};
+        else if (c.parameterId == "play") c.choices = {"Standby", "Play"};
+        else if (c.parameterId == "boostEnabled" || c.parameterId == "reverbEnabled"
+                 || c.parameterId == "power" || c.parameterId.ends_with("Deep")
+                 || c.parameterId.ends_with("Shift"))
+            c.choices = {"Off", "On"};
+    }
+    models.push_back(gear("amp.ironheart-120", "Ironheart 120", GearCategory::Amp, "High Gain",
+        "Inspirado no Laney IRT120H: Clean, Rhythm, Lead, Pre-Boost, EQ pull e master completo.",
+        {preamp, master}));
+    models.back().controls = controls;
+
+    std::erase_if(controls, [](const GearControl& c) { return c.moduleOffset != 0; });
+    models.push_back(gear("amp.ironheart-preamp", "Ironheart Preamp", GearCategory::Amp, "Preamp",
+        "Somente o pre do IRT120H: combine com efeitos, outra potencia e uma IR.", {preamp}));
+    models.back().controls = controls;
+
+    // Seções separadas tornam o FX loop uma posição real na cadeia livre.
+    auto tail = models[models.size() - 2].controls;
+    std::erase_if(tail, [](const GearControl& c) { return c.moduleOffset != 1; });
+    for (auto& c : tail) c.moduleOffset = 0;
+    models.push_back(gear("rack.ironheart-master", "Ironheart Master", GearCategory::Rack, "Power Amp",
+        "Reverb, potencia, Dynamics, Tone e Watts; use depois do pre e dos efeitos do loop.", {master}));
+    models.back().controls = std::move(tail);
+}
+
 bool isWavFile(const std::filesystem::path& path)
 {
     std::string extension = path.extension().string();
@@ -562,6 +607,7 @@ GearLibrary::GearLibrary()
 {
     addStomps(m_models);
     addAmps(m_models);
+    addIronheart(m_models);
     addRack(m_models);
     addEqualizers(m_models);
     addRouting(m_models);

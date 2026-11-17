@@ -312,6 +312,43 @@ void testEmptyBufferDoesNotCrash()
     check(buffer.empty(), "buffer vazio continua vazio");
 }
 
+void testReconfigurationMatchesFreshFilter()
+{
+    ToneStack reused;
+    reused.prepare(44100.0, 128);
+    auto warmup = generateSine(440.0, 4096);
+    reused.process(warmup);
+    reused.setBass(0.3f);
+    reused.setMid(0.7f);
+    reused.setTreble(0.8f);
+    reused.setCircuit(2);
+    reused.setVoicing(true, true, true);
+    reused.prepare(96000.0, 128);
+    reused.reset();
+
+    ToneStack fresh;
+    fresh.setBass(0.3f);
+    fresh.setMid(0.7f);
+    fresh.setTreble(0.8f);
+    fresh.setCircuit(2);
+    fresh.setVoicing(true, true, true);
+    fresh.prepare(96000.0, 128);
+    auto actual = generateSine(440.0, 4096);
+    auto expected = actual;
+    reused.process(actual);
+    fresh.process(expected);
+    check(actual == expected, "mudancas de EQ, voicing e taxa atualizam a resposta");
+    reused.setVoicing(false, false, false);
+    reused.reset();
+    fresh.setVoicing(false, false, false);
+    fresh.reset();
+    actual = generateSine(440.0, 4096);
+    expected = actual;
+    reused.process(actual);
+    fresh.process(expected);
+    check(actual == expected, "desligar shifts apos uso atualiza os coeficientes");
+}
+
 int main()
 {
     std::cout << "\n=== testes do ToneStack ===\n\n";
@@ -326,6 +363,7 @@ int main()
     testResetClearsFilterHistory();
     testParameterRoundTrip();
     testEmptyBufferDoesNotCrash();
+    testReconfigurationMatchesFreshFilter();
 
     return reportResults();
 }

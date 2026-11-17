@@ -19,9 +19,11 @@ irs/
 Isso vira, no catálogo, os cabinets `cab.4x12-brit.sm57-on-axis`,
 `cab.4x12-brit.ribbon-room`, `cab.1x12-open-back.condenser`...
 
-Use IRs no **mesmo sample rate** do motor (48 kHz no `--live`/desktop) e,
-de preferência, **curtas** (até ~200 ms): o `Cabinet` ainda convolve de
-forma direta, sem FFT, e o custo cresce com o tamanho da IR.
+O `Cabinet` converte automaticamente o sample rate da IR para o do motor
+(48 kHz no `--live`/desktop) e normaliza seu nível ao carregar. Usar uma IR
+na taxa do motor evita essa conversão inicial. A convolução combina uma
+cabeça direta com cauda particionada por FFT; IRs mais longas ainda usam
+mais memória e processamento. IRs de até ~200 ms são um ponto de partida.
 
 Os `.wav` desta pasta **não são versionados**, só este README, porque
 cada pacote de IR tem a sua própria licença.

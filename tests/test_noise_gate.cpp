@@ -9,6 +9,7 @@
 // A infra de verificação (check, checkClose, reportResults) vive em
 // test_helpers.h, compartilhada com os outros testes.
 
+#include <algorithm>
 #include <cmath>
 #include <iostream>
 #include <vector>
@@ -311,6 +312,85 @@ void testEmptyBufferDoesNotCrash()
     check(buffer.empty(), "buffer vazio continua vazio");
 }
 
+// Reproduz o hold consumido por vales separados: cada vale é mais curto
+// que 50 ms, com recuperação dentro da histerese entre eles.
+void testSeparatedDipsDoNotAccumulateHold()
+{
+    NoiseGate gate;
+    gate.setThreshold(0.01f);
+    gate.setRelease(0.01f);
+    gate.prepare(48000.0, 128);
+    std::vector<float> attack(4800, 0.03f);
+    gate.process(attack);
+    float weakest = 1.0f;
+    for (int repeat = 0; repeat < 20; ++repeat)
+    {
+        std::vector<float> dip(1200, 0.001f); // 25 ms
+        gate.process(dip);
+        weakest = std::min(weakest, dip.back() / 0.001f);
+        std::vector<float> recovery(1920, 0.007f); // abaixo de abrir, acima de fechar
+        gate.process(recovery);
+        weakest = std::min(weakest, recovery.back() / 0.007f);
+    }
+    check(weakest > 0.99f, "vales separados nao picotam a nota nem esgotam o hold");
+}
+
+void testReleaseCanRecoverWithoutAnotherAttack()
+{
+    NoiseGate gate;
+    gate.setThreshold(0.01f);
+    gate.setRelease(0.1f);
+    gate.prepare(48000.0, 128);
+    std::vector<float> attack(4800, 0.03f);
+    gate.process(attack);
+    std::vector<float> dip(9600, 0.001f); // 200 ms: release ja comecou
+    gate.process(dip);
+    check(dip.back() / 0.001f < 0.5f, "vale longo inicia fechamento real");
+    std::vector<float> recovery(4800, 0.007f);
+    gate.process(recovery);
+    check(recovery.back() / 0.007f > 0.99f,
+          "nota recupera volume durante release sem ultrapassar limiar de abrir");
+
+    std::vector<float> noise(96000, 0.001f);
+    gate.process(noise);
+    check(noise.back() == 0.0f, "ruido abaixo do limiar ainda e silenciado");
+    std::vector<float> quietNoise(4800, 0.007f);
+    gate.process(quietNoise);
+    check(quietNoise.back() == 0.0f, "gate totalmente fechado exige novo ataque");
+}
+
+// O sinal alterna a frequência como em um bend, com vibrato de amplitude
+// que atravessa o limiar inferior. Nenhum vale dura uma janela de hold.
+void testBendWithAmplitudeBeatingKeepsSustain()
+{
+    constexpr double rate = 48000.0;
+    constexpr double twoPi = 6.283185307179586;
+    NoiseGate gate;
+    gate.setThreshold(0.005f);
+    gate.setRelease(0.1f);
+    gate.prepare(rate, 128);
+    std::vector<float> input(static_cast<std::size_t>(rate * 2));
+    double phase = 0.0;
+    for (std::size_t n = 0; n < input.size(); ++n)
+    {
+        const double t = n / rate;
+        const double frequency = 440.0 * std::pow(2.0, std::min(t, 1.0) * 2.0 / 12.0);
+        phase += twoPi * frequency / rate;
+        const double amplitude = t < 0.15 ? 0.025
+            : 0.0055 + 0.002 * std::cos(twoPi * 6.0 * t);
+        input[n] = static_cast<float>(amplitude * std::sin(phase));
+    }
+    auto output = input;
+    gate.process(output);
+    double inEnergy = 0.0, outEnergy = 0.0;
+    for (std::size_t n = 24000; n < input.size(); ++n)
+    {
+        inEnergy += input[n] * input[n];
+        outEnergy += output[n] * output[n];
+    }
+    check(outEnergy > 0.98 * inEnergy, "bend com batimentos conserva sustain a release de 100 ms");
+}
+
 int main()
 {
     std::cout << "\n=== testes do NoiseGate ===\n\n";
@@ -326,6 +406,9 @@ int main()
     testHysteresisKeepsStateInsideTheBand();
     testHoldKeepsGateOpenBeforeReleaseStarts();
     testEmptyBufferDoesNotCrash();
+    testSeparatedDipsDoNotAccumulateHold();
+    testReleaseCanRecoverWithoutAnotherAttack();
+    testBendWithAmplitudeBeatingKeepsSustain();
 
     return reportResults();
 }

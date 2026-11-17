@@ -54,6 +54,13 @@ ToneStack::ToneStack()
                               static_cast<float>(kCircuitCount - 1), 0.0f);
 }
 
+void ToneStack::setVoicing(bool deep, bool midShift, bool trebleShift)
+{
+    m_deep = deep;
+    m_midShift = midShift;
+    m_trebleShift = trebleShift;
+}
+
 void ToneStack::setCircuit(int circuitIndex)
 {
     m_parameters[3].setValue(static_cast<float>(circuitIndex));
@@ -119,20 +126,34 @@ void ToneStack::reset()
 // contínuo (b1..b3, a1..a3) para os coeficientes digitais B0..B3, A0..A3.
 void ToneStack::updateCoefficients()
 {
+    const std::array<double, 8> settings = {
+        m_parameters[0].value(), m_parameters[1].value(), m_parameters[2].value(),
+        m_parameters[3].value(), m_sampleRate,
+        m_deep ? 1.0 : 0.0, m_midShift ? 1.0 : 0.0, m_trebleShift ? 1.0 : 0.0};
+    if (m_coefficientsValid && settings == m_coefficientSettings)
+        return;
+    m_coefficientSettings = settings;
+    m_coefficientsValid = true;
+
     // Bass passa pela curva do pot; mid e treble são lineares (header).
-    const double l = bassTaper(static_cast<double>(m_parameters[0].value()));
-    const double m = static_cast<double>(m_parameters[1].value());
-    const double t = static_cast<double>(m_parameters[2].value());
+    const double l = bassTaper(settings[0]);
+    const double m = settings[1];
+    const double t = settings[2];
 
     // O jogo de componentes escolhido — arredondado e preso à faixa, porque
     // o parâmetro é um float que veio de preset ou de automação.
-    int circuitIndex = static_cast<int>(m_parameters[3].value() + 0.5f);
+    int circuitIndex = static_cast<int>(settings[3] + 0.5);
     if (circuitIndex < 0)
         circuitIndex = 0;
     if (circuitIndex >= kCircuitCount)
         circuitIndex = kCircuitCount - 1;
 
-    const CircuitComponents& k = kCircuits[circuitIndex];
+    CircuitComponents k = kCircuits[circuitIndex];
+    // Aumentar C desloca a resposta para baixo. São aproximações dos pull
+    // switches, sem valores de componentes medidos no hardware Laney.
+    if (m_deep) k.c2 *= 2.0;
+    if (m_midShift) k.c3 *= 2.0;
+    if (m_trebleShift) k.c1 *= 2.0;
 
     // Produtos reaproveitados nas somas abaixo — nomeados como aparecem no
     // artigo (C1C2 = C1*C2, e assim por diante), para que cada linha de

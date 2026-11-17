@@ -32,6 +32,10 @@ constexpr float kHysteresisRatio = 0.5f;
 // bastante para o ruído não vazar perceptivelmente depois da última nota.
 // Ver "HOLD" em NoiseGate.h. Fixo pelo mesmo motivo de kAttackSeconds.
 constexpr float kHoldSeconds = 0.05f;
+
+// Só exige um novo ataque depois de a cauda ficar praticamente inaudível
+// (-100 dB de ganho). Durante o release uma nota ainda pode se recuperar.
+constexpr float kClosedGain = 0.00001f;
 }
 
 NoiseGate::NoiseGate()
@@ -106,27 +110,31 @@ void NoiseGate::process(std::vector<float>& buffer)
         // o comentário em NoiseGate.h.
         m_envelope += m_envelopeCoeff * (std::fabs(sample) - m_envelope);
 
-        // O termostato da histerese: abrir e fechar usam limiares
-        // diferentes, e entre eles o estado atual é mantido — ver
-        // "HISTERESE" em NoiseGate.h. Fechar ainda exige o hold esgotado —
-        // ver "HOLD" lá também.
-        if (m_envelope > thresholdValue)
+        // Uma nota já reconhecida pode recuperar volume acima do limiar
+        // inferior, inclusive DURANTE o release. Exigir de novo o limiar
+        // superior cortava bends que voltavam mais fracos depois de um vale.
+        const bool sustaining = m_envelope > thresholdValue
+            || (m_open && m_envelope >= closeThreshold);
+        if (sustaining)
         {
             m_open = true;
             m_holdSamplesLeft = m_holdSamplesTotal;
         }
-        else if (m_envelope < closeThreshold)
-        {
-            if (m_holdSamplesLeft > 0)
-                --m_holdSamplesLeft;
-            else
-                m_open = false;
-        }
 
-        const float target = m_open ? 1.0f : 0.0f;
+        // O nível precisa ficar abaixo do limiar de FECHAR por 50 ms
+        // CONSECUTIVOS. Vales isolados não podem consumir um hold acumulado.
+        const bool holding = m_open && m_holdSamplesLeft > 0;
+        const float target = sustaining || holding ? 1.0f : 0.0f;
+        if (!sustaining && m_holdSamplesLeft > 0)
+            --m_holdSamplesLeft;
         const float coeff = target > m_gain ? m_attackCoeff : releaseCoeff;
 
         m_gain += coeff * (target - m_gain);
+        if (target == 0.0f && m_gain < kClosedGain)
+        {
+            m_gain = 0.0f;
+            m_open = false;
+        }
 
         sample *= m_gain;
     }

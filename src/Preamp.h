@@ -122,7 +122,8 @@ public:
     Preamp();
 
     // Quanto cada estágio empurra o sinal pra dentro da curva. Aplicado
-    // igualmente aos 3 estágios.
+    // igualmente aos 3 estágios nos presets legados. stage2/stage3 permitem
+    // escalar o ganho dos dois estágios seguintes sem mudar o primeiro.
     void setDrive(float newDrive);
     float drive() const;
 

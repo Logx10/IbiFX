@@ -32,6 +32,9 @@ PowerAmp::PowerAmp()
     // 0 = neutro: um PowerAmp sem presence soa exatamente como antes de ela
     // existir. Só os amplis que têm o knob de verdade (os Brit) ligam.
     m_parameters.emplace_back("presence", "Presence", 0.0f, 1.0f, 0.0f);
+    // Zero mantém presets anteriores idênticos. Receitas novas podem
+    // representar o acoplamento final que impede DC de chegar ao falante.
+    m_parameters.emplace_back("coupling", "Output Coupling", 0.0f, 40.0f, 0.0f);
 }
 
 void PowerAmp::setPresence(float amount)
@@ -72,6 +75,9 @@ const char* PowerAmp::name() const
 void PowerAmp::prepare(double sampleRate, int /*blockSize*/)
 {
     m_sampleRate = sampleRate > 0.0 ? sampleRate : 44100.0;
+    m_driveRamp.prepare(m_sampleRate, kDefaultRampSeconds, drive());
+    m_sagRamp.prepare(m_sampleRate, kDefaultRampSeconds, sag());
+    m_presenceRamp.prepare(m_sampleRate, kDefaultRampSeconds, presence());
 }
 
 void PowerAmp::reset()
@@ -79,21 +85,31 @@ void PowerAmp::reset()
     m_envelope = 0.0f;
     m_presenceLow = 0.0f;
     m_oversampler.reset();
+    m_driveRamp.snapTo(drive());
+    m_sagRamp.snapTo(sag());
+    m_presenceRamp.snapTo(presence());
+    m_dcX = m_dcY = 0.0f;
 }
 
 void PowerAmp::process(std::vector<float>& buffer)
 {
-    const float driveValue = m_parameters[0].value();
-    const float sagValue = m_parameters[1].value();
+    m_driveRamp.setTarget(drive());
+    m_sagRamp.setTarget(sag());
+    m_presenceRamp.setTarget(presence());
 
     const float attackCoeff = onePoleCoefficient(kSagAttackSeconds, m_sampleRate);
     const float releaseCoeff = onePoleCoefficient(kSagReleaseSeconds, m_sampleRate);
 
-    const float presenceGain = m_parameters[2].value() * kPresenceMaxBoost;
     const float presenceCoeff = onePoleCoefficient(1.0f / (2.0f * kPi * kPresenceFrequency), m_sampleRate);
+    const float coupling = m_parameters[3].value();
+    const float dcR = std::exp(-2.0f * kPi * coupling / static_cast<float>(m_sampleRate));
+    const float dcG = 0.5f * (1.0f + dcR);
 
     for (float& sample : buffer)
     {
+        const float driveValue = m_driveRamp.nextValue();
+        const float sagValue = m_sagRamp.nextValue();
+        const float presenceGain = m_presenceRamp.nextValue() * kPresenceMaxBoost;
         // Presence ANTES da curva: o agudo realçado também satura mais, como
         // num ampli em que a realimentação negativa foi aliviada nos agudos.
         // agudo = sinal - grave (passa-alta de um polo pela diferença).
@@ -123,6 +139,13 @@ void PowerAmp::process(std::vector<float>& buffer)
         { return ceiling * std::tanh(effectiveDrive * x / ceiling); };
 
         sample = m_oversampling ? m_oversampler.process(sample, curve) : curve(sample);
+        if (coupling > 0.0f)
+        {
+            const float blocked = dcG * (sample - m_dcX) + dcR * m_dcY;
+            m_dcX = sample;
+            m_dcY = blocked;
+            sample = blocked;
+        }
     }
 }
 

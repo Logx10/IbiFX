@@ -301,6 +301,68 @@ void testPresenceDefaultsToNeutral()
     checkClose(powerAmp.presence(), 0.7f, "vira 0.7");
 }
 
+void testLiveControlsRampWithoutSteps()
+{
+    for (const std::string id : {"drive", "sag", "presence"})
+    {
+        PowerAmp changed, reference;
+        changed.setOversampling(false);
+        reference.setOversampling(false);
+        changed.prepare(48000.0, 128);
+        reference.prepare(48000.0, 128);
+        std::vector<float> a(4096), b;
+        for (std::size_t n = 0; n < a.size(); ++n) a[n] = n % 2 ? -0.1f : 0.1f;
+        b = a;
+        changed.process(a);
+        reference.process(b);
+        changed.findParameter(id)->setNormalized(1.0f);
+        a = {0.1f};
+        b = a;
+        changed.process(a);
+        reference.process(b);
+        check(std::fabs(a[0] - b[0]) < 0.001f, id + " nao cria degrau ao girar");
+    }
+    PowerAmp amp;
+    amp.setOversampling(false);
+    amp.setSag(0.0f);
+    amp.prepare(48000.0, 128);
+    amp.setDrive(5.0f);
+    std::vector<float> signal(960, 0.05f);
+    amp.process(signal);
+    checkClose(signal.back(), std::tanh(0.25f), "drive chega ao destino apos a rampa de 20 ms");
+}
+
+void testOutputCouplingRemovesDcAndPreservesBass()
+{
+    PowerAmp amp;
+    amp.setOversampling(false);
+    amp.setSag(0.0f);
+    amp.findParameter("coupling")->setValue(5.0f);
+    amp.prepare(48000.0, 128);
+    std::vector<float> dc(48000, 0.3f);
+    amp.process(dc);
+    check(std::fabs(dc.back()) < 1e-5f, "acoplamento remove DC da potencia");
+
+    const auto level = [](float coupling) {
+        PowerAmp filter;
+        filter.setOversampling(false);
+        filter.setSag(0.0f);
+        filter.findParameter("coupling")->setValue(coupling);
+        filter.prepare(48000.0, 128);
+        std::vector<float> signal(96000);
+        for (std::size_t n = 0; n < signal.size(); ++n)
+            signal[n] = 0.01f * static_cast<float>(std::sin(6.283185307179586 * 82.0 * n / 48000.0));
+        filter.process(signal);
+        double sum = 0.0;
+        for (std::size_t n = 48000; n < signal.size(); ++n) sum += signal[n] * signal[n];
+        return std::sqrt(sum / 48000.0);
+    };
+    check(std::fabs(20.0 * std::log10(level(5.0f) / level(0.0f))) < 0.1,
+          "acoplamento altera menos de 0.1 dB no Mi grave");
+    PowerAmp legacy;
+    checkClose(legacy.findParameter("coupling")->value(), 0.0f, "preset antigo mantem acoplamento desligado");
+}
+
 int main()
 {
     std::cout << "\n=== testes do PowerAmp ===\n\n";
@@ -317,6 +379,8 @@ int main()
 
     testPresenceBoostsHighsOnly();
     testPresenceDefaultsToNeutral();
+    testLiveControlsRampWithoutSteps();
+    testOutputCouplingRemovesDcAndPreservesBass();
 
     return reportResults();
 }

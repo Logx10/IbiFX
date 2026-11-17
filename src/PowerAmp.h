@@ -4,6 +4,7 @@
 
 #include "AudioModule.h"
 #include "Oversampler.h"
+#include "SmoothedValue.h"
 
 // PowerAmp — o estágio final, que "respira" com a intensidade de quem toca.
 //
@@ -55,17 +56,24 @@
 // muito mais lentos que os do NoiseGate (2 ms) ou do detector de nível do
 // Compressor (ajustável, mas tipicamente dezenas de ms). Um gate ou um
 // compressor reagem à ENVOLTÓRIA de uma nota individual; o sag reage ao
-// comportamento de VÁRIOS segundos de música — mais perto da inércia
+// comportamento recente da música — uma aproximação da inércia
 // térmica/elétrica de uma fonte de alimentação de verdade do que da
 // dinâmica de uma única nota. Não são ajustáveis ainda: são constantes
 // estruturais do efeito, não controles que o músico giraria.
 //
-// POR QUE A SAÍDA CONTINUA EM [-1, +1]
+// LIMITES DA CURVA
 // A saída final é sempre teto * tanh(...), com |tanh| < 1 e teto entre
 // 0,75 e 1 (o envelope entra na conta do teto limitado a 1, então o teto
 // nunca desce além de kSagDipDepth) — o produto fica sempre dentro de
-// [-teto, +teto], que está dentro de [-1, +1]. Mesma garantia matemática
-// do SoftClipper e do Preamp, só que com um teto que respira.
+// [-teto, +teto], que está dentro de [-1, +1]. O FIR de oversampling e o
+// acoplamento opcional depois da curva podem ter overshoot em transientes;
+// o limiter final continua sendo responsável pelo teto da cadeia.
+//
+// CONTROLES E ACOPLAMENTO FINAL
+// Drive, Sag e Presence caminham em rampas de 20 ms após prepare(), para
+// girar controles sem saltos. O parâmetro coupling, em Hz, representa o
+// bloqueio de DC na saída. Zero preserva presets legados; as novas receitas
+// usam 5 Hz, exceto o Silver preservado como referência de timbre.
 //
 // PRESENCE (parâmetro "presence", 0 a 1)
 // O knob que dá a "mordida" de um Marshall. No circuito real ele não é um
@@ -122,4 +130,9 @@ private:
 
     Oversampler m_oversampler;
     bool m_oversampling = true;
+    SmoothedValue m_driveRamp;
+    SmoothedValue m_sagRamp;
+    SmoothedValue m_presenceRamp;
+    float m_dcX = 0.0f;
+    float m_dcY = 0.0f;
 };
