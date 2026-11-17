@@ -9,6 +9,7 @@
 #include "ModuleChain.h"
 #include "Preset.h"
 #include "Serialization.h"
+#include "gui/IronheartPanel.h"
 #include "test_helpers.h"
 
 namespace
@@ -283,6 +284,39 @@ void testAutomatedBlockBoundaries()
     };
     check(run(1) == run(128), "automacao de ganho/EQ/pulls/canais independe da particao de blocos");
 }
+
+void testPanelSelection()
+{
+    namespace panel = ironheart_panel;
+    // O seletor de tres posicoes precisa resolver os mesmos dois IDs
+    // usados pelos presets antigos, sem trocar Clean pelo caminho Rhythm.
+    for (float previousClean : {0.0f, 1.0f})
+        for (auto selected : {panel::Channel::Clean, panel::Channel::Rhythm, panel::Channel::Lead})
+        {
+            const auto values = panel::select(selected, previousClean);
+            check(panel::channel(values.lead, values.clean) == selected, "seletor direto resolve Clean/Rhythm/Lead");
+            if (selected == panel::Channel::Lead)
+                check(values.clean == previousClean, "entrar em Lead conserva a escolha Clean/Rhythm anterior");
+        }
+    check(panel::channel(1, 1) == panel::Channel::Lead, "painel respeita prioridade Lead em presets antigos");
+    check(std::string(panel::controls(panel::Channel::Clean)[0].id) == "cleanVolume", "Clean mostra seu proprio volume");
+    check(std::string(panel::controls(panel::Channel::Clean)[1].id) == "rhythmBass", "Clean edita o EQ compartilhado Rhythm");
+
+    GearLibrary library;
+    const auto* amp = library.find("amp.ironheart-120");
+    if (!amp) { check(false, "catalogo do painel existe"); return; }
+    const auto checkControls = [&](std::span<const panel::Control> controls) {
+        for (const auto& control : controls)
+            check(std::any_of(amp->controls.begin(), amp->controls.end(), [&](const GearControl& catalog) {
+                return catalog.parameterId == control.id && catalog.moduleOffset == control.moduleOffset;
+            }), std::string("controle do painel aponta ao modulo correto: ") + control.id);
+    };
+    for (auto selected : {panel::Channel::Clean, panel::Channel::Rhythm, panel::Channel::Lead})
+    {
+        checkControls(panel::controls(selected)); checkControls(panel::pulls(selected));
+    }
+    checkControls(panel::masterControls); checkControls(panel::advancedKnobs);
+}
 }
 
 int main()
@@ -293,5 +327,6 @@ int main()
     testLifecycle();
     testPresets();
     testAutomatedBlockBoundaries();
+    testPanelSelection();
     return reportResults();
 }

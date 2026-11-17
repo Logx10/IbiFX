@@ -21,12 +21,21 @@ falante. **Ironheart Preamp** oferece somente a saída do pré.
 
 ## Controles
 
-Os 28 controles do painel são salvos nos presets. Chaves aparecem como
-botões com posições nomeadas; knobs usam escala de 0 a 10.
+Os 28 parâmetros continuam salvos nos presets. O painel desktop reúne
+pré e master: escolha **Clean / Rhythm / Lead** diretamente e ajuste
+somente os controles do canal ativo. Knobs e sliders usam escala de 0 a 10;
+os valores também podem ser digitados com Ctrl+clique.
+
+**Saída (Watts)** e **Reverb** ficam logo abaixo do EQ. Em **Mais ajustes**,
+na mesma tela, estão Boost, Deep/Mid Shift/Treble Shift do canal ativo,
+**Tone global**, Dynamics, Power, Play e Restaurar amp. Tone global regula
+o brilho da potência para todos os canais; Graves/Médios/Agudos regulam
+o EQ do canal. Não é necessário abrir outro módulo para ajustá-los.
+O checkbox **Ativo** liga ou contorna o equipamento inteiro.
 
 | Seção | Controles e comportamento |
 | --- | --- |
-| Seleção | Channel alterna Lead e Clean/Rhythm; Clean/Rhythm seleciona o modo da segunda seção. Lead tem prioridade. |
+| Seleção | Clean / Rhythm / Lead no painel. Os parâmetros internos `lead` e `clean` são preservados para presets/MIDI; Lead tem prioridade. |
 | Entrada | Boost On e Pre-Boost aumentam o sinal antes da saturação, inclusive em Clean. |
 | Clean | Clean Volume; usa o EQ Rhythm e ignora Rhythm Gain/Volume. |
 | Rhythm | Gain, Bass, Middle, Treble, Deep, Mid Shift, Treble Shift e Volume. |
@@ -35,8 +44,9 @@ botões com posições nomeadas; knobs usam escala de 0 a 10.
 
 Deep estende a resposta grave; Mid Shift desloca os médios para baixo;
 Treble Shift amplia a faixa do controle de agudos. As duas seções conservam
-os ajustes ao trocar de canal. Os controles sem efeito no canal atual
-continuam visíveis para permitir preparar o próximo timbre.
+os ajustes ao trocar de canal. Os controles dos outros canais ficam
+guardados e reaparecem ao selecioná-los. Clean mostra seu Volume e o EQ
+compartilhado com Rhythm, sem exibir Rhythm Gain/Volume que não atuam nele.
 Os ramos passivos de entrada continuam carregando V1A: o bright do Clean
 pode ter uma interação pequena com os outros modos, mesmo sem selecionar
 a saída Clean. Clean Volume inclui agora o capacitor de 470 pF do esquema.

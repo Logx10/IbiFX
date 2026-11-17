@@ -157,6 +157,7 @@ private:
     // peça só: um ampli com a faixa de knobs de 0 a 10, ou um pedal com
     // um footswitch que liga/desliga todos os módulos da receita juntos.
     void drawGearPanel(std::size_t segmentIndex, const GearModel& model);
+    void drawIronheartPanel(std::size_t segmentIndex, const GearModel& model);
 
     // As texturas de um equipamento com skin (GearSkins.h).
     struct GearTextures
