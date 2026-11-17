@@ -145,37 +145,43 @@ float Reverb::processAllpass(Allpass& allpass, float input, float feedback)
 
 void Reverb::process(std::vector<float>& buffer)
 {
-    const float feedback = m_parameters[0].value();
-    const float dampingValue = m_parameters[1].value();
     const float mixValue = m_parameters[2].value();
 
     for (float& sample : buffer)
     {
         const float dry = sample;
-
-        // Os 4 combs rodam em PARALELO, todos a partir da mesma entrada seca
-        // — não um alimentando o outro. É a soma deles que cria a densidade;
-        // encadeados em série, cada um coloriria o que o anterior já
-        // coloriu, e o resultado ficaria mais metálico, não mais denso.
-        float wet = 0.0f;
-
-        for (Comb& comb : m_combs)
-        {
-            wet += processComb(comb, dry, feedback, dampingValue);
-        }
-
-        // Dividido pela quantidade de combs: somar 4 sinais correlacionados
-        // sem compensar quadruplicaria o volume da cauda em relação ao seco.
-        wet /= static_cast<float>(kCombCount);
-
-        // Os 2 allpass rodam em SÉRIE — aqui sim um alimenta o outro — porque
-        // cada um só espalha no tempo o que já saiu do anterior, sem
-        // introduzir ressonância nova.
-        for (Allpass& allpass : m_allpasses)
-        {
-            wet = processAllpass(allpass, wet, kAllpassFeedback);
-        }
-
+        const float wet = processWetSample(dry);
         sample = dry * (1.0f - mixValue) + wet * mixValue;
     }
+}
+
+float Reverb::processWetSample(float dry) noexcept
+{
+    const float feedback = m_parameters[0].value();
+    const float dampingValue = m_parameters[1].value();
+
+    // Os 4 combs rodam em PARALELO, todos a partir da mesma entrada seca
+    // — não um alimentando o outro. É a soma deles que cria a densidade;
+    // encadeados em série, cada um coloriria o que o anterior já
+    // coloriu, e o resultado ficaria mais metálico, não mais denso.
+    float wet = 0.0f;
+
+    for (Comb& comb : m_combs)
+    {
+        wet += processComb(comb, dry, feedback, dampingValue);
+    }
+
+    // Dividido pela quantidade de combs: somar 4 sinais correlacionados
+    // sem compensar quadruplicaria o volume da cauda em relação ao seco.
+    wet /= static_cast<float>(kCombCount);
+
+    // Os 2 allpass rodam em SÉRIE — aqui sim um alimenta o outro — porque
+    // cada um só espalha no tempo o que já saiu do anterior, sem
+    // introduzir ressonância nova.
+    for (Allpass& allpass : m_allpasses)
+    {
+        wet = processAllpass(allpass, wet, kAllpassFeedback);
+    }
+
+    return wet;
 }

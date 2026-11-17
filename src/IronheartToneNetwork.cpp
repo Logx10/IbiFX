@@ -49,6 +49,12 @@ void IronheartToneNetwork::reset() noexcept
     m_offset = {}; m_dirty = true;
 }
 
+void IronheartToneNetwork::setOutputLoad(double conductance) noexcept
+{
+    if (!std::isfinite(conductance) || conductance <= 0.0) return;
+    if (conductance != m_outputLoad) { m_outputLoad = conductance; m_dirty = true; }
+}
+
 void IronheartToneNetwork::stamp(int a, int b, double g) noexcept
 {
     if (a != Ground) m_matrix[a][a] += g;
@@ -93,7 +99,7 @@ void IronheartToneNetwork::updateMatrix(double bass, double mid, double treble) 
     stamp(MidWiper, Ground, 1.0 / std::max(1.0, 25e3 * mid));
     stamp(TrebleTop, Output, 1.0 / std::max(1.0, 250e3 * (1.0 - treble)));
     stamp(Output, BassTop, 1.0 / std::max(1.0, 250e3 * treble));
-    stamp(Output, Ground, 1.0 / 1e6); // fronteira provisória: entrada do volume de canal
+    stamp(Output, Ground, m_outputLoad);
     for (int row = 0; row < kInternal; ++row)
         for (int col = 0; col <= row; ++col)
         {

@@ -150,6 +150,8 @@ add_library(ibifx_core STATIC
     src/IronheartGainStages.cpp
     src/IronheartCathodeFollower.cpp
     src/IronheartToneNetwork.cpp
+    src/IronheartOutputStage.cpp
+    src/IronheartPowerSection.cpp
     src/IronheartMaster.cpp
     src/PowerAmp.cpp
     src/Tuner.cpp

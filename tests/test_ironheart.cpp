@@ -133,9 +133,13 @@ void testMaster()
     const auto normal = render(master);
     set(master, "watts", 0.25f);
     const auto quiet = render(master);
-    check(std::fabs(energy(quiet) / energy(normal) - 0.25f) < 1e-4f,
-          "Watts atenua depois da saturacao sem mudar seu drive");
-    for (const char* mute : {"watts", "power", "play"})
+    check(energy(quiet) > 0.0f && energy(quiet) < energy(normal),
+          "Watts reduz excitacao e nivel da potencia");
+    set(master, "watts", 0.0f);
+    const auto minimum = render(master);
+    check(energy(minimum) > 0.0f && energy(minimum) < energy(quiet),
+          "Watts no minimo conserva saida reduzida pelo resistor de 10k");
+    for (const char* mute : {"power", "play"})
     {
         IronheartMaster muted;
         set(muted, mute, 0.0f);
@@ -260,6 +264,7 @@ void testAutomatedBlockBoundaries()
                 set(pre, prefix + "Bass", event % 2 == 0 ? .1f : .9f);
                 set(pre, prefix + "Mid", event % 2 == 0 ? .8f : .2f);
                 set(pre, prefix + "Treble", event % 2 == 0 ? .2f : .8f);
+                set(pre, prefix + "Volume", event % 2 == 0 ? .15f : .85f);
                 set(pre, prefix + "Deep", event % 2 == 0 ? 1.0f : 0.0f);
                 set(pre, prefix + "MidShift", event % 3 == 0 ? 1.0f : 0.0f);
                 set(pre, prefix + "TrebleShift", event % 2 == 0 ? 0.0f : 1.0f);

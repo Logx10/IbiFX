@@ -212,6 +212,11 @@ target_compile_options(test_ironheart_tone_section PRIVATE ${IBIFX_WARNINGS})
 target_link_libraries(test_ironheart_tone_section PRIVATE ibifx_core)
 add_test(NAME ironheart_tone_section COMMAND test_ironheart_tone_section)
 
+add_executable(test_ironheart_output test_ironheart_output.cpp)
+target_compile_options(test_ironheart_output PRIVATE ${IBIFX_WARNINGS})
+target_link_libraries(test_ironheart_output PRIVATE ibifx_core)
+add_test(NAME ironheart_output COMMAND test_ironheart_output)
+
 add_executable(test_amp_models test_amp_models.cpp)
 target_compile_options(test_amp_models PRIVATE ${IBIFX_WARNINGS})
 target_link_libraries(test_amp_models PRIVATE ibifx_core)

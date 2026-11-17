@@ -11,7 +11,10 @@ V1A também foi integrado com polarização dinâmica: [implementação inicial]
 As [saídas passivas e suas cargas](ironheart-saidas-v1a.md) participam
 da solução de V1A. [V1B/V2A/V2B e a correção do shunt R187](ironheart-v1b-v2.md)
 foram integrados. [V3A/V3B e os tone stacks próprios](ironheart-v3-eq.md)
-também foram incorporados; volumes/buffers e redes posteriores permanecem pendentes.
+também foram incorporados. Os [volumes/buffers e master reduzido](ironheart-saida-master.md)
+fecham os controles do painel, com Tone/Watts duplos e Dynamics na malha.
+V4, 6L6, transformador, corrente de grade/Miller e programa do FV-1 não
+receberam solução física individual; as aproximações estão documentadas.
 
 O usuário não tem acesso ao amplificador físico. Vídeos podem orientar a
 escuta, mas não permitem atribuir toda diferença de áudio ao cabeçote:
@@ -36,7 +39,7 @@ componentes, características magnéticas do transformador ou o programa do
 reverb. Também será necessário conferir a conectividade dos relés/JFETs
 para cada modo antes de afirmar quantos estágios ficam ativos em cada um.
 
-## Diferenças concretas em relação ao modelo atual
+## Levantamento que orientou a implementação
 
 | Bloco | Observação no documento | Consequência para o DSP |
 | --- | --- | --- |
@@ -123,7 +126,15 @@ Perguntas para estudo: qual nó é a referência da realimentação? Quais
 capacitores estão em série? A chave altera apenas o ganho ou também a
 resposta em frequência? O que depende do potenciômetro?
 
-## Etapas posteriores e critérios de conclusão
+## Critérios do plano original e fronteiras atuais
+
+Os itens 1–3 e os volumes/buffers foram implementados sob a hipótese de
+grade ideal. O item 4 usa uma potência reduzida com as redes na malha,
+sem resolver todas as válvulas/transformador. O loop corresponde à posição
+entre pré e master na cadeia digital; modos elétricos dos jacks, DI e
+impedâncias físicas do item 5 não estão simulados. O item 6 permanece
+uma aproximação explícita do reverb. A lista abaixo registra os critérios
+do estudo, sem afirmar equivalência física completa com o cabeçote.
 
 1. **Triodos e seguidores:** derivar os circuitos de cada estágio, escolher
    modelo de corrente com base em curvas de referência e validar o ponto de

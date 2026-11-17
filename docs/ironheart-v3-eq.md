@@ -1,5 +1,9 @@
 # IRT120H: seguidores V3 e tone stacks próprios
 
+Registro da etapa V3/EQ. A terminação fixa de 1 MΩ, calibração e pendências
+de saída descritas abaixo foram substituídas pelo
+[fechamento de volumes, buffers e master](ironheart-saida-master.md).
+
 Esta etapa implementa V3A/V3B como seguidores não lineares de cátodo e
 substitui o EQ britânico emprestado por duas redes do esquema de 2011.
 O pré processa quatro triodos de ganho e dois seguidores; Clean compartilha

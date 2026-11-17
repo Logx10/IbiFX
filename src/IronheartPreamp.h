@@ -7,11 +7,12 @@
 #include "IronheartGainStages.h"
 #include "IronheartCathodeFollower.h"
 #include "IronheartToneNetwork.h"
+#include "IronheartOutputStage.h"
 #include "Oversampler.h"
 #include "SmoothedValue.h"
 
 // Pré IRT120H: V1/V2/V3 e redes de ganho/tone baseados no esquema.
-// Buffers/volumes e master aproximados; corrente de grade/Miller pendentes.
+// Inclui volumes/buffers até a placa de loop. Grades ideais, sem Miller.
 // O objeto possui todos os filtros e históricos, sem ponteiros emprestados.
 class IronheartPreamp : public AudioModule
 {
@@ -39,5 +40,6 @@ private:
     IronheartGainStages m_gainStages;
     IronheartCathodeFollower m_leadFollower, m_rhythmFollower;
     IronheartToneNetwork m_leadTone, m_rhythmTone;
-    SmoothedValue m_volume, m_leadMix;
+    IronheartOutputStage m_outputStage;
+    SmoothedValue m_leadMix, m_outputEnable;
 };

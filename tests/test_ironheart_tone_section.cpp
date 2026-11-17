@@ -19,7 +19,7 @@ struct Reference { C output, load; };
 
 // Oráculo analógico: impedâncias complexas e Gauss-Jordan com pivotamento.
 // Não utiliza Cholesky, companheiros trapezoidais nem estados de produção.
-Reference reference(double frequency, Settings p)
+Reference reference(double frequency, Settings p, double outputLoad = 1e-6)
 {
     const C s(0, 2 * kPi * frequency);
     std::array<std::array<C, 9>, 8> a{};
@@ -45,7 +45,7 @@ Reference reference(double frequency, Settings p)
     stamp(6, -1, 1.0 / std::max(1.0, 25e3 * p.mid));
     stamp(3, 7, 1.0 / std::max(1.0, 250e3 * (1.0 - p.treble)));
     stamp(7, 4, 1.0 / std::max(1.0, 250e3 * p.treble));
-    stamp(7, -1, 1.0 / 1e6);
+    stamp(7, -1, outputLoad);
     for (int col = 0; col < 8; ++col)
     {
         int pivot = col;
@@ -92,10 +92,11 @@ std::array<double, 2> derivatives(double grid)
             (current(vp + h, vg) - current(vp - h, vg)) / (2 * h)};
 }
 
-Reference measure(double rate, double frequency, Settings p, bool coupled = false)
+Reference measure(double rate, double frequency, Settings p, bool coupled = false, double outputLoad = 1e-6)
 {
     IronheartToneNetwork tone;
     tone.prepare(rate, p.bass, p.mid, p.treble, p.deep, p.midShift, p.trebleShift);
+    tone.setOutputLoad(outputLoad);
     IronheartCathodeFollower follower;
     follower.prepare(139.6);
     const double amplitude = coupled ? 1e-4 : 1.0;
@@ -276,10 +277,26 @@ void testFullPathConvergence()
     }
     check(failures == 0, "V3 converge sem reter amostras na forma de onda da cadeia high gain completa");
 }
+
+void testVolumeLoading()
+{
+    bool valid = true;
+    // Lead no máximo, Clean bypass e Rhythm com o shunt de R5 ativo.
+    for (double load : {1.0 / 1e6 + 1.0 / 680e3, 1.0 / 1e6 + 1.0 / 660e3,
+                        1.0 / 1e6 + 1.0 / 330e3})
+        for (double hz : {82.41, 700.0, 5000.0})
+        {
+            const auto expected = reference(192000 / kPi * std::tan(kPi * hz / 192000), {}, load);
+            const auto actual = measure(192000, hz, {}, false, load);
+            valid &= std::abs(actual.output - expected.output) / std::abs(expected.output) < 1e-4;
+            valid &= std::abs(actual.load - expected.load) / std::abs(expected.load) < 1e-4;
+        }
+    check(valid, "volumes e bypass alteram resposta do EQ e carga devolvida ao seguidor");
+}
 }
 
 int main()
 {
-    testToneResponse(); testFollower(); testControlDirections(); testAutomationAndLimits(); testFullPathConvergence();
+    testToneResponse(); testFollower(); testControlDirections(); testAutomationAndLimits(); testFullPathConvergence(); testVolumeLoading();
     return reportResults();
 }

@@ -1,5 +1,9 @@
 # Melhorias dos amps — 16/11/2026
 
+Registro histórico da primeira rodada. Para o Ironheart, os fatores de
+recuperação e Watts desta etapa foram substituídos pela
+[implementação de volumes, buffers e master](ironheart-saida-master.md).
+
 Implementação da primeira rodada de melhorias identificadas na
 [revisão dos amplificadores](revisao-amplificadores.md). O objetivo foi
 recuperar resposta à intensidade da entrada, melhorar os controles e

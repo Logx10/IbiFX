@@ -1,7 +1,7 @@
 #pragma once
 
 #include "AudioModule.h"
-#include "PowerAmp.h"
+#include "IronheartPowerSection.h"
 #include "Reverb.h"
 #include "SmoothedValue.h"
 
@@ -19,11 +19,8 @@ public:
 private:
     enum Index { Dynamics, Tone, ReverbOn, ReverbLevel, Watts, Power, Play };
     double m_sampleRate = 44100.0;
-    float m_bass = 0.0f;
-    float m_top = 0.0f;
-    PowerAmp m_powerAmp;
+    float m_dcX = 0.0f, m_dcY = 0.0f, m_dcR = 0.0f, m_dcG = 1.0f;
+    IronheartPowerSection m_powerSection;
     Reverb m_reverb;
-    SmoothedValue m_level;
-    SmoothedValue m_dynamics;
-    SmoothedValue m_tone;
+    SmoothedValue m_level, m_reverbLevel;
 };

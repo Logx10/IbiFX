@@ -83,6 +83,9 @@ public:
     void reset() override;
 
     void process(std::vector<float>& buffer) override;
+    // Saída somente molhada, para somadores paralelos de amplificadores.
+    // Não aplica Mix; mantém o mesmo histórico usado por process().
+    float processWetSample(float input) noexcept;
 
 private:
     static constexpr int kCombCount = 4;
