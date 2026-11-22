@@ -2,6 +2,57 @@
 
 > Modular real-time guitar effects and practice platform built with C++.
 
+**Pedaleira e ferramentas de prática para guitarra, grátis e de código aberto.**
+Amps, pedais, gabinetes por IR, afinador, metrônomo e gravador num só programa,
+em português, rodando em tempo real no Windows.
+
+[![Baixar para Windows](https://img.shields.io/badge/Baixar%20para%20Windows-v0.0.1-C7B08A?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/Logx10/IbiFX/releases/latest)
+
+![A pedaleira do IbiFX](docs/images/pedaleira.png)
+
+## O que dá pra fazer
+
+- **Montar o seu rig:** arraste amps, pedais, gabinetes (IR) e racks da
+  Biblioteca para a Signal Chain e ajuste os knobs. Dá até pra dividir o
+  sinal em caminhos paralelos.
+- **Grupos A/B/C:** ligue e desligue vários pedais de uma vez, com um clique
+  ou uma tecla (1, 2 e 3), como o "solo" de uma pedaleira.
+- **Loop de DI:** grave a guitarra seca e timbre ouvindo ela em loop, sem
+  precisar tocar enquanto mexe nos knobs. A barra de espaço toca e para.
+- **Praticar:** metrônomo, faixa de fundo com repetição A/B, afinador e
+  gravador (DI seca + som processado).
+- **Suas IRs:** arraste um `.wav` de impulse response para a janela e ele
+  vira um gabinete.
+- **Presets:** vem com presets de fábrica, e você salva os seus.
+
+![A área de prática](docs/images/pratica.png)
+
+## Como usar
+
+1. Baixe o `.zip` na [página de releases](https://github.com/Logx10/IbiFX/releases/latest)
+   e extraia a pasta inteira (não rode de dentro do `.zip`).
+2. Ligue a guitarra numa interface de áudio e deixe ela como dispositivo
+   padrão de entrada e saída do Windows.
+3. Abra o `IbiFX.exe`. Não precisa instalar nada.
+
+> **Use fones de ouvido.** Com o microfone e as caixas embutidos do
+> computador, o som realimenta e vira microfonia.
+
+O executável ainda não tem assinatura digital, então o Windows pode mostrar
+"O Windows protegeu o computador" na primeira vez: clique em
+**Mais informações → Executar assim mesmo**.
+
+Requisitos: Windows 10 ou 11, 64 bits. Bugs e sugestões:
+[abra uma issue](https://github.com/Logx10/IbiFX/issues).
+
+---
+
+# Para desenvolvedores
+
+O restante deste documento conta como o IbiFX é construído por dentro. Para
+compilar, veja [Como compilar](#como-compilar); para gerar o pacote do Windows,
+rode `tools/package_windows.sh`.
+
 O IbiFX pretende se tornar uma plataforma modular de processamento de áudio em
 tempo real, voltada inicialmente para guitarra, baixo e outros instrumentos
 elétricos.
