@@ -1,0 +1,42 @@
+IbiFX - pedaleira e ferramentas de pratica para guitarra
+========================================================
+
+COMO USAR
+1. Extraia o .zip inteiro numa pasta (nao rode de dentro do .zip).
+2. Abra o IbiFX.exe. Mantenha as pastas assets, presets e irs ao lado
+   dele: e de la que saem os equipamentos, os presets e os gabinetes.
+3. Use FONES DE OUVIDO. Se a entrada e a saida forem o microfone e as
+   caixas embutidos do computador, o som realimenta e vira microfonia.
+
+Para tocar guitarra, ligue-a numa interface de audio (ou placa de som com
+entrada de instrumento) e defina essa interface como dispositivo padrao de
+entrada e saida no Windows antes de abrir o IbiFX. Se aparecer "Audio OFF"
+no topo da janela, confira o dispositivo e clique em "Tentar ligar".
+
+AVISO DO WINDOWS ("O Windows protegeu o computador")
+O IbiFX ainda nao tem assinatura digital, entao o SmartScreen pode avisar
+na primeira vez. Clique em "Mais informacoes" e depois em "Executar assim
+mesmo".
+
+AS DUAS ABAS
+- PEDALEIRA: arraste equipamentos da Biblioteca (direita) para a linha da
+  Signal Chain (embaixo). Clique numa miniatura para editar os knobs.
+  Os grupos A/B/C ligam e desligam varios pedais de uma vez (teclas 1, 2
+  e 3 por padrao). "Gravar DI" grava a guitarra seca e toca em loop, para
+  timbrar sem tocar; a barra de espaco toca e para.
+- PRATICA: metronomo, faixa de fundo com repeticao A/B, afinador e gravador.
+
+SUAS COISAS
+- presets/    os presets que voce salvar (os de fabrica ficam em factory/)
+- irs/        gabinetes: cada pasta e um gabinete, cada .wav um microfone.
+              Voce tambem pode arrastar um .wav de IR para a janela.
+- audio/      faixas .wav para praticar
+- recordings/ as suas gravacoes
+
+IRs DE GABINETE
+O IbiFX vem com IRs sinteticas em irs/Factory. Para um timbre mais real,
+use IRs de verdade. Uma boa gratuita e a "Cenzo Townshend Mix" da
+Celestion: https://www.celestionplus.com/free-download/
+Extraia em irs/ e clique em "Reler irs/" na Biblioteca (aba Cab).
+
+Licenca: MIT (LICENSE.txt). Componentes de terceiros: THIRD_PARTY_NOTICES.txt

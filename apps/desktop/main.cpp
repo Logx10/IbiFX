@@ -1,3 +1,5 @@
+#include <SDL3/SDL.h>
+
 #include <exception>
 #include <filesystem>
 #include <iostream>
@@ -148,6 +150,11 @@ int main(int argc, char** argv)
     catch (const std::exception& error)
     {
         std::cerr << "erro: " << error.what() << "\n";
+        // No build de distribuição não há console (IBIFX_DESKTOP_NO_CONSOLE):
+        // sem a caixa, quem deu duplo clique veria o app simplesmente não
+        // abrir. Funciona antes do SDL_Init.
+        const std::string message = std::string("O IbiFX nao conseguiu iniciar:\n\n") + error.what();
+        SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "IbiFX", message.c_str(), nullptr);
         return 1;
     }
 }
