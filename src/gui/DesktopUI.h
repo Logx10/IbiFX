@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
@@ -11,6 +12,7 @@
 
 #include "GearLibrary.h"
 #include "LiveEngine.h"
+#include "PedalGroups.h"
 
 struct SDL_Window;
 struct SDL_Renderer;
@@ -183,6 +185,16 @@ private:
     void resetGearToRecipe(std::size_t segmentIndex, const GearModel& model);
     void toggleGearBypass(std::size_t segmentIndex);
 
+    // Grupos A/B/C (ver PedalGroups.h): liga ou desliga de uma vez todos
+    // os itens marcados com o grupo — se algum estiver desligado, liga
+    // todos; senão, desliga todos.
+    void toggleGroup(std::size_t group);
+    // Dispara o grupo cuja tecla foi apertada, ou, durante a captura,
+    // guarda a próxima tecla como a do grupo.
+    void handleGroupKeys();
+    // As caixinhas A/B/C de um item: em quais grupos ele está.
+    void drawGroupMembership(std::size_t itemIndex);
+
     // Lê um PNG como textura do renderer. nullptr se o arquivo não existir
     // ou não for um PNG válido.
     SDL_Texture* loadTexture(const std::string& path, float& width, float& height) const;
@@ -211,7 +223,7 @@ private:
 
     // Barra de nível em dB, igual em espírito a PedalboardUI::meter(), só
     // desenhada com ImGui::ProgressBar em vez de caracteres.
-    void drawMeter(const char* label, float peakLinear) const;
+    void drawMeter(const char* label, float peakLinear, float width) const;
 
     void drawTunerPanel();
     void drawRecorderPanel();
@@ -220,6 +232,9 @@ private:
     // guitarra seca e a toca no lugar da entrada, para timbrar sem tocar.
     // O espaço toca/para (ver drawFrame()).
     void drawDiLoopStrip();
+    // Os footswitches dos grupos A/B/C e as teclas deles, na linha de
+    // título da signal chain.
+    void drawGroupControls();
 
     // Altura da faixa da cadeia: cresce com o número de caminhos paralelos.
     // O editor precisa dela para deixar o espaço certo embaixo.
@@ -333,8 +348,20 @@ private:
 
         std::size_t firstModule = 0;
         std::size_t moduleCount = 0;
+
+        // Em quais grupos A/B/C o item está (máscara, ver PedalGroups.h).
+        // Mora no item, e não numa lista de índices à parte, para que
+        // inserir, remover ou mover equipamentos leve o grupo junto.
+        unsigned groups = 0;
     };
     std::vector<ChainItem> m_chainItems;
+
+    // A tecla de cada grupo, pelo nome do ImGui ("1", "F1"...). Guardada
+    // como texto para ir direto ao preset (Preset::groupKeys).
+    std::array<std::string, pedal_groups::kCount> m_groupKeys = {"1", "2", "3"};
+    // O grupo cuja tecla está sendo definida, ou kNoGroupCapture.
+    static constexpr std::size_t kNoGroupCapture = static_cast<std::size_t>(-1);
+    std::size_t m_capturingGroupKey = kNoGroupCapture;
 
     // Um trecho de caminhos paralelos na cadeia (ParallelMarker.h), em
     // índices de m_chainItems: o marcador que abre cada caminho (o Split e

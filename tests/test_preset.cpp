@@ -19,6 +19,7 @@
 #include "Delay.h"
 #include "GainProcessor.h"
 #include "ModuleChain.h"
+#include "PedalGroups.h"
 #include "Preset.h"
 #include "PresetManager.h"
 #include "Serialization.h"
@@ -282,6 +283,72 @@ void testChainItemsRoundTrip()
     check(lancouZero, "'item' com quantidade zero lanca");
 }
 
+// A regra do clique no grupo: misturado liga todos; só desliga quando todos
+// já estão ligados.
+void testPedalGroupRule()
+{
+    std::cout << "o clique no grupo liga todos se algum estiver desligado\n";
+
+    check(pedal_groups::shouldTurnOn({false, false}), "todos desligados: liga");
+    check(pedal_groups::shouldTurnOn({true, false, true}), "misturado: liga todos");
+    check(!pedal_groups::shouldTurnOn({true, true}), "todos ligados: desliga");
+
+    unsigned mask = 0;
+    check(pedal_groups::fromLetters("AC", mask) && mask == 0b101u, "'AC' vira os bits de A e C");
+    check(pedal_groups::toLetters(0b110u) == "BC", "bits de B e C viram 'BC'");
+    check(pedal_groups::toLetters(0u).empty(), "sem grupo vira texto vazio");
+    check(!pedal_groups::fromLetters("AZ", mask) && mask == 0b101u, "letra invalida falha sem mexer na mascara");
+}
+
+// Os grupos de cada item e as teclas de cada grupo vão e voltam pelo texto,
+// e um preset de antes dos grupos continua carregando sem nenhum.
+void testGroupsRoundTrip()
+{
+    std::cout << "os grupos e as teclas vao e voltam pelo texto\n";
+
+    ModuleChain chain;
+    buildSampleChain(chain);
+    Preset original = preset::capture("Solo", chain);
+    original.chainItems = {{"stomp.yellow-drive", 2, pedal_groups::bit(0) | pedal_groups::bit(2)}, {"", 1, 0}};
+    original.groupKeys = {"1", "", "F3"};
+
+    const std::string text = preset::serialize(original);
+    check(text.find("item stomp.yellow-drive 2 AC\n") != std::string::npos, "grupos viram letras no item");
+    check(text.find("item - 1\n") != std::string::npos, "item sem grupo fica como antes");
+    check(text.find("groupkey A 1\n") != std::string::npos, "tecla do grupo A gravada");
+    check(text.find("groupkey B") == std::string::npos, "grupo sem tecla nao grava linha");
+
+    const Preset restored = preset::deserialize(text);
+    check(restored.chainItems[0].groups == original.chainItems[0].groups, "grupos do item preservados");
+    check(restored.chainItems[1].groups == 0, "item sem grupo continua sem");
+    check(restored.groupKeys == original.groupKeys, "teclas preservadas");
+
+    const Preset old = preset::deserialize("preset Antigo\nitem amp.brit-800 1\nmodule Gain 0\n");
+    check(old.chainItems[0].groups == 0, "preset antigo carrega sem grupos");
+
+    bool lancouGrupoInvalido = false;
+    try
+    {
+        preset::deserialize("preset X\nitem amp.brit-800 1 AZ\n");
+    }
+    catch (const std::runtime_error&)
+    {
+        lancouGrupoInvalido = true;
+    }
+    check(lancouGrupoInvalido, "grupo desconhecido no item lanca");
+
+    bool lancouTeclaSemGrupo = false;
+    try
+    {
+        preset::deserialize("preset X\ngroupkey D 1\n");
+    }
+    catch (const std::runtime_error&)
+    {
+        lancouTeclaSemGrupo = true;
+    }
+    check(lancouTeclaSemGrupo, "'groupkey' de grupo inexistente lanca");
+}
+
 // Uma linha fora do formato (module/param/ir malformados, ou palavra-chave
 // desconhecida) lança, em vez de ser ignorada.
 void testDeserializeThrowsOnMalformedText()
@@ -379,6 +446,8 @@ int main()
     testSerializeRoundTrip();
     testRigRoundTrips();
     testChainItemsRoundTrip();
+    testPedalGroupRule();
+    testGroupsRoundTrip();
     testDeserializeThrowsOnMalformedText();
     testPresetManagerRoundTripsThroughDisk();
     testLoadMissingFileThrows();

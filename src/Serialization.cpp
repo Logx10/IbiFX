@@ -42,10 +42,23 @@ std::string serialize(const Preset& p)
     for (const std::string& id : p.rig.rack)
         out << "rig rack " << id << '\n';
 
-    // gearId "-" representa um módulo cru, sem modelo no catálogo.
+    // gearId "-" representa um módulo cru, sem modelo no catálogo. Os
+    // grupos do item vão como letras no fim ("item ... 5 AC"); sem grupo,
+    // a linha fica igual à de antes dos grupos existirem.
     for (const Preset::ChainItemState& item : p.chainItems)
+    {
         out << "item " << (item.gearId.empty() ? "-" : item.gearId) << ' '
-            << item.moduleCount << '\n';
+            << item.moduleCount;
+        if (item.groups != 0)
+            out << ' ' << pedal_groups::toLetters(item.groups);
+        out << '\n';
+    }
+
+    for (std::size_t g = 0; g < pedal_groups::kCount; ++g)
+    {
+        if (!p.groupKeys[g].empty())
+            out << "groupkey " << pedal_groups::kLetters[g] << ' ' << p.groupKeys[g] << '\n';
+    }
 
     for (const Preset::ModuleState& state : p.modules)
     {
@@ -134,7 +147,24 @@ Preset deserialize(const std::string& text)
             Preset::ChainItemState item;
             item.gearId = gearId == "-" ? std::string{} : gearId;
             item.moduleCount = moduleCount;
+
+            // Opcional: as letras dos grupos. Presets antigos não têm.
+            std::string letters;
+            if ((lineStream >> letters) && !pedal_groups::fromLetters(letters, item.groups))
+                throw std::runtime_error("preset malformado: grupo desconhecido '" + letters + "' em 'item'");
+
             result.chainItems.push_back(std::move(item));
+        }
+        else if (keyword == "groupkey")
+        {
+            std::string letter;
+            std::string key;
+
+            if (!(lineStream >> letter >> key) || letter.size() != 1
+                || pedal_groups::indexOf(letter[0]) == pedal_groups::kCount)
+                throw std::runtime_error("preset malformado: 'groupkey' precisa de grupo (A/B/C) e tecla");
+
+            result.groupKeys[pedal_groups::indexOf(letter[0])] = key;
         }
         else if (keyword == "ir")
         {

@@ -1,9 +1,12 @@
 #pragma once
 
+#include <array>
 #include <cstddef>
 #include <string>
 #include <utility>
 #include <vector>
+
+#include "PedalGroups.h"
 
 class ModuleChain;
 
@@ -75,8 +78,18 @@ struct Preset
     {
         std::string gearId;
         std::size_t moduleCount = 1;
+
+        // Em quais grupos (A/B/C) o item está, como máscara de bits — ver
+        // PedalGroups.h. 0 = nenhum. Também só metadado: apply() ignora.
+        unsigned groups = 0;
     };
     std::vector<ChainItemState> chainItems;
+
+    // A tecla que aciona cada grupo, pelo nome que a interface usa ("1",
+    // "F1", "Keypad1"...). Vazio = o preset não definiu, e a interface
+    // mantém a tecla que já estava. O núcleo não sabe o que é uma tecla:
+    // guarda o texto e devolve igual.
+    std::array<std::string, pedal_groups::kCount> groupKeys{};
 
     // De qual rig da GearLibrary os módulos vieram, se vieram de um. É só
     // um rótulo: preset::apply() ignora, quem aplica continua sendo a

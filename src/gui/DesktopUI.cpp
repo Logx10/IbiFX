@@ -68,7 +68,10 @@ constexpr float kFootswitchRadius = 20.0f;
 // Largura do navegador de equipamentos, à direita.
 constexpr float kBrowserWidth = 330.0f;
 
-constexpr float kWorkspaceHeaderHeight = 150.0f;
+// Duas linhas de controles (ver drawWorkspaceHeader()). Numa tela de 768px
+// de altura, cada pixel daqui sai do editor do equipamento, que é onde se
+// mexe nos knobs — por isso o cabeçalho é baixo e denso.
+constexpr float kWorkspaceHeaderHeight = 94.0f;
 // Tamanhos da signal chain em escala 1. Quando a cadeia não cabe na
 // largura, tudo encolhe pelo mesmo fator (até kSignalMinScale) em vez de
 // abrir um scroll horizontal.
@@ -162,13 +165,6 @@ SignalCardKind signalCardKind(GearCategory category)
 }
 
 ImU32 colorForModuleName(const char* name, bool bypassed);
-
-std::string compactLabel(const std::string& value, std::size_t limit = 18)
-{
-    if (value.size() <= limit)
-        return value;
-    return value.substr(0, limit > 3 ? limit - 3 : limit) + "...";
-}
 
 // Corta o texto com "..." até caber em maxWidth pixels no tamanho dado.
 std::string fitLabel(const std::string& value, float fontSize, float maxWidth)
@@ -673,6 +669,34 @@ void trackedCaps(const char* label, ImVec4 color, ImFont* font, float tracking =
     ImGui::PopFont();
 }
 
+// O ImGuiKey de um nome de tecla ("1", "F1", "Keypad1"), o mesmo texto que
+// ImGui::GetKeyName() devolve. ImGuiKey_None se o nome não for de tecla
+// nenhuma (um preset editado à mão, por exemplo). Varre as ~150 teclas
+// nomeadas: barato, e evita manter uma tabela própria de nomes.
+ImGuiKey keyFromName(const std::string& name)
+{
+    for (int k = ImGuiKey_NamedKey_BEGIN; k < ImGuiKey_NamedKey_END; ++k)
+    {
+        const ImGuiKey key = static_cast<ImGuiKey>(k);
+        if (name == ImGui::GetKeyName(key))
+            return key;
+    }
+    return ImGuiKey_None;
+}
+
+// Quais teclas podem acionar um grupo: as do teclado (de Tab até antes do
+// gamepad), menos os modificadores — Ctrl/Shift/Alt sozinhos dispararem um
+// grupo seria acidente na certa —, o Espaço, que já toca o loop de DI, e
+// o Esc, que cancela a captura.
+bool isAssignableKey(ImGuiKey key)
+{
+    if (key < ImGuiKey_Tab || key >= ImGuiKey_GamepadStart)
+        return false;
+    if (key >= ImGuiKey_LeftCtrl && key <= ImGuiKey_RightSuper)
+        return false;
+    return key != ImGuiKey_Space && key != ImGuiKey_Escape;
+}
+
 // Os quatro traços inclinados que fecham os detalhes da folha da marca.
 void drawBrandStripes(ImDrawList* drawList, ImVec2 origin, float height, ImU32 color)
 {
@@ -787,7 +811,13 @@ bool DesktopUI::initWindow()
     // RESIZABLE: a cadeia inteira pode não caber na altura pedida — melhor
     // deixar a pessoa redimensionar (ou usar a barra de rolagem, que o
     // ImGui já desenha sozinho) do que travar um tamanho fixo.
-    m_window = SDL_CreateWindow("IbiFX", windowWidth, windowHeight, SDL_WINDOW_RESIZABLE);
+    //
+    // MAXIMIZED: a pedaleira tem editor, cadeia e biblioteca na mesma tela;
+    // numa tela de notebook (1366x768) a janela solta deixava o editor com
+    // pouco mais de 150px de altura. Maximizada, ela usa a área útil toda;
+    // o tamanho acima vale para quando a pessoa restaura a janela.
+    m_window = SDL_CreateWindow("IbiFX", windowWidth, windowHeight,
+                                SDL_WINDOW_RESIZABLE | SDL_WINDOW_MAXIMIZED);
 
     if (m_window == nullptr)
     {
@@ -800,6 +830,7 @@ bool DesktopUI::initWindow()
     // justamente ela que colocou a barra de título fora da tela antes.
     if (hasUsableBounds)
         SDL_SetWindowPosition(m_window, usableBounds.x + 20, usableBounds.y + 40);
+    SDL_SetWindowMinimumSize(m_window, 960, 600);
 
     m_renderer = SDL_CreateRenderer(m_window, nullptr);
 
@@ -890,7 +921,7 @@ bool DesktopUI::startAudio()
     return false;
 }
 
-void DesktopUI::drawMeter(const char* label, float peakLinear) const
+void DesktopUI::drawMeter(const char* label, float peakLinear, float width) const
 {
     const float db = amplitudeToDb(peakLinear);
     const float fraction = std::clamp((db - kFloorDb) / (0.0f - kFloorDb), 0.0f, 1.0f);
@@ -906,13 +937,16 @@ void DesktopUI::drawMeter(const char* label, float peakLinear) const
     char overlay[32];
     std::snprintf(overlay, sizeof(overlay), "%.1f dB", db);
 
+    // O rótulo vai à esquerda, e a barra ocupa o resto da largura pedida.
+    ImGui::BeginGroup();
+    ImGui::AlignTextToFramePadding();
+    ImGui::TextDisabled("%s", label);
+    ImGui::SameLine(0.0f, 6.0f);
+    const float labelWidth = ImGui::CalcTextSize(label).x + 6.0f;
     ImGui::PushStyleColor(ImGuiCol_PlotHistogram, color);
-    // Largura negativa = "tudo menos isto": sobra espaço para o rótulo à
-    // direita, que com -1 ficava empurrado para fora da janela.
-    ImGui::ProgressBar(fraction, ImVec2(-90.0f, 0.0f), overlay);
+    ImGui::ProgressBar(fraction, ImVec2(std::max(40.0f, width - labelWidth), 0.0f), overlay);
     ImGui::PopStyleColor();
-    ImGui::SameLine();
-    ImGui::TextUnformatted(label);
+    ImGui::EndGroup();
 }
 
 void DesktopUI::drawPedal(std::size_t moduleIndex, std::size_t firstFlatIndex)
@@ -1088,6 +1122,14 @@ void DesktopUI::adoptPreset(const Preset& loaded, const std::string& path)
 {
     adoptChainLayout(loaded);
 
+    // Tecla vazia = o preset não definiu (preset antigo): fica a que já
+    // estava, em vez de o grupo perder a tecla.
+    for (std::size_t g = 0; g < pedal_groups::kCount; ++g)
+    {
+        if (!loaded.groupKeys[g].empty())
+            m_groupKeys[g] = loaded.groupKeys[g];
+    }
+
     m_currentPresetName = loaded.name;
     m_currentPresetPath = path;
     m_presetMessage = "preset carregado: " + loaded.name;
@@ -1135,7 +1177,7 @@ void DesktopUI::adoptChainLayout(const Preset& source)
         {
             if (state.moduleCount == 0 || firstModule + state.moduleCount > source.modules.size())
                 return false;
-            m_chainItems.push_back({state.gearId, firstModule, state.moduleCount});
+            m_chainItems.push_back({state.gearId, firstModule, state.moduleCount, state.groups});
             firstModule += state.moduleCount;
         }
         return firstModule == source.modules.size();
@@ -1190,7 +1232,7 @@ Preset DesktopUI::captureCurrentPreset(const std::string& name) const
             captured.chainItems.clear();
             break;
         }
-        captured.chainItems.push_back({item.gearId, item.moduleCount});
+        captured.chainItems.push_back({item.gearId, item.moduleCount, item.groups});
         covered += item.moduleCount;
     }
 
@@ -1201,6 +1243,7 @@ Preset DesktopUI::captureCurrentPreset(const std::string& name) const
             captured.chainItems.push_back({"", 1});
     }
 
+    captured.groupKeys = m_groupKeys;
     return captured;
 }
 
@@ -1495,23 +1538,35 @@ void DesktopUI::drawGearBrowser()
                                             GearCategory::Cabinet, GearCategory::Rack,
                                             GearCategory::Equalizer, GearCategory::Routing};
     constexpr const char* kLabels[] = {"Pedais", "Amp", "Cab", "Rack", "EQ", "Rota"};
-    constexpr float kWidths[] = {62.0f, 46.0f, 46.0f, 50.0f, 40.0f, 46.0f};
 
+    // Cada botão com a largura do próprio texto, quebrando a linha quando
+    // não cabe: larguras fixas cortavam "Pedais" e a fileira passava da
+    // borda do painel.
+    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(8.0f, ImGui::GetStyle().FramePadding.y));
+    const float rightEdge = ImGui::GetCursorScreenPos().x + ImGui::GetContentRegionAvail().x;
     for (int i = 0; i < 6; ++i)
     {
+        const float buttonWidth = ImGui::CalcTextSize(kLabels[i]).x + 16.0f;
         if (i > 0)
+        {
             ImGui::SameLine();
+            if (ImGui::GetCursorScreenPos().x + buttonWidth > rightEdge)
+                ImGui::NewLine();
+        }
         const bool selected = m_browserCategory == kCategories[i];
         if (selected)
             ImGui::PushStyleColor(ImGuiCol_Button, kSurfaceSelected);
-        if (ImGui::Button(kLabels[i], ImVec2(kWidths[i], 0.0f)))
+        if (ImGui::Button(kLabels[i], ImVec2(buttonWidth, 0.0f)))
             m_browserCategory = kCategories[i];
         if (selected)
             ImGui::PopStyleColor();
     }
+    ImGui::PopStyleVar();
 
     ImGui::Spacing();
+    ImGui::PushTextWrapPos(0.0f);
     ImGui::TextDisabled("Arraste para um ponto da linha. Duplo clique adiciona no final.");
+    ImGui::PopTextWrapPos();
     ImGui::Separator();
     drawGearCategory(m_browserCategory, gearCategoryName(m_browserCategory), true);
 
@@ -2188,6 +2243,163 @@ void DesktopUI::toggleGearBypass(std::size_t segmentIndex)
         m_engine.setBypassed(segment.firstModule + m, !bypassed);
 }
 
+void DesktopUI::toggleGroup(std::size_t group)
+{
+    const unsigned mask = pedal_groups::bit(group);
+    const ModuleChain& chain = m_engine.chain();
+
+    std::vector<std::size_t> members;
+    std::vector<bool> active;
+    for (std::size_t i = 0; i < m_chainItems.size(); ++i)
+    {
+        if ((m_chainItems[i].groups & mask) == 0 || m_chainItems[i].firstModule >= chain.size())
+            continue;
+        members.push_back(i);
+        active.push_back(!chain.isBypassed(m_chainItems[i].firstModule));
+    }
+
+    // Só os que estão no estado errado trocam: toggleGearBypass() inverte,
+    // então chamá-lo num pedal que já está como o grupo quer o desfaria.
+    const bool turnOn = pedal_groups::shouldTurnOn(active);
+    for (std::size_t k = 0; k < members.size(); ++k)
+    {
+        if (active[k] != turnOn)
+            toggleGearBypass(members[k]);
+    }
+}
+
+void DesktopUI::handleGroupKeys()
+{
+    // Digitando o nome de um preset, "1" é texto, não footswitch.
+    if (ImGui::GetIO().WantTextInput)
+        return;
+
+    if (m_capturingGroupKey != kNoGroupCapture)
+    {
+        if (ImGui::IsKeyPressed(ImGuiKey_Escape, false))
+        {
+            m_capturingGroupKey = kNoGroupCapture;
+            return;
+        }
+        for (int k = ImGuiKey_NamedKey_BEGIN; k < ImGuiKey_NamedKey_END; ++k)
+        {
+            const ImGuiKey key = static_cast<ImGuiKey>(k);
+            if (!isAssignableKey(key) || !ImGui::IsKeyPressed(key, false))
+                continue;
+
+            // Uma tecla aciona um grupo só: quem já a usava fica sem.
+            const std::string name = ImGui::GetKeyName(key);
+            for (std::string& other : m_groupKeys)
+            {
+                if (other == name)
+                    other.clear();
+            }
+            m_groupKeys[m_capturingGroupKey] = name;
+            m_capturingGroupKey = kNoGroupCapture;
+            return;
+        }
+        return;
+    }
+
+    // Ctrl/Alt + tecla fica livre para atalhos futuros.
+    if (ImGui::GetIO().KeyCtrl || ImGui::GetIO().KeyAlt)
+        return;
+
+    for (std::size_t g = 0; g < pedal_groups::kCount; ++g)
+    {
+        const ImGuiKey key = keyFromName(m_groupKeys[g]);
+        if (key != ImGuiKey_None && ImGui::IsKeyPressed(key, false))
+            toggleGroup(g);
+    }
+}
+
+void DesktopUI::drawGroupMembership(std::size_t itemIndex)
+{
+    ImGui::AlignTextToFramePadding();
+    ImGui::TextDisabled("Grupos");
+    for (std::size_t g = 0; g < pedal_groups::kCount; ++g)
+    {
+        const unsigned mask = pedal_groups::bit(g);
+        bool member = (m_chainItems[itemIndex].groups & mask) != 0;
+        const char label[] = {pedal_groups::kLetters[g], '\0'};
+
+        ImGui::SameLine();
+        ImGui::PushID(static_cast<int>(g));
+        if (ImGui::Checkbox(label, &member))
+            m_chainItems[itemIndex].groups ^= mask;
+        ImGui::PopID();
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal))
+            ImGui::SetTooltip("Liga e desliga este equipamento junto com o Grupo %c.", pedal_groups::kLetters[g]);
+    }
+}
+
+void DesktopUI::drawGroupControls()
+{
+    // Mora na linha de título da signal chain, que tinha a largura toda
+    // livre: uma faixa própria custava 54px de altura do editor.
+    const ModuleChain& chain = m_engine.chain();
+
+    // Botões baixos: a linha de título não pode roubar altura das miniaturas.
+    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(8.0f, 1.0f));
+    ImGui::TextDisabled("Grupos");
+
+    for (std::size_t g = 0; g < pedal_groups::kCount; ++g)
+    {
+        // Estado do grupo pelo mesmo critério do clique: aceso só com
+        // todos os membros ligados; meio aceso quando misturado.
+        std::size_t members = 0, on = 0;
+        for (const ChainItem& item : m_chainItems)
+        {
+            if ((item.groups & pedal_groups::bit(g)) == 0 || item.firstModule >= chain.size())
+                continue;
+            ++members;
+            if (!chain.isBypassed(item.firstModule))
+                ++on;
+        }
+
+        ImGui::SameLine(0.0f, g == 0 ? 10.0f : 18.0f);
+        ImGui::PushID(static_cast<int>(g));
+
+        // O LED: apagado, meio aceso (misturado) ou aceso.
+        const ImVec2 cursor = ImGui::GetCursorScreenPos();
+        const float lineHeight = ImGui::GetFrameHeight();
+        const ImVec2 ledCenter(cursor.x + 6.0f, cursor.y + lineHeight * 0.5f);
+        const ImVec4 ledColor = members == 0 ? ImVec4(0.25f, 0.25f, 0.25f, 1.0f)
+                                : on == members ? ImVec4(0.95f, 0.22f, 0.18f, 1.0f)
+                                : on > 0       ? ImVec4(0.55f, 0.20f, 0.16f, 1.0f)
+                                               : ImVec4(0.30f, 0.12f, 0.10f, 1.0f);
+        ImGui::GetWindowDrawList()->AddCircleFilled(ledCenter, 5.0f, ImGui::GetColorU32(ledColor), 16);
+        ImGui::Dummy(ImVec2(14.0f, lineHeight));
+        ImGui::SameLine(0.0f, 4.0f);
+
+        const char label[2] = {pedal_groups::kLetters[g], '\0'};
+        ImGui::BeginDisabled(members == 0);
+        if (ImGui::Button(label, ImVec2(ImGui::GetFrameHeight() * 1.3f, 0.0f)))
+            toggleGroup(g);
+        ImGui::EndDisabled();
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+            ImGui::SetTooltip(members == 0
+                                  ? "Grupo %c vazio: marque as caixinhas A/B/C no editor do equipamento."
+                                  : "Liga/desliga todos os equipamentos do Grupo %c.",
+                              pedal_groups::kLetters[g]);
+
+        // A tecla: clicar arma a captura, e a próxima tecla vira a do grupo.
+        ImGui::SameLine(0.0f, 4.0f);
+        const bool capturing = m_capturingGroupKey == g;
+        const std::string keyLabel = capturing ? std::string("tecla?")
+                                     : m_groupKeys[g].empty() ? std::string("--")
+                                                              : m_groupKeys[g];
+        if (ImGui::SmallButton(keyLabel.c_str()))
+            m_capturingGroupKey = capturing ? kNoGroupCapture : g;
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal))
+            ImGui::SetTooltip("Clique e aperte a tecla que liga e desliga o Grupo %c. Esc cancela.",
+                              pedal_groups::kLetters[g]);
+
+        ImGui::PopID();
+    }
+    ImGui::PopStyleVar();
+}
+
 SDL_Texture* DesktopUI::loadTexture(const std::string& path, float& width, float& height) const
 {
     int imageWidth = 0, imageHeight = 0, channels = 0;
@@ -2705,8 +2917,6 @@ void DesktopUI::drawTunerPanel()
     if (ImGui::IsItemHovered())
         ImGui::SetTooltip("silencia a saida enquanto o afinador esta ligado");
 
-    ImGui::Spacing();
-
     const Tuner& tuner = m_engine.tuner();
     const bool valid = m_tunerOn && tuner.isValid();
     const float cents = valid ? tuner.centsOff() : 0.0f;
@@ -2716,7 +2926,7 @@ void DesktopUI::drawTunerPanel()
     const std::string note = valid ? tuner.noteName() : std::string("--");
     const bool inTune = valid && std::fabs(cents) <= kInTuneCents;
 
-    ImGui::SetWindowFontScale(2.6f);
+    ImGui::SetWindowFontScale(2.2f);
     const float noteWidth = ImGui::CalcTextSize(note.c_str()).x;
     ImGui::SetCursorPosX((ImGui::GetContentRegionAvail().x - noteWidth) * 0.5f + ImGui::GetCursorPosX());
 
@@ -2997,21 +3207,33 @@ void DesktopUI::drawPracticePanel()
 
 void DesktopUI::drawWorkspaceHeader()
 {
+    // DUAS LINHAS, TRÊS COLUNAS
+    // Marca e abas | afinador | áudio, captador e medidores. Antes eram
+    // quatro linhas na coluna de áudio (150px de cabeçalho, com scroll
+    // próprio numa tela de 768px); agora tudo cabe em duas, e a altura que
+    // sobra vai para o editor do equipamento.
     ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 8.0f);
-    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(16.0f, 12.0f));
-    ImGui::BeginChild("##workspaceHeader", ImVec2(0.0f, kWorkspaceHeaderHeight), ImGuiChildFlags_Borders);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(16.0f, 10.0f));
+    ImGui::BeginChild("##workspaceHeader", ImVec2(0.0f, kWorkspaceHeaderHeight), ImGuiChildFlags_Borders,
+                      ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
+
+    const float spacingX = ImGui::GetStyle().ItemSpacing.x;
+    const float twoRows = 2.0f * ImGui::GetFrameHeight() + ImGui::GetStyle().ItemSpacing.y;
 
     if (ImGui::BeginTable("##headerLayout", 3, ImGuiTableFlags_SizingStretchProp))
     {
-        ImGui::TableSetupColumn("brand", ImGuiTableColumnFlags_WidthStretch, 0.34f);
-        ImGui::TableSetupColumn("tuner", ImGuiTableColumnFlags_WidthStretch, 0.25f);
-        ImGui::TableSetupColumn("io", ImGuiTableColumnFlags_WidthStretch, 0.41f);
+        ImGui::TableSetupColumn("brand", ImGuiTableColumnFlags_WidthStretch, 0.36f);
+        ImGui::TableSetupColumn("tuner", ImGuiTableColumnFlags_WidthStretch, 0.24f);
+        ImGui::TableSetupColumn("io", ImGuiTableColumnFlags_WidthStretch, 0.40f);
         ImGui::TableNextRow();
 
+        // --- Marca + abas -------------------------------------------------
         ImGui::TableSetColumnIndex(0);
+        const float rowTop = ImGui::GetCursorPosY();
         if (m_logoTexture != nullptr)
         {
-            const float logoHeight = 52.0f;
+            const float logoHeight = std::min(52.0f, twoRows);
+            ImGui::SetCursorPosY(rowTop + (twoRows - logoHeight) * 0.5f);
             ImGui::Image(textureRef(m_logoTexture),
                          ImVec2(m_logoWidth * logoHeight / m_logoHeight, logoHeight));
         }
@@ -3021,40 +3243,33 @@ void DesktopUI::drawWorkspaceHeader()
             ImGui::TextColored(kIvory, "ibiFX");
             ImGui::SetWindowFontScale(1.0f);
         }
-        ImGui::SameLine();
+        ImGui::SameLine(0.0f, 16.0f);
+        ImGui::SetCursorPosY(rowTop + 4.0f);
         ImGui::BeginGroup();
-        ImGui::Dummy(ImVec2(0.0f, 6.0f));
-        trackedCaps("Audio tools", kWarmGray, m_brandFont, 3.0f, 11.0f);
-        trackedCaps("for creators", kWarmGray, m_brandFont, 3.0f, 11.0f);
-        ImGui::EndGroup();
+        trackedCaps("Audio tools for creators", kWarmGray, m_brandFont, 2.0f, 10.0f);
+        ImGui::Dummy(ImVec2(0.0f, 2.0f));
 
         ImGui::PushFont(m_brandFont, m_brandFont != nullptr ? kBrandLabelSize : 0.0f);
-        const bool pedalboard = m_workspace == Workspace::Pedalboard;
-        if (pedalboard)
-        {
-            ImGui::PushStyleColor(ImGuiCol_Button, kVintageGold);
-            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, kVintageGold);
-            ImGui::PushStyleColor(ImGuiCol_Text, kCharcoal);
-        }
-        if (ImGui::Button("PEDALEIRA"))
-            m_workspace = Workspace::Pedalboard;
-        if (pedalboard)
-            ImGui::PopStyleColor(3);
-
+        auto workspaceTab = [&](const char* label, Workspace workspace) {
+            const bool active = m_workspace == workspace;
+            if (active)
+            {
+                ImGui::PushStyleColor(ImGuiCol_Button, kVintageGold);
+                ImGui::PushStyleColor(ImGuiCol_ButtonHovered, kVintageGold);
+                ImGui::PushStyleColor(ImGuiCol_Text, kCharcoal);
+            }
+            if (ImGui::Button(label))
+                m_workspace = workspace;
+            if (active)
+                ImGui::PopStyleColor(3);
+        };
+        workspaceTab("PEDALEIRA", Workspace::Pedalboard);
         ImGui::SameLine();
-        const bool practice = m_workspace == Workspace::Practice;
-        if (practice)
-        {
-            ImGui::PushStyleColor(ImGuiCol_Button, kVintageGold);
-            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, kVintageGold);
-            ImGui::PushStyleColor(ImGuiCol_Text, kCharcoal);
-        }
-        if (ImGui::Button("PRATICA"))
-            m_workspace = Workspace::Practice;
-        if (practice)
-            ImGui::PopStyleColor(3);
+        workspaceTab("PRATICA", Workspace::Practice);
         ImGui::PopFont();
+        ImGui::EndGroup();
 
+        // --- Afinador -----------------------------------------------------
         ImGui::TableSetColumnIndex(1);
         if (ImGui::Checkbox("Afinador", &m_tunerOn))
             m_engine.setTunerEnabled(m_tunerOn);
@@ -3067,11 +3282,12 @@ void DesktopUI::drawWorkspaceHeader()
         const float cents = valid ? tuner.centsOff() : 0.0f;
         const ImVec4 noteColor = valid && std::fabs(cents) <= kInTuneCents ? kHealthyColor
                                                                           : ImGui::GetStyleColorVec4(ImGuiCol_Text);
+        ImGui::AlignTextToFramePadding();
         if (valid)
         {
             ImGui::TextColored(noteColor, "%s", tuner.noteName().c_str());
             ImGui::SameLine();
-            ImGui::TextDisabled("%.1f Hz  %+.0f cents", static_cast<double>(tuner.frequencyHz()),
+            ImGui::TextDisabled("%.1f Hz  %+.0f c", static_cast<double>(tuner.frequencyHz()),
                                 static_cast<double>(cents));
         }
         else
@@ -3079,33 +3295,38 @@ void DesktopUI::drawWorkspaceHeader()
             ImGui::TextDisabled(m_tunerOn ? "toque uma corda..." : "afinador desligado");
         }
 
+        // --- Áudio, captador e medidores ----------------------------------
         ImGui::TableSetColumnIndex(2);
         const bool running = m_engine.isRunning();
+        ImGui::AlignTextToFramePadding();
         ImGui::TextColored(running ? kHealthyColor : ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled),
                            "%s", running ? "Audio ON" : "Audio OFF");
-        ImGui::SameLine();
-        ImGui::TextDisabled("%d Hz", static_cast<int>(m_engine.sampleRate() > 0.0
-                                                          ? m_engine.sampleRate()
-                                                          : m_sampleRate));
-
         if (!running)
         {
             ImGui::SameLine();
             if (ImGui::SmallButton("Tentar ligar") && startAudio())
                 captureTargets();
         }
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("%d Hz", static_cast<int>(m_engine.sampleRate() > 0.0 ? m_engine.sampleRate()
+                                                                                    : m_sampleRate));
 
-        drawMeter("IN", m_engine.inputPeak());
-        drawMeter("OUT", m_engine.outputPeak());
-
+        // O captador fica à direita da mesma linha, com a largura que sobrar.
+        ImGui::SameLine(0.0f, 2.0f * spacingX);
         int pickupMode = static_cast<int>(m_engine.pickupMode());
-        ImGui::SetNextItemWidth(205.0f);
-        if (ImGui::Combo("Captador", &pickupMode,
-                         "Original\0Single -> Humbucker\0Humbucker -> Single\0"))
+        ImGui::SetNextItemWidth(std::max(120.0f, ImGui::GetContentRegionAvail().x));
+        if (ImGui::Combo("##pickup", &pickupMode,
+                         "Captador: original\0Single -> Humbucker\0Humbucker -> Single\0"))
             m_engine.setPickupMode(static_cast<PickupSimulator::Mode>(pickupMode));
         if (ImGui::IsItemHovered())
-            ImGui::SetTooltip("Simulacao global da entrada, antes dos efeitos.\n"
+            ImGui::SetTooltip("Simulacao de captador, global, antes dos efeitos.\n"
                               "O afinador e a DI seca recebem o sinal original.");
+
+        // IN e OUT lado a lado, cada um com metade da largura.
+        const float meterWidth = (ImGui::GetContentRegionAvail().x - spacingX) * 0.5f;
+        drawMeter("IN", m_engine.inputPeak(), meterWidth);
+        ImGui::SameLine();
+        drawMeter("OUT", m_engine.outputPeak(), meterWidth);
 
         ImGui::EndTable();
     }
@@ -3170,10 +3391,10 @@ void DesktopUI::drawDiLoopStrip()
     switch (state)
     {
         case DiLooper::State::Empty:
-            overlay = running ? "grave um trecho da guitarra seca" : "ligue o audio para gravar";
+            overlay = running ? "grave a guitarra seca" : "ligue o audio para gravar";
             break;
         case DiLooper::State::Recording:
-            overlay = "gravando: toque o riff e pare (ou aperte espaco para ja ouvir)";
+            overlay = "gravando... toque o riff";
             break;
         case DiLooper::State::Ready:
             overlay = "take de " + formatClockTenths(take) + " pronto";
@@ -3182,7 +3403,13 @@ void DesktopUI::drawDiLoopStrip()
             overlay = formatClockTenths(looper.playheadSeconds()) + " / " + formatClockTenths(take);
             break;
     }
-    const float tailWidth = 170.0f;
+    // O que vem depois da barra (Loop, Descartar, "espaco") medido de
+    // verdade: com a fonte de 19px, o palpite antigo de 170px empurrava
+    // o Descartar para fora da faixa.
+    const ImGuiStyle& style = ImGui::GetStyle();
+    const float tailWidth = ImGui::GetFrameHeight() + style.ItemInnerSpacing.x + ImGui::CalcTextSize("Loop").x
+                          + ImGui::CalcTextSize("Descartar").x + 2.0f * style.FramePadding.x
+                          + ImGui::CalcTextSize("espaco").x + 3.0f * style.ItemSpacing.x + 4.0f;
     ImGui::ProgressBar(std::clamp(fraction, 0.0f, 1.0f),
                        ImVec2(std::max(120.0f, ImGui::GetContentRegionAvail().x - tailWidth), 0.0f),
                        overlay.c_str());
@@ -3240,6 +3467,8 @@ void DesktopUI::drawSignalChain()
     trackedCaps("Signal chain", kVintageGold, m_brandFont);
     ImGui::SameLine();
     ImGui::TextDisabled("%s", m_currentPresetName.empty() ? "sem preset" : m_currentPresetName.c_str());
+    ImGui::SameLine(0.0f, 40.0f);
+    drawGroupControls();
 
     // Colunas da linha: um item comum ocupa uma; um trecho paralelo ocupa
     // a dos marcadores, a do caminho mais longo e a do Merge.
@@ -3357,6 +3586,22 @@ void DesktopUI::drawSignalChain()
                        m_selectedItem == i, scale, textures != nullptr ? textures->body : nullptr,
                        textures != nullptr ? textures->bodyWidth / textures->bodyHeight : 1.0f))
             m_selectedItem = i;
+
+        // As letras dos grupos do item no canto da miniatura, para ver de
+        // relance o que um footswitch de grupo vai acionar.
+        if (item.groups != 0)
+        {
+            const std::string letters = pedal_groups::toLetters(item.groups);
+            const ImVec2 cardMax = ImGui::GetItemRectMax();
+            const ImVec2 cardMin = ImGui::GetItemRectMin();
+            const ImVec2 textSize = ImGui::CalcTextSize(letters.c_str());
+            const ImVec2 tagMin(cardMax.x - textSize.x - 8.0f, cardMin.y + 2.0f);
+            const ImVec2 tagMax(cardMax.x - 2.0f, cardMin.y + textSize.y + 4.0f);
+            ImDrawList* drawList = ImGui::GetWindowDrawList();
+            drawList->AddRectFilled(tagMin, tagMax, ImGui::GetColorU32(kVintageGold), 3.0f);
+            drawList->AddText(ImVec2(tagMin.x + 3.0f, tagMin.y + 1.0f), ImGui::GetColorU32(kCharcoal),
+                              letters.c_str());
+        }
 
         if (draggable && ImGui::BeginDragDropSource())
         {
@@ -3484,6 +3729,8 @@ void DesktopUI::drawSelectedEquipmentEditor()
         // Alinhado à direita pela largura real do botão; um valor fixo
         // menor que ele empurrava o conteúdo e abria um scroll horizontal.
         const float removeWidth = ImGui::CalcTextSize("Remover").x + ImGui::GetStyle().FramePadding.x * 2.0f;
+        ImGui::SameLine(0.0f, 24.0f);
+        drawGroupMembership(m_selectedItem);
         ImGui::SameLine(ImGui::GetWindowContentRegionMax().x - removeWidth);
         if (ImGui::SmallButton("Remover"))
             removeSelected = true;
@@ -3584,11 +3831,22 @@ void DesktopUI::drawPracticeTimeline()
 
     ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 8.0f);
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(16.0f, 12.0f));
-    ImGui::BeginChild("##practiceTimeline", ImVec2(0.0f, 190.0f), ImGuiChildFlags_Borders);
+    // O relógio fica na linha de título (antes era uma linha própria
+    // embaixo da caixa): são 30px a mais para o afinador e o gravador.
+    ImGui::BeginChild("##practiceTimeline", ImVec2(0.0f, 160.0f), ImGuiChildFlags_Borders);
 
+    const auto seconds = [rate](std::uint64_t samples) { return static_cast<double>(samples) / rate; };
     ImGui::TextUnformatted("Timeline de pratica");
     ImGui::SameLine();
-    ImGui::TextDisabled("clique na faixa para escolher onde marcar A e B");
+    ImGui::TextColored(kVintageGold, "%s / %s", formatClock(seconds(position)).c_str(),
+                       length > 0 ? formatClock(seconds(length)).c_str() : "00:00");
+    ImGui::SameLine();
+    // O nome da faixa vai aqui, na linha de título, e não na calha à
+    // esquerda das trilhas, onde um nome longo invadia a trilha.
+    if (m_backingTrackPath.empty())
+        ImGui::TextDisabled("clique na faixa para escolher onde marcar A e B");
+    else
+        ImGui::TextDisabled("%s", std::filesystem::path(m_backingTrackPath).filename().string().c_str());
 
     const ImVec2 origin = ImGui::GetCursorScreenPos();
     const ImVec2 size(ImGui::GetContentRegionAvail().x, 106.0f);
@@ -3600,12 +3858,14 @@ void DesktopUI::drawPracticeTimeline()
 
     drawList->AddRectFilled(origin, end, ImGui::GetColorU32(kSurfaceRaised), 6.0f);
     drawList->AddRect(origin, end, ImGui::GetColorU32(ImGuiCol_Separator), 6.0f);
-    drawList->AddText(ImVec2(origin.x + 12.0f, origin.y + 12.0f), ImGui::GetColorU32(ImGuiCol_TextDisabled),
-                      m_backingTrackPath.empty() ? "BACKING TRACK" : compactLabel(std::filesystem::path(m_backingTrackPath).filename().string(), 42).c_str());
-    drawList->AddText(ImVec2(origin.x + 12.0f, origin.y + 66.0f), ImGui::GetColorU32(ImGuiCol_TextDisabled),
+    drawList->AddText(ImVec2(origin.x + 12.0f, origin.y + 24.0f), ImGui::GetColorU32(ImGuiCol_TextDisabled),
+                      "BACKING TRACK");
+    drawList->AddText(ImVec2(origin.x + 12.0f, origin.y + 72.0f), ImGui::GetColorU32(ImGuiCol_TextDisabled),
                       "LOOP A/B");
 
-    const float laneLeft = origin.x + 132.0f;
+    // A trilha começa depois do rótulo mais largo, medido na fonte atual:
+    // os 132px fixos de antes ficavam embaixo do "BACKING TRACK" a 19px.
+    const float laneLeft = origin.x + 12.0f + ImGui::CalcTextSize("BACKING TRACK").x + 20.0f;
     const float laneRight = end.x - 16.0f;
     drawList->AddLine(ImVec2(laneLeft, origin.y + 33.0f), ImVec2(laneRight, origin.y + 33.0f),
                       ImGui::GetColorU32(ImGuiCol_Separator), 12.0f);
@@ -3649,13 +3909,9 @@ void DesktopUI::drawPracticeTimeline()
     }
     else
     {
-        drawList->AddText(ImVec2(laneLeft, origin.y + 24.0f), ImGui::GetColorU32(ImGuiCol_TextDisabled),
+        drawList->AddText(ImVec2(laneLeft + 8.0f, origin.y + 42.0f), ImGui::GetColorU32(ImGuiCol_TextDisabled),
                           "carregue uma faixa para usar a agulha e o scrub");
     }
-
-    const auto seconds = [rate](std::uint64_t samples) { return static_cast<double>(samples) / rate; };
-    ImGui::TextDisabled("%s / %s", formatClock(seconds(position)).c_str(),
-                        length > 0 ? formatClock(seconds(length)).c_str() : "00:00");
 
     ImGui::EndChild();
     ImGui::PopStyleVar(2);
@@ -3677,7 +3933,10 @@ void DesktopUI::drawPracticeWorkspace()
 
     ImGui::SameLine(0.0f, spacing);
     ImGui::BeginChild("##practiceTools", ImVec2(0.0f, 0.0f));
-    ImGui::BeginChild("##practiceTuner", ImVec2(0.0f, 255.0f), ImGuiChildFlags_Borders);
+    // O afinador tinha 255px fixos e, numa tela de 768px, deixava o
+    // gravador com uma fresta de 60px. Agora divide a coluna com ele.
+    const float tunerHeight = std::clamp(ImGui::GetContentRegionAvail().y * 0.6f, 200.0f, 255.0f);
+    ImGui::BeginChild("##practiceTuner", ImVec2(0.0f, tunerHeight), ImGuiChildFlags_Borders);
     drawTunerPanel();
     ImGui::EndChild();
     ImGui::Spacing();
@@ -3706,6 +3965,10 @@ void DesktopUI::drawFrame()
     if (m_workspace == Workspace::Pedalboard && !ImGui::GetIO().WantTextInput
         && ImGui::IsKeyPressed(ImGuiKey_Space, false))
         m_engine.diLooper().togglePlay();
+
+    // As teclas dos grupos valem nas duas áreas: tocar junto com a backing
+    // track no Practice é justamente quando se quer ligar o "solo".
+    handleGroupKeys();
 
     if (m_workspace == Workspace::Pedalboard)
         drawPedalboardWorkspace();

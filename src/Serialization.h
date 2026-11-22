@@ -29,7 +29,9 @@
 //
 // `module <tipo> <0 ou 1 de bypass>` abre um módulo novo; as linhas `param`
 // e `ir` seguintes pertencem a ele, até o próximo `module`. `item` descreve
-// o agrupamento visual da lista e pode aparecer antes ou depois dos módulos.
+// o agrupamento visual da lista e pode aparecer antes ou depois dos módulos;
+// um terceiro campo opcional traz os grupos do item ("item ... 5 AC", ver
+// PedalGroups.h). `groupkey A 1` guarda a tecla que aciona o grupo A.
 // Linhas em branco e começadas com '#' são ignoradas.
 namespace preset
 {
