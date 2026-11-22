@@ -119,3 +119,6 @@ irs/Factory/*
 # Gravações feitas pela janela desktop (gravador e modo prática). Áudio
 # pessoal, não código.
 recordings/
+
+# Pacotes de distribuição (tools/package_windows.sh)
+/dist/

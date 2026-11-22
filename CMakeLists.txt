@@ -351,6 +351,31 @@ if(IBIFX_BUILD_DESKTOP)
 
     target_compile_options(ibifx_desktop PRIVATE ${IBIFX_WARNINGS})
     target_link_libraries(ibifx_desktop PRIVATE ibifx_gui)
+
+    # Ícone e "Detalhes" do .exe (ver apps/desktop/ibifx_desktop.rc.in).
+    if(WIN32)
+        enable_language(RC)
+        set(IBIFX_ICON_PATH "${CMAKE_CURRENT_SOURCE_DIR}/assets/brand/ibifx.ico")
+        configure_file(apps/desktop/ibifx_desktop.rc.in
+                       ${CMAKE_CURRENT_BINARY_DIR}/ibifx_desktop.rc @ONLY)
+        target_sources(ibifx_desktop PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/ibifx_desktop.rc)
+    endif()
+
+    # Build de distribuição: sem a janela preta de console atrás da janela
+    # do app (quem baixa e dá duplo clique não espera ver um terminal).
+    # Desligado por padrão porque no dia a dia o console mostra avisos úteis;
+    # tools/package_windows.sh liga num diretório de build próprio. Os erros
+    # fatais também viram uma caixa de mensagem (apps/desktop/main.cpp).
+    option(IBIFX_DESKTOP_NO_CONSOLE "Gera ibifx_desktop sem janela de console (Windows)" OFF)
+    # Só troca o subsistema; o ponto de entrada continua sendo o main() de
+    # sempre (no MSVC, /ENTRY evita que o linker exija um WinMain).
+    if(WIN32 AND IBIFX_DESKTOP_NO_CONSOLE)
+        if(MINGW)
+            target_link_options(ibifx_desktop PRIVATE -mwindows)
+        elseif(MSVC)
+            target_link_options(ibifx_desktop PRIVATE /SUBSYSTEM:WINDOWS /ENTRY:mainCRTStartup)
+        endif()
+    endif()
 endif()
 
 # Liga o CTest, o executor de testes que vem junto com o CMake.
