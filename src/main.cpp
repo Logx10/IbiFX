@@ -1,10 +1,14 @@
+#include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <exception>
 #include <filesystem>
+#include <fstream>
 #include <iomanip>
 #include <iostream>
+#include <limits>
 #include <memory>
 #include <stdexcept>
 #include <string>
@@ -370,6 +374,7 @@ void printUsage(const char* program)
               << "  " << program << " --tuner [segundos]       afinador (padrao 60s)\n"
               << "  " << program << " --devices                testa o dispositivo sem hardware\n"
               << "  " << program << " --list-gear [pasta-irs]  lista pedais, amplis, cabinets e rack\n"
+              << "  " << program << " --inspect-audio entrada.wav pasta-nova [flags da cadeia]\n"
               << "  " << program << " --ui [opcoes]            pedaleira interativa no terminal\n"
               << "  " << program << " --ui-demo [opcoes]       a pedaleira sem placa de som\n"
               << "                            --ui e --ui-demo tambem aceitam as opcoes de cadeia\n"
@@ -694,6 +699,88 @@ int runDeviceCheck()
     return 0;
 }
 
+namespace
+{
+struct StageLevel
+{
+    double sum = 0.0;
+    double energy = 0.0;
+    double peak = 0.0;
+    std::uint64_t finite = 0;
+    std::uint64_t aboveFullScale = 0;
+    std::uint64_t nonFinite = 0;
+};
+
+class ChainInspection : public ModuleChain::Observer
+{
+public:
+    explicit ChainInspection(std::size_t modules) : stages(modules + 2) {}
+
+    void observe(std::size_t position, std::span<const float> samples) override
+    {
+        StageLevel& stage = stages[position];
+        for (double sample : samples)
+        {
+            if (!std::isfinite(sample))
+            {
+                ++stage.nonFinite;
+                continue;
+            }
+            const double magnitude = std::abs(sample);
+            stage.sum += sample;
+            stage.energy += sample * sample;
+            stage.peak = std::max(stage.peak, magnitude);
+            stage.aboveFullScale += magnitude > 1.0;
+            ++stage.finite;
+        }
+    }
+
+    std::vector<StageLevel> stages;
+};
+
+int inspectAudio(int argc, char** argv)
+{
+    if (argc < 4) throw std::runtime_error("uso: --inspect-audio entrada.wav pasta-nova [flags da cadeia]");
+    const CliOptions settings = parseSettings(argc, argv, 4);
+    const WavFile input = wav::read(argv[2]);
+    ModuleChain chain;
+    std::cout << buildChainFromOptions(settings, chain) << '\n';
+    const std::filesystem::path directory = argv[3];
+    if (!std::filesystem::create_directories(directory))
+        throw std::runtime_error("use uma pasta de destino nova para inspecao");
+
+    ChainInspection inspection(chain.size());
+    const WavFile output = offline::processFile(input, chain, 128, &inspection);
+    const auto reportPath = directory / "estagios.csv";
+    std::ofstream report(reportPath);
+    report << "posicao,estagio,bypass,amostras,pico_linear,rms_dbfs,media_dc,acima_de_0_dbfs,nao_finitas\n"
+           << std::setprecision(9);
+    for (std::size_t i = 0; i < inspection.stages.size(); ++i)
+    {
+        const bool module = i > 0 && i <= chain.size();
+        const char* name = module ? chain.moduleAt(i - 1).name() : (i == 0 ? "Entrada" : "Saida");
+        const StageLevel& stage = inspection.stages[i];
+        const double count = static_cast<double>(std::max<std::uint64_t>(stage.finite, 1));
+        const double rms = std::sqrt(stage.energy / count);
+        report << i << ',' << name << ',' << (module && chain.isBypassed(i - 1)) << ','
+               << stage.finite + stage.nonFinite << ',' << stage.peak << ','
+               << (rms > 0.0 ? 20.0 * std::log10(rms) : -std::numeric_limits<double>::infinity())
+               << ',' << stage.sum / count << ','
+               << stage.aboveFullScale << ',' << stage.nonFinite << '\n';
+    }
+    report.close();
+    if (!report) throw std::runtime_error("falha ao gravar o CSV de inspecao");
+    std::cout << "inspecao gravada em " << reportPath.string() << '\n';
+    if (inspection.stages.back().nonFinite != 0)
+        throw std::runtime_error("a saida tem amostras invalidas; consulte o CSV");
+
+    const auto outputPath = directory / "saida.wav";
+    wav::write(outputPath.string(), output);
+    std::cout << "audio gravado em " << outputPath.string() << '\n';
+    return 0;
+}
+}
+
 int main(int argc, char** argv)
 {
     std::cout << "IbiFX starting...\n\n";
@@ -792,6 +879,11 @@ int main(int argc, char** argv)
                       << signal.sampleRate << " Hz, "
                       << signal.channelCount() << " canal\n";
             return 0;
+        }
+
+        if (argc >= 2 && std::string(argv[1]) == "--inspect-audio")
+        {
+            return inspectAudio(argc, argv);
         }
 
         if (argc >= 3)

@@ -9,6 +9,7 @@
 // A infra de verificação vive em test_helpers.h.
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <filesystem>
 #include <iostream>
@@ -20,7 +21,9 @@
 #include "GearLibrary.h"
 #include "ModuleChain.h"
 #include "Preset.h"
+#include "Serialization.h"
 #include "WavFile.h"
+#include "offline.h"
 #include "test_helpers.h"
 
 namespace
@@ -349,6 +352,135 @@ double recipeGainDb(const GearLibrary& library, const std::string& gearId, doubl
     return 20.0 * std::log10(rms / (static_cast<double>(amplitude) / std::sqrt(2.0)));
 }
 
+void testTapeFinishRoundsPeaksAndDarkensTheTop()
+{
+    std::cout << "Tape Finish amacia picos e atenua agudos\n";
+    const GearLibrary library;
+    constexpr const char* id = "rack.tape-finish";
+    const double quiet = recipeGainDb(library, id, 440.0, 0.02f);
+    const double hot = recipeGainDb(library, id, 440.0, 0.8f);
+    const double bright = recipeGainDb(library, id, 8000.0, 0.02f);
+    check(std::abs(quiet) < 0.5, "Drive padrao preserva notas fracas perto da unidade");
+    check(hot < quiet - 1.5, "Drive padrao reduz o ganho nas notas fortes");
+    check(bright < quiet - 0.8, "Color padrao suaviza agudos");
+
+    Rig rig;
+    rig.rack = {id};
+    const auto preset = preset::deserialize(preset::serialize(library.buildPreset(rig, "Fita")));
+    ModuleChain chain;
+    preset::apply(preset, chain);
+    check(chain.size() == 2 && std::string(chain.moduleAt(0).name()) == "TapeFinish"
+          && std::string(chain.moduleAt(1).name()) == "Limiter", "preset restaura Tape Finish antes do limiter");
+}
+
+void testGreenScreamerSymmetricSuppressesTheSecondHarmonic()
+{
+    std::cout << "Green Screamer simetrico reduz o segundo harmonico\n";
+    constexpr double twoPi = 6.283185307179586;
+    constexpr double frequency = 1000.0;
+    const GearLibrary library;
+
+    for (const double rate : {44100.0, 48000.0, 96000.0})
+    {
+        WavFile input;
+        input.sampleRate = rate;
+        auto& samples = input.channels.emplace_back(static_cast<std::size_t>(rate / 5));
+        for (std::size_t n = 0; n < samples.size(); ++n)
+            samples[n] = static_cast<float>(0.25 * std::sin(twoPi * frequency * n / rate));
+
+        const auto secondHarmonicRatio = [&](const char* id, int blockSize) {
+            const Preset saved = library.buildSignalChain({id}, "Green Screamer");
+            const Preset reopened = preset::deserialize(preset::serialize(saved));
+            ModuleChain chain;
+            preset::apply(reopened, chain);
+            const auto output = offline::processFile(input, chain, blockSize);
+            const auto& channel = output.channels.front();
+            const auto magnitude = [&](int harmonic) {
+                double cosine = 0.0;
+                double sine = 0.0;
+                for (std::size_t n = channel.size() / 2; n < channel.size(); ++n)
+                {
+                    const double phase = twoPi * frequency * harmonic * n / rate;
+                    cosine += channel[n] * std::cos(phase);
+                    sine += channel[n] * std::sin(phase);
+                }
+                return std::hypot(cosine, sine);
+            };
+            return magnitude(2) / magnitude(1);
+        };
+
+        const double original = secondHarmonicRatio("stomp.green-screamer", 128);
+        const double symmetric = secondHarmonicRatio("stomp.green-screamer-symmetric", 128);
+        const double symmetricShortBlock = secondHarmonicRatio("stomp.green-screamer-symmetric", 64);
+        const std::string hz = " em " + std::to_string(static_cast<int>(rate)) + " Hz";
+        check(original > 0.01, "original conserva segundo harmonico" + hz);
+        check(symmetric < 0.0001 && symmetricShortBlock < 0.0001,
+              "simetrico abaixo de -80 dBc nos dois tamanhos de bloco" + hz);
+    }
+}
+
+void testGreenScreamer808RetainsBassAndFavorsMids()
+{
+    std::cout << "Green Screamer 808 preserva sinal grave e amplifica mais os medios\n";
+    const GearLibrary library;
+    constexpr const char* id = "stomp.green-screamer-808";
+    const double low = recipeGainDb(library, id, 20.0, 0.001f);
+    const double bass = recipeGainDb(library, id, 82.0, 0.001f);
+    const double mid = recipeGainDb(library, id, 1000.0, 0.001f);
+    check(low > -2.0 && low < 6.0, "grave profundo passa em vez de sumir no filtro de 400 Hz");
+    check(mid > bass + 10.0, "ganho extra se concentra nos medios");
+    const double hot = recipeGainDb(library, id, 1000.0, 0.25f);
+    check(hot < mid - 10.0 && hot > 0.0, "saturacao reduz o ganho sem suprimir a nota");
+}
+
+void testGreenScreamer808ActiveToneMatchesCircuit()
+{
+    std::cout << "Tone ativo do 808 segue a curva analogica\n";
+    const GearLibrary library;
+    const auto legacy = library.buildSignalChain({"stomp.green-screamer-808"}, "Tone simples");
+    const auto active = library.buildSignalChain({"stomp.green-screamer-808-circuit"}, "Tone ativo");
+    ModuleChain chain;
+    preset::apply(preset::deserialize(preset::serialize(legacy)), chain);
+    check(std::string(chain.moduleAt(2).name()) == "LowPass", "preset anterior carrega o LowPass");
+    preset::apply(preset::deserialize(preset::serialize(active)), chain);
+    check(std::string(chain.moduleAt(2).name()) == "ScreamerTone", "preset novo carrega o Tone ativo");
+
+    // Ganho AC em dB da rede de resistores e capacitores da Fig. 15
+    // (DAFx-07), para 220, 1000 e 4000 Hz, sem Drive ou Level.
+    constexpr std::array frequencies{220.0, 1000.0, 4000.0};
+    constexpr std::array reference{
+        std::array{-2.10, -9.64, -18.74},
+        std::array{-1.14, -4.50, -14.26},
+        std::array{-0.61, 0.52, -2.29},
+    };
+    AudioModule& tone = chain.moduleAt(2);
+    for (const double rate : {44100.0, 48000.0, 96000.0})
+    {
+        bool matchesCurve = true;
+        for (std::size_t pos = 0; pos < reference.size(); ++pos)
+        {
+            tone.findParameter("tone")->setValue(static_cast<float>(pos) * 0.5f);
+            for (std::size_t i = 0; i < frequencies.size(); ++i)
+            {
+                tone.prepare(rate, 128);
+                std::vector<float> samples(static_cast<std::size_t>(rate / 5));
+                for (std::size_t n = 0; n < samples.size(); ++n)
+                    samples[n] = 0.1f * static_cast<float>(std::sin(6.283185307179586 * frequencies[i] * n / rate));
+                tone.process(samples);
+
+                double energy = 0.0;
+                const std::size_t start = samples.size() / 2;
+                for (std::size_t n = start; n < samples.size(); ++n)
+                    energy += static_cast<double>(samples[n]) * samples[n];
+                const double meanSquare = energy / static_cast<double>(samples.size() - start);
+                const double measured = 10.0 * std::log10(meanSquare / 0.005);
+                matchesCurve = matchesCurve && std::abs(measured - reference[pos][i]) < 0.35;
+            }
+        }
+        check(matchesCurve, "curvas em ate 0,35 dB da rede analogica em " + std::to_string(static_cast<int>(rate)) + " Hz");
+    }
+}
+
 // O tone stack é passivo e perde volume; a receita avulsa repõe com um
 // estágio de ganho, como os amplis. Com os knobs no meio, tons de 250 Hz,
 // 1 kHz e 3 kHz saem a até 4 dB do nível de entrada.
@@ -418,6 +550,51 @@ void testFruscianteDrivesKeepTheLevel()
             sumDb += gainDb;
         }
         check(std::fabs(sumDb / 3.0) < 3.0, std::string(id) + ": media a ate 3 dB da entrada");
+    }
+}
+
+void testFuzzControlsKeepWeakNotesAndHeadroom()
+{
+    std::cout << "fuzzes deixam passar notas fracas e conservam margem na saida\n";
+    constexpr double rate = 48000.0;
+    constexpr double twoPi = 6.283185307179586;
+    const GearLibrary library;
+    const auto signal = [&](const char* id, float amplitude, const std::vector<double>& frequencies) {
+        const auto& model = *library.find(id);
+        ModuleChain chain;
+        preset::apply(library.buildSignalChain({id}, "Fuzz"), chain);
+        for (const GearControl& knob : model.controls)
+        {
+            const float value = knob.label == "Fuzz" ? knob.minValue : knob.maxValue;
+            chain.moduleAt(knob.moduleOffset).findParameter(knob.parameterId)->setValue(value);
+        }
+
+        WavFile input;
+        input.sampleRate = rate;
+        auto& samples = input.channels.emplace_back();
+        for (const double hz : frequencies)
+            for (int n = 0; n < 12000; ++n)
+                samples.push_back(amplitude * static_cast<float>(std::sin(twoPi * hz * n / rate)));
+        return offline::processFile(input, chain, 128);
+    };
+
+    for (const char* id : {"stomp.round-fuzz", "stomp.bakersfield-fuzz"})
+    {
+        const auto output = signal(id, 0.01f, {330.0});
+        const auto& samples = output.channels.front();
+        double energy = 0.0;
+        for (std::size_t n = samples.size() / 2; n < samples.size(); ++n)
+            energy += static_cast<double>(samples[n]) * samples[n];
+        const double rms = std::sqrt(energy / static_cast<double>(samples.size() / 2));
+        check(rms > 0.005, std::string(id) + ": nota fraca preservada no extremo de Bias ou Depth");
+    }
+
+    for (const char* id : {"stomp.green-siberian", "stomp.bakersfield-fuzz"})
+    {
+        const auto output = signal(id, 0.9f, {82.0, 330.0, 880.0, 1600.0, 3200.0, 6400.0});
+        const auto& samples = output.channels.front();
+        check(std::all_of(samples.begin(), samples.end(), [](float x) { return std::abs(x) < 1.0f; }),
+              std::string(id) + ": Volume maximo dentro da escala com sinal forte, sem limiter");
     }
 }
 
@@ -593,10 +770,15 @@ int main()
     testUnknownOrMisplacedGearThrows();
     testSignalChainKeepsAnyOrderAndDuplicates();
     testEmptySignalChainAndUnknownId();
+    testTapeFinishRoundsPeaksAndDarkensTheTop();
+    testGreenScreamerSymmetricSuppressesTheSecondHarmonic();
+    testGreenScreamer808RetainsBassAndFavorsMids();
+    testGreenScreamer808ActiveToneMatchesCircuit();
     testStandaloneToneStackKeepsTheLevel();
     testCompressorPedalKeepsTheLevelAndSqueezes();
     testMetalCompressorEvensTheChugs();
     testFruscianteDrivesKeepTheLevel();
+    testFuzzControlsKeepWeakNotesAndHeadroom();
     testScanFindsCabinetsAndMicrophones();
     testScanOfMissingDirectoryFindsNothing();
     testInferRigRecoversTheRigOfASavedChain();

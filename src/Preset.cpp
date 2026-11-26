@@ -26,7 +26,10 @@
 #include "PowerAmp.h"
 #include "Reverb.h"
 #include "Rotovibe.h"
+#include "ScreamerDrive.h"
+#include "ScreamerTone.h"
 #include "SoftClipper.h"
+#include "TapeFinish.h"
 #include "ToneStack.h"
 #include "Wah.h"
 
@@ -41,6 +44,9 @@ std::unique_ptr<AudioModule> createModule(const std::string& type)
     if (type == "Gain") return std::make_unique<GainProcessor>();
     if (type == "Clipper") return std::make_unique<Clipper>();
     if (type == "SoftClipper") return std::make_unique<SoftClipper>();
+    if (type == "TapeFinish") return std::make_unique<TapeFinish>();
+    if (type == "ScreamerDrive") return std::make_unique<ScreamerDrive>();
+    if (type == "ScreamerTone") return std::make_unique<ScreamerTone>();
     if (type == "AsymmetricClipper") return std::make_unique<AsymmetricClipper>();
     if (type == "NoiseGate") return std::make_unique<NoiseGate>();
     if (type == "Compressor") return std::make_unique<Compressor>();

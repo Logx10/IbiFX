@@ -191,7 +191,7 @@ void ModuleChain::applyCommand(const Command& command)
     }
 }
 
-void ModuleChain::process(std::vector<float>& buffer)
+void ModuleChain::process(std::vector<float>& buffer, Observer* observer)
 {
     // Os comandos são aplicados ANTES de qualquer amostra ser tocada, para
     // que a estrutura não mude no meio do bloco. Retirar da fila é apenas
@@ -212,9 +212,11 @@ void ModuleChain::process(std::vector<float>& buffer)
     }
 
     m_openLane = nullptr;
+    if (observer != nullptr) observer->observe(0, buffer);
 
-    for (Slot& slot : m_slots)
+    for (std::size_t index = 0; index < m_slots.size(); ++index)
     {
+        Slot& slot = m_slots[index];
         if (slot.marker != nullptr)
         {
             switch (slot.marker->kind())
@@ -252,14 +254,13 @@ void ModuleChain::process(std::vector<float>& buffer)
                     }
                     break;
             }
-            continue;
         }
-
         // Um caminho mudo nem processa: economiza a CPU de um amp desligado.
-        if (!slot.bypassed && !(m_openLane != nullptr && m_openLaneMuted))
+        else if (!slot.bypassed && !(m_openLane != nullptr && m_openLaneMuted))
         {
             slot.module->process(buffer);
         }
+        if (observer != nullptr) observer->observe(index + 1, buffer);
     }
 
     // Trecho sem Merge: fecha no fim da fila.
@@ -269,6 +270,7 @@ void ModuleChain::process(std::vector<float>& buffer)
         std::copy(m_laneSum.begin(), m_laneSum.end(), buffer.begin());
         m_openLane = nullptr;
     }
+    if (observer != nullptr) observer->observe(m_slots.size() + 1, buffer);
 }
 
 void ModuleChain::finishLane(const std::vector<float>& buffer)
