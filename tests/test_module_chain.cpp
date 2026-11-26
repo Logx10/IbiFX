@@ -287,6 +287,34 @@ void testAddNullThrows()
     check(chain.empty(), "a cadeia continua vazia");
 }
 
+void testObserverSeesInputStagesAndOutput()
+{
+    std::cout << "observador le as amostras sem alterar o processamento\n";
+    class Capture : public ModuleChain::Observer
+    {
+    public:
+        void observe(std::size_t position, std::span<const float> samples) override
+        {
+            positions.push_back(position);
+            values.push_back(samples.front());
+        }
+
+        std::vector<std::size_t> positions;
+        std::vector<float> values;
+    } capture;
+    ModuleChain chain;
+    chain.add(makeGain(2.0f));
+    chain.add(makeGain(3.0f));
+    chain.add(makeGain(0.5f));
+    chain.setBypassed(1, true);
+    chain.prepare(48000.0, 128);
+    std::vector<float> signal{0.25f};
+    chain.process(signal, &capture);
+    check(capture.positions == std::vector<std::size_t>{0, 1, 2, 3, 4}, "entrada, tres slots e saida");
+    check(capture.values == std::vector<float>{0.25f, 0.5f, 0.5f, 0.25f, 0.25f}, "bypass preserva a amostra");
+    check(signal == std::vector<float>{0.25f}, "saida fica igual com a inspecao ligada");
+}
+
 int main()
 {
     std::cout << "\n=== testes do ModuleChain ===\n\n";
@@ -304,6 +332,7 @@ int main()
     testClear();
     testInvalidIndexThrows();
     testAddNullThrows();
+    testObserverSeesInputStagesAndOutput();
 
     return reportResults();
 }

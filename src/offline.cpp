@@ -6,7 +6,8 @@
 
 namespace offline
 {
-WavFile processFile(const WavFile& input, ModuleChain& chain, int blockSize)
+WavFile processFile(const WavFile& input, ModuleChain& chain, int blockSize,
+                    ModuleChain::Observer* observer)
 {
     if (blockSize <= 0)
     {
@@ -43,7 +44,7 @@ WavFile processFile(const WavFile& input, ModuleChain& chain, int blockSize)
             scratch.assign(channel.begin() + static_cast<std::ptrdiff_t>(start),
                            channel.begin() + static_cast<std::ptrdiff_t>(start + count));
 
-            chain.process(scratch);
+            chain.process(scratch, observer);
 
             processed.insert(processed.end(), scratch.begin(), scratch.end());
         }

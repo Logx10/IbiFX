@@ -48,6 +48,7 @@ têm documentação de circuito, testes e limites de fidelidade.
 Para regular a redução de ruído sem cortar notas, veja o
 [ajuste e comportamento do Noise Gate](docs/noise-gate.md).
 Há também uma [revisão de todos os amps, medições e prioridades de evolução](docs/revisao-amplificadores.md).
+O [plano de revisão dos pedais](docs/plano-revisao-pedais.md) começa pelo Green Screamer.
 As [melhorias implementadas nos amps](docs/melhorias-amplificadores.md) incluem
 ganho por estágio, controles Power Master/Output e calibração do Ironheart.
 
@@ -176,6 +177,22 @@ clara em vez de seguir com um parâmetro errado.
 antes da mesma curva, então só o produto deles importa: `--gain 2 --drive 4`
 soa idêntico a `--gain 4 --drive 2`. Eles só viram controles independentes
 quando houver algo sensível a frequência entre os dois.
+
+### Tape Finish
+
+No desktop, adicione **Tape Finish** pela categoria **Rack**, depois do
+gabinete e antes do limiter. **Drive** arredonda os picos com saturação
+suave, **Color** escurece os agudos e acrescenta um leve realce nos graves,
+e **Output** ajusta o volume final. O padrão é Drive 0,35, Color 0,30 e
+Output 1,00. Comece pelo padrão para um acabamento discreto.
+
+```sh
+./build/ibifx audio/guitar.wav audio/fita.wav --amp modern-hi-gain --cab factory.brit-4x12 --rack tape-finish
+```
+
+O efeito usa uma aproximação do acabamento de fita em gravação. A saturação
+é sobreamostrada em 4× e a cor é aplicada depois dela. Os fenômenos analógicos
+que inspiram o efeito são descritos no [estudo de modelagem de fita](https://dafx.de/paper-archive/2019/DAFx2019_paper_3.pdf).
 
 ### Por que o filtro vem antes da distorção
 

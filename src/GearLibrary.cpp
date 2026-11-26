@@ -125,18 +125,43 @@ void addStomps(std::vector<GearModel>& models)
         "Só volume, sem distorção — empurra o ampli para saturar mais.",
         {module("Gain", {{"gain", 2.0f}})}));
 
-    // O Tone é o passa-baixa DEPOIS do clipping, como no pedal verde real —
-    // sem ele os harmônicos da clipagem sobem sem teto e o pedal soa
-    // "fizzy", de simulador.
-    models.push_back(gear("stomp.green-screamer", "Green Screamer", GearCategory::Stomp, "Overdrive",
-        "Overdrive de médio saliente: corta o grave antes de clipar, assimétrico.",
-        {module("HighPass", {{"frequency", 400.0f}}),
-         module("AsymmetricClipper", {{"drive", 4.0f}, {"bias", 0.15f}}),
+    // Bias zero centraliza a curva. Usar o mesmo módulo mantém o filtro DC
+    // e o oversampling iguais nos dois modelos para a comparação.
+    const auto addScreamer = [&models](const char* id, const char* name,
+                                     const char* description, float bias) {
+        models.push_back(gear(id, name, GearCategory::Stomp, "Overdrive", description,
+            {module("HighPass", {{"frequency", 400.0f}}),
+             module("AsymmetricClipper", {{"drive", 4.0f}, {"bias", bias}}),
+             module("LowPass", {{"frequency", 3000.0f}}),
+             module("Gain", {{"gain", 1.2f}})}));
+        models.back().controls = {control("Drive", 1, "drive", 0.5f, 12.0f),
+                                  control("Tone", 2, "frequency", 500.0f, 8000.0f),
+                                  control("Low Cut", 0, "frequency", 100.0f, 900.0f),
+                                  control("Level", 3, "gain", 0.0f, 3.0f)};
+    };
+    addScreamer("stomp.green-screamer", "Green Screamer",
+        "Overdrive de médio saliente: corta o grave antes de clipar, assimétrico.", 0.15f);
+    addScreamer("stomp.green-screamer-symmetric", "Green Screamer Simétrico",
+        "Variante de médios salientes com clipagem suave simétrica.", 0.0f);
+
+    models.push_back(gear("stomp.green-screamer-808", "Green Screamer 808 (Tone simples)", GearCategory::Stomp, "Overdrive",
+        "Versão com passa-baixa ajustável para comparação e presets anteriores.",
+        {module("HighPass", {{"frequency", 20.0f}}),
+         module("ScreamerDrive", {{"drive", 0.25f}}),
          module("LowPass", {{"frequency", 3000.0f}}),
          module("Gain", {{"gain", 1.2f}})}));
-    models.back().controls = {control("Drive", 1, "drive", 0.5f, 12.0f),
+    models.back().controls = {control("Drive", 1, "drive", 0.0f, 1.0f),
                               control("Tone", 2, "frequency", 500.0f, 8000.0f),
-                              control("Low Cut", 0, "frequency", 100.0f, 900.0f),
+                              control("Level", 3, "gain", 0.0f, 3.0f)};
+
+    models.push_back(gear("stomp.green-screamer-808-circuit", "Green Screamer 808", GearCategory::Stomp, "Overdrive",
+        "Overdrive com clipagem suave e Tone baseado na rede ativa do circuito.",
+        {module("HighPass", {{"frequency", 20.0f}}),
+         module("ScreamerDrive", {{"drive", 0.25f}}),
+         module("ScreamerTone", {{"tone", 0.5f}}),
+         module("Gain", {{"gain", 1.2f}})}));
+    models.back().controls = {control("Drive", 1, "drive", 0.0f, 1.0f),
+                              control("Tone", 2, "tone", 0.0f, 1.0f),
                               control("Level", 3, "gain", 0.0f, 3.0f)};
 
     models.push_back(gear("stomp.yellow-drive", "Yellow Drive", GearCategory::Stomp, "Overdrive",
@@ -160,12 +185,14 @@ void addStomps(std::vector<GearModel>& models)
                               control("Low Cut", 0, "frequency", 40.0f, 600.0f),
                               control("Level", 4, "gain", 0.0f, 4.0f)};
 
+    // Na tanh deslocada, drive*bias define o ponto de repouso. Até 1,2
+    // mantém inclinação disponível para notas fracas em todo o curso.
     models.push_back(gear("stomp.round-fuzz", "Round Fuzz", GearCategory::Stomp, "Fuzz",
         "Fuzz de transistor: ganho enorme e assimetria forte, quase onda quadrada.",
         {module("Gain", {{"gain", 6.0f}}),
-         module("AsymmetricClipper", {{"drive", 20.0f}, {"bias", 0.5f}})}));
+         module("AsymmetricClipper", {{"drive", 8.0f}, {"bias", 0.10f}})}));
     models.back().controls = {control("Fuzz", 0, "gain", 1.0f, 8.0f),
-                              control("Bias", 1, "bias", 0.0f, 0.9f)};
+                              control("Bias", 1, "bias", 0.0f, 0.15f)};
 
     // --- O rig do John Frusciante ---
     // Os pedais que aparecem nos boards dele de Blood Sugar a Stadium
@@ -207,28 +234,27 @@ void addStomps(std::vector<GearModel>& models)
          module("GraphicEQ", {{"band400", -3.0f}, {"band800", -6.0f},
                               {"band1600", -4.0f}, {"band3200", -4.0f}, {"band6400", -12.0f}}),
          module("Gain", {{"gain", 0.3f}})}));
+    // O Volume dosa a saída do fuzz. Com o EQ aberto, ganho 3 levava
+    // a saída do pedal avulso muito acima da escala do dispositivo.
     models.back().controls = {control("Sustain", 0, "gain", 1.0f, 8.0f),
                               control("Tone", 4, "band3200", -15.0f, 8.0f),
-                              control("Volume", 5, "gain", 0.0f, 3.0f)};
+                              control("Volume", 5, "gain", 0.0f, 0.50f)};
 
     // No espírito do Fuzzrite do board de Stadium Arcadium. Dois estágios
     // de transistor com o Depth misturando as saídas — fora de fase, então
     // a mistura cancela parte da fundamental e sobram os harmônicos: o som
     // fino, rasgado, "de mosquito". Aqui: o capacitor pequeno de entrada
-    // (HighPass alto), uma clipagem bem assimétrica (transistor faminto) e
-    // o Depth como drive dela. O bias é na escala da ENTRADA, por isso o
-    // ganho antes: sem ele, bias 0.6 deixava a palhetada inteira presa no
-    // teto da tanh e o pedal saía mudo. Menos saturado que um Big Muff, mais
-    // rosnado que o Round Fuzz.
+    // (HighPass alto), clipagem assimétrica e Depth no ganho dessa curva.
+    // O bias é pequeno para que drive*bias fique até 1,2 no Depth máximo.
     models.push_back(gear("stomp.bakersfield-fuzz", "Bakersfield Fuzz", GearCategory::Stomp, "Fuzz",
         "Fuzz dos anos 60, fino e rasgado: mais rosnado que saturado.",
         {module("HighPass", {{"frequency", 300.0f}}),
          module("Gain", {{"gain", 3.0f}}),
-         module("AsymmetricClipper", {{"drive", 8.0f}, {"bias", 0.3f}}),
+         module("AsymmetricClipper", {{"drive", 8.0f}, {"bias", 0.04f}}),
          module("GraphicEQ", {{"band1600", 3.0f}, {"band3200", 2.0f}}),
-         module("Gain", {{"gain", 0.5f}})}));
+         module("Gain", {{"gain", 0.24f}})}));
     models.back().controls = {control("Depth", 2, "drive", 1.0f, 30.0f),
-                              control("Volume", 4, "gain", 0.0f, 3.0f)};
+                              control("Volume", 4, "gain", 0.0f, 0.65f)};
 
     // No espírito do Ibanez WH-10, o wah dele desde o fim dos anos 80:
     // 350 Hz a 2,2 kHz, pico largo de filtro com amplificador operacional
@@ -452,6 +478,10 @@ void addRack(std::vector<GearModel>& models)
     models.push_back(gear("rack.hall", "Hall Reverb", GearCategory::Rack, "Reverb",
         "Salão grande, cauda longa e brilhante.",
         {module("Reverb", {{"decay", 0.85f}, {"damping", 0.3f}, {"mix", 0.35f}})}));
+
+    models.push_back(gear("rack.tape-finish", "Tape Finish", GearCategory::Rack, "Saturation",
+        "Acabamento de fita: suaviza os picos, escurece o agudo e realça levemente o grave.",
+        {module("TapeFinish", {{"drive", 0.35f}, {"color", 0.30f}, {"level", 1.0f}})}));
 
     models.push_back(gear("rack.output-limiter", "Output Limiter", GearCategory::Rack, "Dynamics",
         "Proteção de saída que segura picos acima de 0 dBFS.",

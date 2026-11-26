@@ -28,7 +28,8 @@ namespace offline
 // blockSize existe para simular a fatia que um dispositivo de áudio real
 // entregaria. Processar o arquivo inteiro de uma vez daria outro resultado
 // em qualquer módulo com estado, e mascararia bugs de fronteira de bloco.
-WavFile processFile(const WavFile& input, ModuleChain& chain, int blockSize = 512);
+WavFile processFile(const WavFile& input, ModuleChain& chain, int blockSize = 512,
+                    ModuleChain::Observer* observer = nullptr);
 
 // Gera um sinal de teste: uma nota que decai, como uma corda tocada.
 //

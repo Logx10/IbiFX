@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <memory>
+#include <span>
 #include <vector>
 
 #include "AudioModule.h"
@@ -73,6 +74,15 @@ class ParallelMarker;
 class ModuleChain
 {
 public:
+    // Inspeção opcional para processamento offline. A posição zero é a
+    // entrada, 1..size() são as saídas dos slots, e size()+1 é a saída final.
+    class Observer
+    {
+    public:
+        virtual ~Observer() = default;
+        virtual void observe(std::size_t position, std::span<const float> samples) = 0;
+    };
+
     ModuleChain() = default;
 
     // NEM COPIÁVEL NEM MOVÍVEL, DE PROPÓSITO
@@ -165,7 +175,7 @@ public:
 
     // Aplica os comandos pendentes (UI e MIDI) e passa o buffer pelos
     // módulos ativos.
-    void process(std::vector<float>& buffer);
+    void process(std::vector<float>& buffer, Observer* observer = nullptr);
 
 private:
     // Um módulo mais o estado que a cadeia mantém sobre ele.

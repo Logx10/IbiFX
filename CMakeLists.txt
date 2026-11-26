@@ -135,6 +135,9 @@ add_library(ibifx_core STATIC
     src/GainProcessor.cpp
     src/Clipper.cpp
     src/SoftClipper.cpp
+    src/TapeFinish.cpp
+    src/ScreamerDrive.cpp
+    src/ScreamerTone.cpp
     src/Limiter.cpp
     src/NoiseGate.cpp
     src/Compressor.cpp
@@ -262,6 +265,11 @@ target_link_libraries(ibifx_factory_presets PRIVATE ibifx_core)
 add_executable(ibifx_amp_audit tools/amp_audit.cpp)
 target_compile_options(ibifx_amp_audit PRIVATE ${IBIFX_WARNINGS})
 target_link_libraries(ibifx_amp_audit PRIVATE ibifx_core)
+
+# Mede Drive e Tone no Green Screamer e exporta comparações com nível igualado.
+add_executable(ibifx_screamer_audit tools/screamer_audit.cpp)
+target_compile_options(ibifx_screamer_audit PRIVATE ${IBIFX_WARNINGS})
+target_link_libraries(ibifx_screamer_audit PRIVATE ibifx_core)
 
 # O frontend desktop (Fase 12, AI_GUIDELINES §36) — Dear ImGui + SDL3, a
 # escolha registrada em docs/adr/0001-portabilidade-desktop-e-web.md: é a
